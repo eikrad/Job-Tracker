@@ -1,0 +1,13 @@
+# Secrets
+.env
+
+# Runtime data
+storage/*
+!storage/.gitkeep
+!storage/job-postings/
+!storage/job-postings/.gitkeep
+!storage/applications/
+!storage/applications/.gitkeep
+
+# Logs
+*.log
