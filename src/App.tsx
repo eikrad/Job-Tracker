@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import "./App.css";
 import { JobForm } from "./features/jobs/JobForm";
 import { JobBoard } from "./features/jobs/JobBoard";
@@ -23,6 +23,7 @@ import {
 } from "./lib/export/exportBundle";
 import { findDuplicateJob } from "./lib/jobs/duplicateCheck";
 import { DEFAULT_STATUSES } from "./lib/types";
+import { en } from "./i18n/en";
 
 type View = "kanban" | "table" | "calendar";
 
@@ -40,13 +41,17 @@ function App() {
 
   const hasJobs = useMemo(() => jobs.length > 0, [jobs.length]);
 
-  async function refresh() {
-    setJobs(await listJobs());
-  }
+  const refresh = useCallback(async () => {
+    const list = await listJobs();
+    setJobs(list);
+    return list;
+  }, []);
 
   useEffect(() => {
-    void initDb().then(refresh);
-  }, []);
+    void initDb().then(() => {
+      void refresh();
+    });
+  }, [refresh]);
 
   useEffect(() => {
     localStorage.setItem("geminiApiKey", geminiApiKey);
@@ -58,55 +63,64 @@ function App() {
     localStorage.setItem("statuses", JSON.stringify(statuses));
   }, [statuses]);
 
-  async function onSubmit(payload: NewJob) {
-    const duplicate = findDuplicateJob(jobs, payload);
-    if (duplicate) {
-      const proceed = window.confirm("Possible duplicate found. Save anyway?");
-      if (!proceed) return;
-    }
-    const id = await createJob(payload);
-    const list = await listJobs();
-    setJobs(list);
-    setSelected(list.find((j) => j.id === id));
-  }
-
-  async function onImportFile(file: File | undefined) {
-    if (!file) return;
-    const text = await file.text();
-    try {
-      const rows = file.name.toLowerCase().endsWith(".csv")
-        ? parseJobsImportCsv(text)
-        : parseJobsImportJson(text);
-      if (rows.length === 0) {
-        window.alert("No rows to import.");
-        return;
+  const onSubmit = useCallback(
+    async (payload: NewJob) => {
+      const duplicate = findDuplicateJob(jobs, payload);
+      if (duplicate) {
+        const proceed = window.confirm(en.alerts.duplicateConfirm);
+        if (!proceed) return;
       }
-      const n = await importJobs(rows);
+      const id = await createJob(payload);
+      const list = await refresh();
+      setSelected(list.find((j) => j.id === id));
+    },
+    [jobs, refresh],
+  );
+
+  const onImportFile = useCallback(
+    async (file: File | undefined) => {
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const rows = file.name.toLowerCase().endsWith(".csv")
+          ? parseJobsImportCsv(text)
+          : parseJobsImportJson(text);
+        if (rows.length === 0) {
+          window.alert(en.alerts.importNoRows);
+          return;
+        }
+        const n = await importJobs(rows);
+        await refresh();
+        window.alert(en.alerts.importCount(n));
+      } catch (e) {
+        window.alert(en.alerts.importFailed(String(e)));
+      }
+    },
+    [refresh],
+  );
+
+  const onMove = useCallback(
+    async (jobId: number, status: string) => {
+      await updateJobStatus(jobId, status);
       await refresh();
-      window.alert(`Imported ${n} job(s).`);
-    } catch (e) {
-      window.alert(`Import failed: ${String(e)}`);
-    }
-  }
+    },
+    [refresh],
+  );
 
-  async function onMove(jobId: number, status: string) {
-    await updateJobStatus(jobId, status);
-    await refresh();
-  }
+  const onExtract = useCallback(
+    (rawText: string) => extractJobInfoWithGemini(rawText, geminiApiKey),
+    [geminiApiKey],
+  );
 
-  async function onExtract(rawText: string) {
-    return extractJobInfoWithGemini(rawText, geminiApiKey);
-  }
-
-  function renameStatus(index: number, value: string) {
+  const renameStatus = useCallback((index: number, value: string) => {
     setStatuses((prev) => {
       const next = [...prev];
       next[index] = value || prev[index];
       return next;
     });
-  }
+  }, []);
 
-  function moveStatus(index: number, direction: -1 | 1) {
+  const moveStatus = useCallback((index: number, direction: -1 | 1) => {
     setStatuses((prev) => {
       const target = index + direction;
       if (target < 0 || target >= prev.length) return prev;
@@ -114,20 +128,35 @@ function App() {
       [next[index], next[target]] = [next[target], next[index]];
       return next;
     });
-  }
+  }, []);
+
+  /** Narrow return type for child props typed as `Promise<void>`. */
+  const syncJobList = useCallback(async () => {
+    await refresh();
+  }, [refresh]);
 
   return (
     <main className="app">
       <header className="topBar">
-        <h1>Job Tracker</h1>
+        <h1>{en.app.title}</h1>
         <div className="row">
-          <button onClick={() => setView("kanban")}>Kanban</button>
-          <button onClick={() => setView("table")}>Table</button>
-          <button onClick={() => setView("calendar")}>Calendar</button>
-          <button onClick={() => exportJobsAsJson(jobs)}>Export JSON</button>
-          <button onClick={() => exportJobsAsCsv(jobs)}>Export CSV</button>
+          <button type="button" onClick={() => setView("kanban")}>
+            {en.nav.kanban}
+          </button>
+          <button type="button" onClick={() => setView("table")}>
+            {en.nav.table}
+          </button>
+          <button type="button" onClick={() => setView("calendar")}>
+            {en.nav.calendar}
+          </button>
+          <button type="button" onClick={() => exportJobsAsJson(jobs)}>
+            {en.nav.exportJson}
+          </button>
+          <button type="button" onClick={() => exportJobsAsCsv(jobs)}>
+            {en.nav.exportCsv}
+          </button>
           <label className="fileImport">
-            <span>Import JSON/CSV</span>
+            <span>{en.nav.importLabel}</span>
             <input
               type="file"
               accept=".json,.csv,application/json,text/csv"
@@ -139,49 +168,55 @@ function App() {
 
       <section className="card">
         <label>
-          Gemini API Key
+          {en.app.geminiKey}
           <input
             value={geminiApiKey}
             onChange={(e) => setGeminiApiKey(e.target.value)}
-            placeholder="Paste your Gemini key"
+            placeholder={en.app.geminiPlaceholder}
           />
         </label>
         <label>
-          Google Calendar OAuth access token (optional, for API sync)
+          {en.app.googleToken}
           <input
             value={googleAccessToken}
             onChange={(e) => setGoogleAccessToken(e.target.value)}
-            placeholder="Bearer-style token with calendar.events scope"
+            placeholder={en.app.googlePlaceholder}
           />
         </label>
       </section>
 
       <section className="card">
-        <h2>Status Columns (rename/reorder)</h2>
+        <h2>{en.app.statusColumns}</h2>
         {statuses.map((status, index) => (
           <div className="row" key={`${status}-${index}`}>
             <input value={status} onChange={(e) => renameStatus(index, e.target.value)} />
-            <button onClick={() => moveStatus(index, -1)}>Up</button>
-            <button onClick={() => moveStatus(index, 1)}>Down</button>
+            <button type="button" onClick={() => moveStatus(index, -1)}>
+              {en.app.up}
+            </button>
+            <button type="button" onClick={() => moveStatus(index, 1)}>
+              {en.app.down}
+            </button>
           </div>
         ))}
       </section>
 
       <JobForm statuses={statuses} onSubmit={onSubmit} onExtract={onExtract} />
 
-      {view === "kanban" && <JobBoard statuses={statuses} jobs={jobs} onMove={onMove} onSelect={setSelected} />}
+      {view === "kanban" && (
+        <JobBoard statuses={statuses} jobs={jobs} onMove={onMove} onSelect={setSelected} />
+      )}
       {view === "table" && <JobTable jobs={jobs} onSelect={setSelected} />}
       {view === "calendar" && (
         <DeadlinesView
           jobs={jobs}
           googleAccessToken={googleAccessToken}
-          onApiSynced={refresh}
+          onApiSynced={syncJobList}
         />
       )}
 
       <ReminderCenter jobs={jobs} />
-      <JobDetailTimeline selected={selected} onSavedPdf={refresh} />
-      {!hasJobs && <p>No jobs yet.</p>}
+      <JobDetailTimeline selected={selected} onSavedPdf={syncJobList} />
+      {!hasJobs && <p>{en.app.noJobsYet}</p>}
     </main>
   );
 }

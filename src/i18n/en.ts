@@ -1,0 +1,83 @@
+/** English UI strings (single locale for now). */
+export const en = {
+  common: {
+    untitled: "Untitled",
+    dash: "-",
+  },
+  app: {
+    title: "Job Tracker",
+    noJobsYet: "No jobs yet.",
+    geminiKey: "Gemini API Key",
+    geminiPlaceholder: "Paste your Gemini key",
+    googleToken: "Google Calendar OAuth access token (optional, for API sync)",
+    googlePlaceholder: "Bearer-style token with calendar.events scope",
+    statusColumns: "Status Columns (rename/reorder)",
+    up: "Up",
+    down: "Down",
+  },
+  nav: {
+    kanban: "Kanban",
+    table: "Table",
+    calendar: "Calendar",
+    exportJson: "Export JSON",
+    exportCsv: "Export CSV",
+    importLabel: "Import JSON/CSV",
+  },
+  alerts: {
+    duplicateConfirm: "Possible duplicate found. Save anyway?",
+    importNoRows: "No rows to import.",
+    importCount: (n: number) => `Imported ${n} job(s).`,
+    importFailed: (err: string) => `Import failed: ${err}`,
+  },
+  jobForm: {
+    sectionTitle: "Add Job",
+    companyPh: "Company *",
+    titlePh: "Title",
+    jobUrl: "Job URL",
+    tagsPh: "Tags (comma)",
+    pasteAd: "Paste job ad text here",
+    notesPh: "Notes",
+    extractGemini: "Extract with Gemini",
+    save: "Save",
+    suggestionReady: "Extraction suggestion ready. Review then apply.",
+    applySuggestion: "Apply suggestion",
+    companyRequired: "Company is required.",
+    statusRequired: "Status is required.",
+  },
+  jobBoard: {
+    dragToMoveStatus: "Drag to move status",
+  },
+  jobTable: {
+    title: "Table View",
+    company: "Company",
+    titleCol: "Title",
+    status: "Status",
+    deadline: "Deadline",
+    language: "Language",
+  },
+  deadlines: {
+    title: "Calendar View",
+    intro:
+      "Quick add: template link (no API). API: creates an event in your primary calendar using an OAuth access token with",
+    templateLink: "Template link",
+    createViaApi: "Create via API",
+    tokenRequired:
+      "Add a Google OAuth access token (Calendar scope) in settings above.",
+    eventCreated: (link: string) => `Event created. Open: ${link}`,
+  },
+  reminders: {
+    title: "Reminders",
+    overdue: (d: number) => `Overdue by ${d}d`,
+    dueIn: (d: number) => `Due in ${d}d`,
+    followUp7: "Suggested follow-up: ~7 days",
+    followUp14: "Suggested follow-up: ~14 days",
+  },
+  detail: {
+    title: "Detail Timeline",
+    selectJob: "Select a job.",
+    status: "Status:",
+    pdf: "PDF:",
+    history: "History",
+    newStatus: "New",
+  },
+} as const;

@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { effectiveStatuses } from "../../lib/statusUtils";
 import type { NewJob } from "../../lib/types";
 import { DEFAULT_STATUSES } from "../../lib/types";
+import { en } from "../../i18n/en";
 
 type Props = {
   statuses: string[];
@@ -9,7 +10,7 @@ type Props = {
   onExtract: (rawText: string) => Promise<Partial<NewJob>>;
 };
 
-export function JobForm({ statuses, onSubmit, onExtract }: Props) {
+export const JobForm = memo(function JobForm({ statuses, onSubmit, onExtract }: Props) {
   const lanes = effectiveStatuses(statuses);
   const [form, setForm] = useState<NewJob>(() => ({
     company: "",
@@ -21,11 +22,12 @@ export function JobForm({ statuses, onSubmit, onExtract }: Props) {
   const update = (patch: Partial<NewJob>) => setForm((v) => ({ ...v, ...patch }));
 
   async function submit() {
-    if (!form.company.trim()) return setError("Company is required.");
-    if (!form.status) return setError("Status is required.");
+    if (!form.company.trim()) return setError(en.jobForm.companyRequired);
+    if (!form.status) return setError(en.jobForm.statusRequired);
     setError("");
     await onSubmit(form);
-    setForm({ company: "", status: DEFAULT_STATUSES[0] });
+    const nextLanes = effectiveStatuses(statuses);
+    setForm({ company: "", status: nextLanes[0] ?? DEFAULT_STATUSES[0] });
   }
 
   async function extract() {
@@ -41,10 +43,18 @@ export function JobForm({ statuses, onSubmit, onExtract }: Props) {
 
   return (
     <section className="card">
-      <h2>Add Job</h2>
+      <h2>{en.jobForm.sectionTitle}</h2>
       <div className="grid">
-        <input placeholder="Company *" value={form.company} onChange={(e) => update({ company: e.target.value })} />
-        <input placeholder="Title" value={form.title ?? ""} onChange={(e) => update({ title: e.target.value })} />
+        <input
+          placeholder={en.jobForm.companyPh}
+          value={form.company}
+          onChange={(e) => update({ company: e.target.value })}
+        />
+        <input
+          placeholder={en.jobForm.titlePh}
+          value={form.title ?? ""}
+          onChange={(e) => update({ title: e.target.value })}
+        />
         <select value={form.status} onChange={(e) => update({ status: e.target.value })}>
           {lanes.map((s) => (
             <option key={s} value={s}>
@@ -53,33 +63,47 @@ export function JobForm({ statuses, onSubmit, onExtract }: Props) {
           ))}
         </select>
         <input type="date" value={form.deadline ?? ""} onChange={(e) => update({ deadline: e.target.value })} />
-        <input placeholder="Job URL" value={form.url ?? ""} onChange={(e) => update({ url: e.target.value })} />
-        <input placeholder="Tags (comma)" value={form.tags ?? ""} onChange={(e) => update({ tags: e.target.value })} />
+        <input
+          placeholder={en.jobForm.jobUrl}
+          value={form.url ?? ""}
+          onChange={(e) => update({ url: e.target.value })}
+        />
+        <input
+          placeholder={en.jobForm.tagsPh}
+          value={form.tags ?? ""}
+          onChange={(e) => update({ tags: e.target.value })}
+        />
       </div>
       <textarea
         rows={5}
-        placeholder="Paste job ad text here"
+        placeholder={en.jobForm.pasteAd}
         value={form.raw_text ?? ""}
         onChange={(e) => update({ raw_text: e.target.value })}
       />
       <textarea
         rows={3}
-        placeholder="Notes"
+        placeholder={en.jobForm.notesPh}
         value={form.notes ?? ""}
         onChange={(e) => update({ notes: e.target.value })}
       />
       <div className="row">
-        <button onClick={extract}>Extract with Gemini</button>
-        <button onClick={submit}>Save</button>
+        <button type="button" onClick={() => void extract()}>
+          {en.jobForm.extractGemini}
+        </button>
+        <button type="button" onClick={() => void submit()}>
+          {en.jobForm.save}
+        </button>
       </div>
       {suggestion && (
         <div className="card">
-          <p>Extraction suggestion ready. Review then apply.</p>
+          <p>{en.jobForm.suggestionReady}</p>
           <pre>{JSON.stringify(suggestion, null, 2)}</pre>
-          <button onClick={applySuggestion}>Apply suggestion</button>
+          <button type="button" onClick={applySuggestion}>
+            {en.jobForm.applySuggestion}
+          </button>
         </div>
       )}
       {error && <p className="error">{error}</p>}
     </section>
   );
-}
+});

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import {
   DndContext,
   type DragEndEvent,
@@ -12,6 +12,7 @@ import {
 import { groupJobsByStatus } from "../../lib/jobs/groupJobsByStatus";
 import { effectiveStatuses } from "../../lib/statusUtils";
 import type { Job } from "../../lib/types";
+import { en } from "../../i18n/en";
 
 type Props = {
   statuses: string[];
@@ -70,11 +71,11 @@ function JobCard({
       className={`jobCard ${isDragging ? "jobCardDragging" : ""}`}
       onClick={() => onSelect(job)}
     >
-      <div className="dragHandle" {...listeners} {...attributes} title="Drag to move status">
+      <div className="dragHandle" {...listeners} {...attributes} title={en.jobBoard.dragToMoveStatus}>
         ⋮⋮
       </div>
       <strong>{job.company}</strong>
-      <span>{job.title ?? "Untitled"}</span>
+      <span>{job.title ?? en.common.untitled}</span>
       <div className="row">
         {lanes
           .filter((s) => s !== job.status)
@@ -95,7 +96,7 @@ function JobCard({
   );
 }
 
-export function JobBoard({ statuses, jobs, onMove, onSelect }: Props) {
+export const JobBoard = memo(function JobBoard({ statuses, jobs, onMove, onSelect }: Props) {
   const lanes = effectiveStatuses(statuses);
   const jobsByStatus = useMemo(() => groupJobsByStatus(jobs), [jobs]);
   const sensors = useSensors(
@@ -135,4 +136,4 @@ export function JobBoard({ statuses, jobs, onMove, onSelect }: Props) {
       </section>
     </DndContext>
   );
-}
+});
