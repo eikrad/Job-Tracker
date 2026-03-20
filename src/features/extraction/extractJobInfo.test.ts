@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { extractJobInfo, parsePartialNewJobFromLlmText } from "./extractJobInfo";
+import { extractJobInfo, normalizeLlmJobPartial, parsePartialNewJobFromLlmText } from "./extractJobInfo";
 
 describe("parsePartialNewJobFromLlmText", () => {
   it("parses plain JSON", () => {
@@ -14,6 +14,17 @@ describe("parsePartialNewJobFromLlmText", () => {
 
   it("returns {} on invalid JSON", () => {
     expect(parsePartialNewJobFromLlmText("not json")).toEqual({});
+  });
+
+  it("normalizes Company and Title casings", () => {
+    const out = parsePartialNewJobFromLlmText('{"Company":"Acme GmbH","Title":"Dev"}');
+    expect(out).toEqual({ company: "Acme GmbH", title: "Dev" });
+  });
+});
+
+describe("normalizeLlmJobPartial", () => {
+  it("maps employer alias to company", () => {
+    expect(normalizeLlmJobPartial({ employer: "X" })).toEqual({ company: "X" });
   });
 });
 

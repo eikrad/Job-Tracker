@@ -74,13 +74,18 @@ export const en = {
     jobUrl: "Job URL",
     tagsPh: "Tags (comma)",
     pasteAd: "Paste job ad text here",
+    /** Shown under the job-ad textarea — we only send text to the model, no URL fetching. */
+    extractHelp:
+      "Paste the job description text from the listing page (select all → copy). This app does not open URLs for you—add the link in “Job URL” if you want it saved.",
     notesPh: "Notes",
     extractWithAi: "Extract with AI",
     save: "Save",
-    suggestionReady: "Extraction suggestion ready. Review then apply.",
-    applySuggestion: "Apply suggestion",
+    /** After a successful extract we merge into the form automatically. */
+    extractApplied:
+      "Extracted fields were filled in below. If “Company” is still empty, type it in, then click Save.",
     companyRequired: "Company is required.",
     statusRequired: "Status is required.",
+    saveFailed: (err: string) => `Could not save: ${err}`,
   },
   jobBoard: {
     sectionTitle: "Job board",

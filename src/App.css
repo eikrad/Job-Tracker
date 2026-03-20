@@ -543,6 +543,14 @@ tbody tr:last-child td {
   line-height: 1.55;
 }
 
+.formHint {
+  margin: 0 0 var(--space-sm) 0;
+}
+
+.extractAppliedHint {
+  margin: var(--space-sm) 0 0 0;
+}
+
 .listPlain {
   list-style: none;
   margin: 0;

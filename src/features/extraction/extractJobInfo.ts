@@ -23,18 +23,65 @@ Text:
 ${rawText}`;
 }
 
-/** Parse model output; tolerate optional markdown fences. */
-export function parsePartialNewJobFromLlmText(text: string): Partial<NewJob> {
+function parseRawJsonObject(text: string): Record<string, unknown> | null {
   const trimmed = text.trim();
   const unfenced = trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "");
   for (const candidate of [unfenced, trimmed]) {
     try {
-      return JSON.parse(candidate) as Partial<NewJob>;
+      const v = JSON.parse(candidate) as unknown;
+      if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
     } catch {
       /* try next */
     }
   }
-  return {};
+  return null;
+}
+
+function strField(raw: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = raw[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return undefined;
+}
+
+/**
+ * Map messy LLM JSON (alternate key casings, a few aliases) into Partial<NewJob>.
+ */
+export function normalizeLlmJobPartial(raw: Record<string, unknown>): Partial<NewJob> {
+  const out: Partial<NewJob> = {};
+  const company = strField(raw, ["company", "Company", "employer", "Employer", "organization"]);
+  if (company) out.company = company;
+  const title = strField(raw, ["title", "Title", "role", "Role", "job_title", "position"]);
+  if (title) out.title = title;
+  const url = strField(raw, ["url", "URL", "link", "job_url", "apply_url"]);
+  if (url) out.url = url;
+  const deadline = strField(raw, ["deadline", "Deadline", "closing_date", "apply_by"]);
+  if (deadline) out.deadline = deadline;
+  let tags = strField(raw, ["tags", "Tags", "keywords"]);
+  const tagsArr = raw.tags;
+  if (!tags && Array.isArray(tagsArr)) {
+    const joined = tagsArr.filter((x) => typeof x === "string").join(", ");
+    if (joined.trim()) tags = joined.trim();
+  }
+  if (tags) out.tags = tags;
+  const detected_language = strField(raw, [
+    "detected_language",
+    "DetectedLanguage",
+    "language",
+    "Language",
+  ]);
+  if (detected_language) out.detected_language = detected_language;
+  const notes = strField(raw, ["notes", "Notes", "summary"]);
+  if (notes) out.notes = notes;
+  return out;
+}
+
+/** Parse model output; tolerate optional markdown fences and normalize keys. */
+export function parsePartialNewJobFromLlmText(text: string): Partial<NewJob> {
+  const raw = parseRawJsonObject(text);
+  if (!raw) return {};
+  return normalizeLlmJobPartial(raw);
 }
 
 function extractionFromModelText(modelText: string): ExtractJobInfoResult {

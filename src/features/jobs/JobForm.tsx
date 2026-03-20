@@ -13,6 +13,29 @@ type Props = {
   onSubmitted?: () => void;
 };
 
+const MERGEABLE_JOB_FIELDS: (keyof NewJob)[] = [
+  "company",
+  "title",
+  "url",
+  "raw_text",
+  "deadline",
+  "tags",
+  "detected_language",
+  "notes",
+];
+
+/** Merge LLM partial fields into the form without wiping status or filling with empty/null junk. */
+function mergeExtractedIntoForm(base: NewJob, partial: Partial<NewJob>): NewJob {
+  const next = { ...base };
+  for (const key of MERGEABLE_JOB_FIELDS) {
+    const val = partial[key];
+    if (val === undefined || val === null) continue;
+    if (typeof val === "string" && !val.trim()) continue;
+    (next as Record<string, unknown>)[key] = val;
+  }
+  return next;
+}
+
 export const JobForm = memo(function JobForm({
   statuses,
   onSubmit,
@@ -27,7 +50,7 @@ export const JobForm = memo(function JobForm({
   }));
   const [error, setError] = useState("");
   const [extractError, setExtractError] = useState("");
-  const [suggestion, setSuggestion] = useState<Partial<NewJob> | null>(null);
+  const [extractApplied, setExtractApplied] = useState(false);
 
   const update = (patch: Partial<NewJob>) => setForm((v) => ({ ...v, ...patch }));
 
@@ -35,27 +58,28 @@ export const JobForm = memo(function JobForm({
     if (!form.company.trim()) return setError(en.jobForm.companyRequired);
     if (!form.status) return setError(en.jobForm.statusRequired);
     setError("");
-    const saved = await onSubmit(form);
-    if (!saved) return;
-    const nextLanes = effectiveStatuses(statuses);
-    setForm({ company: "", status: nextLanes[0] ?? DEFAULT_STATUSES[0] });
-    onSubmitted?.();
+    try {
+      const saved = await onSubmit(form);
+      if (!saved) return;
+      const nextLanes = effectiveStatuses(statuses);
+      setForm({ company: "", status: nextLanes[0] ?? DEFAULT_STATUSES[0] });
+      setExtractApplied(false);
+      onSubmitted?.();
+    } catch (e) {
+      setError(en.jobForm.saveFailed(e instanceof Error ? e.message : String(e)));
+    }
   }
 
   async function extract() {
     setExtractError("");
+    setExtractApplied(false);
     const result = await onExtract(form.raw_text ?? "");
     if (!result.ok) {
       setExtractError(result.error);
       return;
     }
-    setSuggestion(result.partial);
-  }
-
-  function applySuggestion() {
-    if (!suggestion) return;
-    setForm((v) => ({ ...v, ...suggestion }));
-    setSuggestion(null);
+    setForm((v) => mergeExtractedIntoForm(v, result.partial));
+    setExtractApplied(true);
   }
 
   return (
@@ -92,6 +116,7 @@ export const JobForm = memo(function JobForm({
         />
       </div>
       <div className="fieldFull">
+        <p className="muted formHint">{en.jobForm.extractHelp}</p>
         <textarea
           rows={5}
           placeholder={en.jobForm.pasteAd}
@@ -107,6 +132,13 @@ export const JobForm = memo(function JobForm({
           onChange={(e) => update({ notes: e.target.value })}
         />
       </div>
+      {extractError && <p className="error extractError">{extractError}</p>}
+      {extractApplied && (
+        <p className="muted extractAppliedHint" role="status">
+          {en.jobForm.extractApplied}
+        </p>
+      )}
+      {error && <p className="error">{error}</p>}
       <div className="row formActions">
         <button type="button" className="btn btnGhost" onClick={() => void extract()}>
           {en.jobForm.extractWithAi}
@@ -115,17 +147,6 @@ export const JobForm = memo(function JobForm({
           {en.jobForm.save}
         </button>
       </div>
-      {extractError && <p className="error extractError">{extractError}</p>}
-      {suggestion && Object.keys(suggestion).length > 0 && (
-        <div className="card card--nested">
-          <p className="muted suggestionLead">{en.jobForm.suggestionReady}</p>
-          <pre>{JSON.stringify(suggestion, null, 2)}</pre>
-          <button type="button" className="btn btnPrimary" onClick={applySuggestion}>
-            {en.jobForm.applySuggestion}
-          </button>
-        </div>
-      )}
-      {error && <p className="error">{error}</p>}
     </section>
   );
 });
