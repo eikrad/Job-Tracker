@@ -1,0 +1,17 @@
+[
+  {
+    "id": 1,
+    "company": "Acme Corp",
+    "title": "Software Engineer",
+    "url": "https://example.com/jobs/1",
+    "raw_text": "We are hiring...",
+    "status": "Interesting",
+    "deadline": "2026-04-01",
+    "tags": "remote,python",
+    "detected_language": "en",
+    "notes": "",
+    "pdf_path": null,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]

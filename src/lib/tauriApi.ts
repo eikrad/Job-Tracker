@@ -30,3 +30,19 @@ export async function saveApplicationPdf(
 ): Promise<string> {
   return invoke("save_application_pdf", { jobId, originalName, bytes });
 }
+
+export async function importJobs(jobs: NewJob[]): Promise<number> {
+  return invoke<number>("import_jobs", { jobs });
+}
+
+export async function googleCalendarCreateEvent(
+  accessToken: string,
+  jobId: number,
+): Promise<string> {
+  return invoke<string>("google_calendar_create_event", {
+    args: {
+      accessToken,
+      jobId,
+    },
+  });
+}

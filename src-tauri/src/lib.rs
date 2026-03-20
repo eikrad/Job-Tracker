@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{Duration, NaiveDate, Utc};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -33,6 +33,13 @@ struct NewJob {
   tags: Option<String>,
   detected_language: Option<String>,
   notes: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GoogleCalendarCreateEventArgs {
+  access_token: String,
+  job_id: i64,
 }
 
 fn ensure_storage_dirs(base: &Path) -> Result<(), String> {
@@ -225,6 +232,92 @@ fn save_application_pdf(
   Ok(target.to_string_lossy().to_string())
 }
 
+fn deadline_end_exclusive(deadline: &str) -> Result<String, String> {
+  let d = NaiveDate::parse_from_str(deadline, "%Y-%m-%d").map_err(|e| e.to_string())?;
+  Ok((d + Duration::days(1)).format("%Y-%m-%d").to_string())
+}
+
+#[tauri::command]
+fn import_jobs(app: tauri::AppHandle, jobs: Vec<NewJob>) -> Result<usize, String> {
+  let conn = connection(&app)?;
+  let now = Utc::now().to_rfc3339();
+  let mut count = 0usize;
+  for payload in jobs {
+    if payload.company.trim().is_empty() {
+      continue;
+    }
+    conn
+      .execute(
+        "INSERT INTO jobs (company, title, url, raw_text, status, deadline, tags, detected_language, notes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![
+          payload.company,
+          payload.title,
+          payload.url,
+          payload.raw_text,
+          payload.status,
+          payload.deadline,
+          payload.tags,
+          payload.detected_language,
+          payload.notes,
+          now,
+          now
+        ],
+      )
+      .map_err(|e| format!("Import job failed: {e}"))?;
+    count += 1;
+  }
+  Ok(count)
+}
+
+#[tauri::command]
+fn google_calendar_create_event(
+  app: tauri::AppHandle,
+  args: GoogleCalendarCreateEventArgs,
+) -> Result<String, String> {
+  let conn = connection(&app)?;
+  let row: (String, Option<String>, Option<String>) = conn
+    .query_row(
+      "SELECT company, title, deadline FROM jobs WHERE id = ?1",
+      params![args.job_id],
+      |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )
+    .map_err(|e| format!("Job lookup failed: {e}"))?;
+  let (company, title, deadline) = row;
+  let deadline = deadline.ok_or_else(|| "Job has no deadline".to_string())?;
+  let end_date = deadline_end_exclusive(&deadline)?;
+  let summary = format!(
+    "Application deadline: {} — {}",
+    company,
+    title.unwrap_or_else(|| "Role".to_string())
+  );
+  let body = serde_json::json!({
+    "summary": summary,
+    "description": format!("Synced from Job Tracker (job id {}).", args.job_id),
+    "start": { "date": deadline },
+    "end": { "date": end_date },
+  });
+  let client = reqwest::blocking::Client::new();
+  let res = client
+    .post("https://www.googleapis.com/calendar/v3/calendars/primary/events")
+    .header("Authorization", format!("Bearer {}", args.access_token.trim()))
+    .header("Content-Type", "application/json")
+    .json(&body)
+    .send()
+    .map_err(|e| format!("HTTP request failed: {e}"))?;
+  if !res.status().is_success() {
+    let text = res.text().unwrap_or_default();
+    return Err(format!("Google Calendar API error: {text}"));
+  }
+  let json: serde_json::Value = res.json().map_err(|e| e.to_string())?;
+  let link = json
+    .get("htmlLink")
+    .and_then(|v| v.as_str())
+    .unwrap_or("Event created")
+    .to_string();
+  Ok(link)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -244,7 +337,9 @@ pub fn run() {
       list_jobs,
       update_job_status,
       list_status_history,
-      save_application_pdf
+      save_application_pdf,
+      import_jobs,
+      google_calendar_create_event
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

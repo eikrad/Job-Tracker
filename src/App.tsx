@@ -6,10 +6,21 @@ import { JobTable } from "./features/jobs/JobTable";
 import { JobDetailTimeline } from "./features/jobs/JobDetailTimeline";
 import { DeadlinesView } from "./features/deadlines/DeadlinesView";
 import { ReminderCenter } from "./features/reminders/ReminderCenter";
-import { createJob, initDb, listJobs, updateJobStatus } from "./lib/tauriApi";
+import {
+  createJob,
+  importJobs,
+  initDb,
+  listJobs,
+  updateJobStatus,
+} from "./lib/tauriApi";
 import type { Job, NewJob } from "./lib/types";
 import { extractJobInfoWithGemini } from "./features/extraction/extractJobInfo";
-import { exportJobsAsCsv, exportJobsAsJson } from "./lib/export/exportBundle";
+import {
+  exportJobsAsCsv,
+  exportJobsAsJson,
+  parseJobsImportCsv,
+  parseJobsImportJson,
+} from "./lib/export/exportBundle";
 import { DEFAULT_STATUSES } from "./lib/types";
 
 type View = "kanban" | "table" | "calendar";
@@ -19,6 +30,9 @@ function App() {
   const [selected, setSelected] = useState<Job | undefined>();
   const [view, setView] = useState<View>("kanban");
   const [geminiApiKey, setGeminiApiKey] = useState(localStorage.getItem("geminiApiKey") ?? "");
+  const [googleAccessToken, setGoogleAccessToken] = useState(
+    localStorage.getItem("googleAccessToken") ?? "",
+  );
   const [statuses, setStatuses] = useState<string[]>(
     JSON.parse(localStorage.getItem("statuses") ?? JSON.stringify(DEFAULT_STATUSES)),
   );
@@ -37,6 +51,9 @@ function App() {
     localStorage.setItem("geminiApiKey", geminiApiKey);
   }, [geminiApiKey]);
   useEffect(() => {
+    localStorage.setItem("googleAccessToken", googleAccessToken);
+  }, [googleAccessToken]);
+  useEffect(() => {
     localStorage.setItem("statuses", JSON.stringify(statuses));
   }, [statuses]);
 
@@ -52,8 +69,28 @@ function App() {
       if (!proceed) return;
     }
     const id = await createJob(payload);
-    await refresh();
-    setSelected(jobs.find((j) => j.id === id));
+    const list = await listJobs();
+    setJobs(list);
+    setSelected(list.find((j) => j.id === id));
+  }
+
+  async function onImportFile(file: File | undefined) {
+    if (!file) return;
+    const text = await file.text();
+    try {
+      const rows = file.name.toLowerCase().endsWith(".csv")
+        ? parseJobsImportCsv(text)
+        : parseJobsImportJson(text);
+      if (rows.length === 0) {
+        window.alert("No rows to import.");
+        return;
+      }
+      const n = await importJobs(rows);
+      await refresh();
+      window.alert(`Imported ${n} job(s).`);
+    } catch (e) {
+      window.alert(`Import failed: ${String(e)}`);
+    }
   }
 
   async function onMove(jobId: number, status: string) {
@@ -93,6 +130,14 @@ function App() {
           <button onClick={() => setView("calendar")}>Calendar</button>
           <button onClick={() => exportJobsAsJson(jobs)}>Export JSON</button>
           <button onClick={() => exportJobsAsCsv(jobs)}>Export CSV</button>
+          <label className="fileImport">
+            <span>Import JSON/CSV</span>
+            <input
+              type="file"
+              accept=".json,.csv,application/json,text/csv"
+              onChange={(e) => void onImportFile(e.target.files?.[0])}
+            />
+          </label>
         </div>
       </header>
 
@@ -103,6 +148,14 @@ function App() {
             value={geminiApiKey}
             onChange={(e) => setGeminiApiKey(e.target.value)}
             placeholder="Paste your Gemini key"
+          />
+        </label>
+        <label>
+          Google Calendar OAuth access token (optional, for API sync)
+          <input
+            value={googleAccessToken}
+            onChange={(e) => setGoogleAccessToken(e.target.value)}
+            placeholder="Bearer-style token with calendar.events scope"
           />
         </label>
       </section>
@@ -122,7 +175,13 @@ function App() {
 
       {view === "kanban" && <JobBoard statuses={statuses} jobs={jobs} onMove={onMove} onSelect={setSelected} />}
       {view === "table" && <JobTable jobs={jobs} onSelect={setSelected} />}
-      {view === "calendar" && <DeadlinesView jobs={jobs} />}
+      {view === "calendar" && (
+        <DeadlinesView
+          jobs={jobs}
+          googleAccessToken={googleAccessToken}
+          onApiSynced={refresh}
+        />
+      )}
 
       <ReminderCenter jobs={jobs} />
       <JobDetailTimeline selected={selected} onSavedPdf={refresh} />

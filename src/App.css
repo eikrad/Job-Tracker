@@ -56,6 +56,11 @@ button {
   min-height: 160px;
 }
 
+.columnOver {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
 .jobCard {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -63,6 +68,28 @@ button {
   margin-bottom: 0.5rem;
   display: grid;
   gap: 0.4rem;
+}
+
+.jobCardDragging {
+  opacity: 0.85;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.dragHandle {
+  cursor: grab;
+  user-select: none;
+  font-size: 0.85rem;
+  color: #64748b;
+  width: auto;
+}
+
+.muted {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.fileImport input[type="file"] {
+  max-width: 220px;
 }
 
 table {
