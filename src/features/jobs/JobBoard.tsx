@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useMemo } from "react";
 import {
   DndContext,
   type DragEndEvent,
@@ -8,8 +9,9 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import { groupJobsByStatus } from "../../lib/jobs/groupJobsByStatus";
+import { effectiveStatuses } from "../../lib/statusUtils";
 import type { Job } from "../../lib/types";
-import { DEFAULT_STATUSES } from "../../lib/types";
 
 type Props = {
   statuses: string[];
@@ -94,7 +96,8 @@ function JobCard({
 }
 
 export function JobBoard({ statuses, jobs, onMove, onSelect }: Props) {
-  const lanes = statuses.length ? statuses : DEFAULT_STATUSES;
+  const lanes = effectiveStatuses(statuses);
+  const jobsByStatus = useMemo(() => groupJobsByStatus(jobs), [jobs]);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
@@ -118,17 +121,15 @@ export function JobBoard({ statuses, jobs, onMove, onSelect }: Props) {
       <section className="board">
         {lanes.map((status) => (
           <Lane key={status} status={status}>
-            {jobs
-              .filter((j) => j.status === status)
-              .map((job) => (
-                <JobCard
-                  key={job.id}
-                  job={job}
-                  lanes={lanes}
-                  onMove={onMove}
-                  onSelect={onSelect}
-                />
-              ))}
+            {(jobsByStatus.get(status) ?? []).map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                lanes={lanes}
+                onMove={onMove}
+                onSelect={onSelect}
+              />
+            ))}
           </Lane>
         ))}
       </section>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { effectiveStatuses } from "../../lib/statusUtils";
 import type { NewJob } from "../../lib/types";
 import { DEFAULT_STATUSES } from "../../lib/types";
 
@@ -9,7 +10,11 @@ type Props = {
 };
 
 export function JobForm({ statuses, onSubmit, onExtract }: Props) {
-  const [form, setForm] = useState<NewJob>({ company: "", status: DEFAULT_STATUSES[0] });
+  const lanes = effectiveStatuses(statuses);
+  const [form, setForm] = useState<NewJob>(() => ({
+    company: "",
+    status: lanes[0] ?? DEFAULT_STATUSES[0],
+  }));
   const [error, setError] = useState("");
   const [suggestion, setSuggestion] = useState<Partial<NewJob> | null>(null);
 
@@ -41,7 +46,11 @@ export function JobForm({ statuses, onSubmit, onExtract }: Props) {
         <input placeholder="Company *" value={form.company} onChange={(e) => update({ company: e.target.value })} />
         <input placeholder="Title" value={form.title ?? ""} onChange={(e) => update({ title: e.target.value })} />
         <select value={form.status} onChange={(e) => update({ status: e.target.value })}>
-          {(statuses.length ? statuses : DEFAULT_STATUSES).map((s) => <option key={s}>{s}</option>)}
+          {lanes.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
         </select>
         <input type="date" value={form.deadline ?? ""} onChange={(e) => update({ deadline: e.target.value })} />
         <input placeholder="Job URL" value={form.url ?? ""} onChange={(e) => update({ url: e.target.value })} />

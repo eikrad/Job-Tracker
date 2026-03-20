@@ -21,6 +21,7 @@ import {
   parseJobsImportCsv,
   parseJobsImportJson,
 } from "./lib/export/exportBundle";
+import { findDuplicateJob } from "./lib/jobs/duplicateCheck";
 import { DEFAULT_STATUSES } from "./lib/types";
 
 type View = "kanban" | "table" | "calendar";
@@ -58,12 +59,7 @@ function App() {
   }, [statuses]);
 
   async function onSubmit(payload: NewJob) {
-    const duplicate = jobs.find(
-      (j) =>
-        (!!payload.url && !!j.url && payload.url === j.url) ||
-        (j.company.toLowerCase() === payload.company.toLowerCase() &&
-          (j.title ?? "").toLowerCase() === (payload.title ?? "").toLowerCase()),
-    );
+    const duplicate = findDuplicateJob(jobs, payload);
     if (duplicate) {
       const proceed = window.confirm("Possible duplicate found. Save anyway?");
       if (!proceed) return;

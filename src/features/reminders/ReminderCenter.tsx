@@ -18,13 +18,17 @@ export function ReminderCenter({ jobs }: Props) {
     <section className="card">
       <h2>Reminders</h2>
       <ul>
-        {reminders.map(({ job, days }) => (
-          <li key={job.id}>
-            {job.company} - {job.title ?? "Untitled"}: {days < 0 ? `Overdue by ${Math.abs(days)}d` : `Due in ${days}d`}
-            {days <= 7 && " | Follow-up suggestion: +7d"}
-            {days <= 14 && " | Follow-up suggestion: +14d"}
-          </li>
-        ))}
+        {reminders.map(({ job, days }) => {
+          const followUp =
+            days <= 7 ? "Suggested follow-up: ~7 days" : days <= 14 ? "Suggested follow-up: ~14 days" : null;
+          return (
+            <li key={job.id}>
+              {job.company} - {job.title ?? "Untitled"}:{" "}
+              {days < 0 ? `Overdue by ${Math.abs(days)}d` : `Due in ${days}d`}
+              {followUp ? ` | ${followUp}` : ""}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

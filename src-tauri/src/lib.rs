@@ -62,6 +62,30 @@ fn connection(app: &tauri::AppHandle) -> Result<Connection, String> {
   Connection::open(path).map_err(|e| format!("DB open failed: {e}"))
 }
 
+const SQL_INSERT_JOB: &str = r#"
+INSERT INTO jobs (company, title, url, raw_text, status, deadline, tags, detected_language, notes, created_at, updated_at)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+"#;
+
+fn insert_new_job(conn: &Connection, payload: &NewJob, now: &str) -> Result<usize, rusqlite::Error> {
+  conn.execute(
+    SQL_INSERT_JOB,
+    params![
+      &payload.company,
+      &payload.title,
+      &payload.url,
+      &payload.raw_text,
+      &payload.status,
+      &payload.deadline,
+      &payload.tags,
+      &payload.detected_language,
+      &payload.notes,
+      now,
+      now
+    ],
+  )
+}
+
 #[tauri::command]
 fn init_db(app: tauri::AppHandle) -> Result<(), String> {
   let conn = connection(&app)?;
@@ -100,25 +124,7 @@ fn init_db(app: tauri::AppHandle) -> Result<(), String> {
 fn create_job(app: tauri::AppHandle, payload: NewJob) -> Result<i64, String> {
   let conn = connection(&app)?;
   let now = Utc::now().to_rfc3339();
-  conn
-    .execute(
-      "INSERT INTO jobs (company, title, url, raw_text, status, deadline, tags, detected_language, notes, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-      params![
-        payload.company,
-        payload.title,
-        payload.url,
-        payload.raw_text,
-        payload.status,
-        payload.deadline,
-        payload.tags,
-        payload.detected_language,
-        payload.notes,
-        now,
-        now
-      ],
-    )
-    .map_err(|e| format!("Create job failed: {e}"))?;
+  insert_new_job(&conn, &payload, &now).map_err(|e| format!("Create job failed: {e}"))?;
   Ok(conn.last_insert_rowid())
 }
 
@@ -131,7 +137,7 @@ fn list_jobs(app: tauri::AppHandle) -> Result<Vec<Job>, String> {
       FROM jobs ORDER BY updated_at DESC",
     )
     .map_err(|e| e.to_string())?;
-  let rows = stmt
+  let jobs = stmt
     .query_map([], |row| {
       Ok(Job {
         id: row.get(0)?,
@@ -149,12 +155,9 @@ fn list_jobs(app: tauri::AppHandle) -> Result<Vec<Job>, String> {
         updated_at: row.get(12)?,
       })
     })
+    .map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
     .map_err(|e| e.to_string())?;
-
-  let mut jobs = Vec::new();
-  for row in rows {
-    jobs.push(row.map_err(|e| e.to_string())?);
-  }
   Ok(jobs)
 }
 
@@ -186,7 +189,7 @@ fn list_status_history(app: tauri::AppHandle, job_id: i64) -> Result<Vec<serde_j
   let mut stmt = conn
     .prepare("SELECT from_status, to_status, changed_at FROM status_history WHERE job_id = ?1 ORDER BY changed_at DESC")
     .map_err(|e| e.to_string())?;
-  let rows = stmt
+  let out = stmt
     .query_map(params![job_id], |row| {
       Ok(serde_json::json!({
         "from_status": row.get::<_, Option<String>>(0)?,
@@ -194,11 +197,9 @@ fn list_status_history(app: tauri::AppHandle, job_id: i64) -> Result<Vec<serde_j
         "changed_at": row.get::<_, String>(2)?,
       }))
     })
+    .map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
     .map_err(|e| e.to_string())?;
-  let mut out = Vec::new();
-  for row in rows {
-    out.push(row.map_err(|e| e.to_string())?);
-  }
   Ok(out)
 }
 
@@ -250,25 +251,7 @@ fn import_jobs(app: tauri::AppHandle, jobs: Vec<NewJob>) -> Result<usize, String
     if !is_importable_job(&payload) {
       continue;
     }
-    conn
-      .execute(
-        "INSERT INTO jobs (company, title, url, raw_text, status, deadline, tags, detected_language, notes, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        params![
-          payload.company,
-          payload.title,
-          payload.url,
-          payload.raw_text,
-          payload.status,
-          payload.deadline,
-          payload.tags,
-          payload.detected_language,
-          payload.notes,
-          now,
-          now
-        ],
-      )
-      .map_err(|e| format!("Import job failed: {e}"))?;
+    insert_new_job(&conn, &payload, &now).map_err(|e| format!("Import job failed: {e}"))?;
     count += 1;
   }
   Ok(count)

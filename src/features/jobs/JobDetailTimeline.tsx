@@ -36,7 +36,7 @@ export function JobDetailTimeline({ selected, onSavedPdf }: Props) {
       <h3>History</h3>
       <ul>
         {history.map((h, idx) => (
-          <li key={idx}>
+          <li key={`${h.changed_at}-${idx}`}>
             {h.from_status ?? "New"} {"->"} {h.to_status} ({new Date(h.changed_at).toLocaleString()})
           </li>
         ))}
