@@ -9,7 +9,7 @@ import { ReminderCenter } from "./features/reminders/ReminderCenter";
 import { createJob, initDb, listJobs, updateJobStatus } from "./lib/tauriApi";
 import type { Job, NewJob } from "./lib/types";
 import { extractJobInfoWithGemini } from "./features/extraction/extractJobInfo";
-import { exportJobsAsJson } from "./lib/export/exportBundle";
+import { exportJobsAsCsv, exportJobsAsJson } from "./lib/export/exportBundle";
 import { DEFAULT_STATUSES } from "./lib/types";
 
 type View = "kanban" | "table" | "calendar";
@@ -92,6 +92,7 @@ function App() {
           <button onClick={() => setView("table")}>Table</button>
           <button onClick={() => setView("calendar")}>Calendar</button>
           <button onClick={() => exportJobsAsJson(jobs)}>Export JSON</button>
+          <button onClick={() => exportJobsAsCsv(jobs)}>Export CSV</button>
         </div>
       </header>
 
