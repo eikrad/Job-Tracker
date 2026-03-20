@@ -11,7 +11,10 @@
     "test:watch": "vitest",
     "preview": "vite preview",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "py:format": "isort tests && black tests",
+    "py:lint": "ruff check tests && black --check tests && isort --check-only tests",
+    "py:test": "pytest -q"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

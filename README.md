@@ -34,7 +34,7 @@ npm run tauri:dev    # Desktop shell + Vite
 
 ## CI & tests
 
-- **GitHub Actions**: `npm run lint`, **`npm run test`** (Vitest), `npm run build`, Rust **`cargo test`**, **pytest** (export JSON contract).
+- **GitHub Actions**: `npm run lint`, **`npm run test`** (Vitest), `npm run build`, Rust **`cargo test`**, Python **`ruff check`**, **`black --check`**, **`isort --check-only`**, **pytest**.
 - **Frontend (Vitest)** — import/export helpers and calendar template URL:
 
 ```bash
@@ -49,12 +49,16 @@ npm run test:watch  # during development
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-- **Python** — export fixture contract:
+- **Python** — [Ruff](https://docs.astral.sh/ruff/) (schneller Linter), [Black](https://black.readthedocs.io/) (Format), [isort](https://pycqa.github.io/isort/) (Imports, Profil `black`), [pytest](https://pytest.org/):
 
 ```bash
 pip install -r requirements-dev.txt
-pytest
+npm run py:lint    # ruff + black --check + isort --check-only
+npm run py:format  # isort + black (schreibt Dateien)
+npm run py:test    # pytest
 ```
+
+Konfiguration: [`pyproject.toml`](pyproject.toml) (`[tool.black]`, `[tool.isort]`, `[tool.ruff]`).
 
 > **Forks:** Replace `eikrad/Job-Tracker` in the badge URL with your `user/repo`.
 

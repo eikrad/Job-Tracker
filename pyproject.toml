@@ -1,0 +1,31 @@
+# Python dev tooling (tests/). Install: pip install -r requirements-dev.txt
+
+[tool.black]
+target-version = ["py312"]
+line-length = 88
+include = '\.pyi?$'
+extend-exclude = "/(\.eggs|\.git|node_modules|dist|src-tauri/target)/"
+
+[tool.isort]
+profile = "black"
+line_length = 88
+src_paths = ["tests"]
+skip_gitignore = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+src = ["tests"]
+extend-exclude = ["node_modules", "src-tauri/target", "dist"]
+
+[tool.ruff.lint]
+# Import order: isort (Black profile). Ruff = fast linter (Flake8-class rules + more).
+select = [
+  "E",
+  "W",
+  "F",
+  "B",
+  "UP",
+  "SIM",
+  "RUF",
+]
