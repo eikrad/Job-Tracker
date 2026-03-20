@@ -11,3 +11,10 @@ storage/*
 
 # Logs
 *.log
+
+# Node
+node_modules/
+dist/
+
+# Tauri build artifacts
+src-tauri/target/
