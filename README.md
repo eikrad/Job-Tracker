@@ -5,7 +5,7 @@
 
 Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, and optional **AI-assisted extraction** (Google **Gemini** or **Mistral**).
 
-Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
 ## Prerequisites
 

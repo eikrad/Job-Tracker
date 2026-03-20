@@ -6,6 +6,7 @@ Thanks for helping out. This document describes how to build the project, run ch
 
 - **Node.js** 20+ and npm
 - **Rust** stable (`rustup`, `cargo`)
+- **Python** 3.12+ with **pip** (`python3 -m pip` — on Arch: `sudo pacman -S python-pip`) for contract tests and the `verify` / pre-commit hook
 - **OS packages** required by [Tauri v2](https://v2.tauri.app/start/prerequisites/) (WebKit + GTK on Linux)
 
 On **Arch Linux**, for example:
@@ -24,6 +25,16 @@ cd Job-Tracker
 npm ci
 ```
 
+The `prepare` script runs **Husky** and wires a **pre-commit** hook. On each commit, `npm run verify` runs automatically (frontend + Rust + Python — same intent as GitHub Actions). If hooks are missing after clone, run `npm run prepare` or `npx husky`.
+
+To run the full suite manually anytime:
+
+```bash
+npm run verify
+```
+
+Emergency skip (avoid if possible): `HUSKY=0 git commit …`
+
 ## Running the app
 
 | Command | Purpose |
@@ -34,22 +45,20 @@ npm ci
 
 ## Checks before opening a PR
 
-Run what CI runs locally:
+Pre-commit already runs **`npm run verify`** (see above). For the same steps by hand:
 
 ```bash
-# Frontend
-npm run lint
-npm run test
-npm run build
+npm run verify
+```
 
-# Rust (from repo root)
+Equivalent piecemeal:
+
+```bash
+npm run lint && npm run test && npm run build
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
 cargo test --manifest-path src-tauri/Cargo.toml
-
-# Python (contract tests + style)
-pip install -r requirements-dev.txt
-npm run py:lint
-npm run py:test
+python3 -m pip install -r requirements-dev.txt
+npm run py:lint && npm run py:test
 ```
 
 Fix issues or explain in the PR why something is intentionally skipped.
