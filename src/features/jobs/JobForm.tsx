@@ -11,6 +11,7 @@ type Props = {
 export function JobForm({ statuses, onSubmit, onExtract }: Props) {
   const [form, setForm] = useState<NewJob>({ company: "", status: DEFAULT_STATUSES[0] });
   const [error, setError] = useState("");
+  const [suggestion, setSuggestion] = useState<Partial<NewJob> | null>(null);
 
   const update = (patch: Partial<NewJob>) => setForm((v) => ({ ...v, ...patch }));
 
@@ -24,7 +25,13 @@ export function JobForm({ statuses, onSubmit, onExtract }: Props) {
 
   async function extract() {
     const next = await onExtract(form.raw_text ?? "");
-    setForm((v) => ({ ...v, ...next }));
+    setSuggestion(next);
+  }
+
+  function applySuggestion() {
+    if (!suggestion) return;
+    setForm((v) => ({ ...v, ...suggestion }));
+    setSuggestion(null);
   }
 
   return (
@@ -56,6 +63,13 @@ export function JobForm({ statuses, onSubmit, onExtract }: Props) {
         <button onClick={extract}>Extract with Gemini</button>
         <button onClick={submit}>Save</button>
       </div>
+      {suggestion && (
+        <div className="card">
+          <p>Extraction suggestion ready. Review then apply.</p>
+          <pre>{JSON.stringify(suggestion, null, 2)}</pre>
+          <button onClick={applySuggestion}>Apply suggestion</button>
+        </div>
+      )}
       {error && <p className="error">{error}</p>}
     </section>
   );
