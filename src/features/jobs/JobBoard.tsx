@@ -2,15 +2,17 @@ import type { Job } from "../../lib/types";
 import { DEFAULT_STATUSES } from "../../lib/types";
 
 type Props = {
+  statuses: string[];
   jobs: Job[];
   onMove: (jobId: number, status: string) => Promise<void>;
   onSelect: (job: Job) => void;
 };
 
-export function JobBoard({ jobs, onMove, onSelect }: Props) {
+export function JobBoard({ statuses, jobs, onMove, onSelect }: Props) {
+  const lanes = statuses.length ? statuses : DEFAULT_STATUSES;
   return (
     <section className="board">
-      {DEFAULT_STATUSES.map((status) => (
+      {lanes.map((status) => (
         <div key={status} className="column">
           <h3>{status}</h3>
           {jobs.filter((j) => j.status === status).map((job) => (
@@ -18,7 +20,7 @@ export function JobBoard({ jobs, onMove, onSelect }: Props) {
               <strong>{job.company}</strong>
               <span>{job.title ?? "Untitled"}</span>
               <div className="row">
-                {DEFAULT_STATUSES.filter((s) => s !== job.status).map((target) => (
+                {lanes.filter((s) => s !== job.status).map((target) => (
                   <button key={target} onClick={(e) => { e.stopPropagation(); void onMove(job.id, target); }}>
                     {target}
                   </button>

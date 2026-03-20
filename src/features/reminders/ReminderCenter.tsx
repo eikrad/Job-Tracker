@@ -21,6 +21,8 @@ export function ReminderCenter({ jobs }: Props) {
         {reminders.map(({ job, days }) => (
           <li key={job.id}>
             {job.company} - {job.title ?? "Untitled"}: {days < 0 ? `Overdue by ${Math.abs(days)}d` : `Due in ${days}d`}
+            {days <= 7 && " | Follow-up suggestion: +7d"}
+            {days <= 14 && " | Follow-up suggestion: +14d"}
           </li>
         ))}
       </ul>

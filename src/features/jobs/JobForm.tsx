@@ -3,11 +3,12 @@ import type { NewJob } from "../../lib/types";
 import { DEFAULT_STATUSES } from "../../lib/types";
 
 type Props = {
+  statuses: string[];
   onSubmit: (payload: NewJob) => Promise<void>;
   onExtract: (rawText: string) => Promise<Partial<NewJob>>;
 };
 
-export function JobForm({ onSubmit, onExtract }: Props) {
+export function JobForm({ statuses, onSubmit, onExtract }: Props) {
   const [form, setForm] = useState<NewJob>({ company: "", status: DEFAULT_STATUSES[0] });
   const [error, setError] = useState("");
 
@@ -33,7 +34,7 @@ export function JobForm({ onSubmit, onExtract }: Props) {
         <input placeholder="Company *" value={form.company} onChange={(e) => update({ company: e.target.value })} />
         <input placeholder="Title" value={form.title ?? ""} onChange={(e) => update({ title: e.target.value })} />
         <select value={form.status} onChange={(e) => update({ status: e.target.value })}>
-          {DEFAULT_STATUSES.map((s) => <option key={s}>{s}</option>)}
+          {(statuses.length ? statuses : DEFAULT_STATUSES).map((s) => <option key={s}>{s}</option>)}
         </select>
         <input type="date" value={form.deadline ?? ""} onChange={(e) => update({ deadline: e.target.value })} />
         <input placeholder="Job URL" value={form.url ?? ""} onChange={(e) => update({ url: e.target.value })} />
