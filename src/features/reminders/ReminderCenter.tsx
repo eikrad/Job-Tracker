@@ -1,6 +1,7 @@
 import dayjs from "dayjs";
 import { memo, useMemo } from "react";
 import type { Job } from "../../lib/types";
+import { WorkspaceEmpty } from "../../components/WorkspaceEmpty";
 import { en } from "../../i18n/en";
 
 type Props = { jobs: Job[] };
@@ -24,23 +25,31 @@ export const ReminderCenter = memo(function ReminderCenter({ jobs }: Props) {
   return (
     <section className="card">
       <h2>{en.reminders.title}</h2>
-      <ul>
-        {reminders.map(({ job, days }) => {
-          const followUp =
-            days <= 7
-              ? en.reminders.followUp7
-              : days <= 14
-                ? en.reminders.followUp14
-                : null;
-          return (
-            <li key={job.id}>
-              {job.company} - {job.title ?? en.common.untitled}:{" "}
-              {days < 0 ? en.reminders.overdue(Math.abs(days)) : en.reminders.dueIn(days)}
-              {followUp ? ` | ${followUp}` : ""}
-            </li>
-          );
-        })}
-      </ul>
+      {reminders.length === 0 ? (
+        <WorkspaceEmpty
+          title={en.empty.remindersTitle}
+          body={en.empty.remindersBody}
+          cta={en.empty.remindersCta}
+        />
+      ) : (
+        <ul className="listPlain reminderList">
+          {reminders.map(({ job, days }) => {
+            const followUp =
+              days <= 7
+                ? en.reminders.followUp7
+                : days <= 14
+                  ? en.reminders.followUp14
+                  : null;
+            return (
+              <li key={job.id}>
+                {job.company} - {job.title ?? en.common.untitled}:{" "}
+                {days < 0 ? en.reminders.overdue(Math.abs(days)) : en.reminders.dueIn(days)}
+                {followUp ? ` | ${followUp}` : ""}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 });

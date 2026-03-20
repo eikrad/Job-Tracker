@@ -14,6 +14,8 @@ On **Arch Linux**, for example:
 sudo pacman -S --needed base-devel curl wget openssl gtk3 libappindicator-gtk3 librsvg webkit2gtk-4.1 patchelf
 ```
 
+On **Windows**: Node.js 20+, Rust via [rustup](https://rustup.rs/) (`x86_64-pc-windows-msvc`), and **Microsoft C++ Build Tools** with the “Desktop development with C++” workload — see [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows). WebView2 is included on recent Windows 10/11.
+
 ## Setup
 
 ```bash

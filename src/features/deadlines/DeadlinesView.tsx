@@ -2,6 +2,7 @@ import { memo } from "react";
 import type { Job } from "../../lib/types";
 import { googleCalendarEventLink } from "../../lib/calendar/googleSync";
 import { googleCalendarCreateEvent } from "../../lib/tauriApi";
+import { WorkspaceEmpty } from "../../components/WorkspaceEmpty";
 import { en } from "../../i18n/en";
 
 type Props = {
@@ -39,24 +40,32 @@ export const DeadlinesView = memo(function DeadlinesView({
       <p className="muted">
         {en.deadlines.intro} <code>https://www.googleapis.com/auth/calendar.events</code>.
       </p>
-      <ul>
-        {withDeadlines.map((job) => {
-          const link = googleCalendarEventLink(job);
-          return (
-            <li key={job.id}>
-              {job.deadline} — {job.company} ({job.title ?? en.common.untitled}){" "}
-              {link && (
-                <a href={link} target="_blank" rel="noreferrer">
-                  {en.deadlines.templateLink}
-                </a>
-              )}{" "}
-              <button type="button" onClick={() => void syncViaApi(job)}>
-                {en.deadlines.createViaApi}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      {withDeadlines.length === 0 ? (
+        <WorkspaceEmpty
+          title={en.empty.calendarTitle}
+          body={en.empty.calendarBody}
+          cta={en.empty.calendarCta}
+        />
+      ) : (
+        <ul className="listPlain deadlineList">
+          {withDeadlines.map((job) => {
+            const link = googleCalendarEventLink(job);
+            return (
+              <li key={job.id}>
+                {job.deadline} — {job.company} ({job.title ?? en.common.untitled}){" "}
+                {link && (
+                  <a href={link} target="_blank" rel="noreferrer">
+                    {en.deadlines.templateLink}
+                  </a>
+                )}{" "}
+                <button type="button" className="btn btnSm btnGhost" onClick={() => void syncViaApi(job)}>
+                  {en.deadlines.createViaApi}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 });

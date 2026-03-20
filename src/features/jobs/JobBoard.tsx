@@ -12,6 +12,7 @@ import {
 import { groupJobsByStatus } from "../../lib/jobs/groupJobsByStatus";
 import { effectiveStatuses } from "../../lib/statusUtils";
 import type { Job } from "../../lib/types";
+import { WorkspaceEmpty } from "../../components/WorkspaceEmpty";
 import { en } from "../../i18n/en";
 
 type Props = {
@@ -83,6 +84,7 @@ function JobCard({
             <button
               key={target}
               type="button"
+              className="btn btnSm btnGhost"
               onClick={(e) => {
                 e.stopPropagation();
                 void onMove(job.id, target);
@@ -118,22 +120,35 @@ export const JobBoard = memo(function JobBoard({ statuses, jobs, onMove, onSelec
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-      <section className="board">
-        {lanes.map((status) => (
-          <Lane key={status} status={status}>
-            {(jobsByStatus.get(status) ?? []).map((job) => (
-              <JobCard
-                key={job.id}
-                job={job}
-                lanes={lanes}
-                onMove={onMove}
-                onSelect={onSelect}
-              />
-            ))}
-          </Lane>
-        ))}
-      </section>
-    </DndContext>
+    <section className="card">
+      <h2>{en.jobBoard.sectionTitle}</h2>
+      {jobs.length === 0 ? (
+        <WorkspaceEmpty
+          title={en.empty.boardTitle}
+          body={en.empty.boardBody}
+          cta={en.empty.boardCta}
+        />
+      ) : (
+        <div className="boardWrap">
+          <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+            <section className="board">
+              {lanes.map((status) => (
+                <Lane key={status} status={status}>
+                  {(jobsByStatus.get(status) ?? []).map((job) => (
+                    <JobCard
+                      key={job.id}
+                      job={job}
+                      lanes={lanes}
+                      onMove={onMove}
+                      onSelect={onSelect}
+                    />
+                  ))}
+                </Lane>
+              ))}
+            </section>
+          </DndContext>
+        </div>
+      )}
+    </section>
   );
 });

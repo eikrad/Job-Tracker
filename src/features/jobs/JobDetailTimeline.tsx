@@ -29,7 +29,7 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({ selected, onS
     return (
       <section className="card">
         <h2>{en.detail.title}</h2>
-        <p>{en.detail.selectJob}</p>
+        <p className="muted">{en.detail.selectJob}</p>
       </section>
     );
   }
@@ -37,18 +37,26 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({ selected, onS
   return (
     <section className="card">
       <h2>{en.detail.title}</h2>
-      <p>
-        <strong>{selected.company}</strong> - {selected.title ?? en.common.untitled}
+      <p className="detailMeta">
+        <strong>{selected.company}</strong> — {selected.title ?? en.common.untitled}
       </p>
-      <p>
-        {en.detail.status} {selected.status}
+      <p className="detailMeta">
+        {en.detail.status} <span>{selected.status}</span>
       </p>
-      <p>
-        {en.detail.pdf} {selected.pdf_path ?? en.common.dash}
+      <p className="detailMeta">
+        {en.detail.pdf} <span>{selected.pdf_path ?? en.common.dash}</span>
       </p>
-      <input type="file" accept="application/pdf" onChange={(e) => void onUploadPdf(e.target.files?.[0])} />
-      <h3>{en.detail.history}</h3>
-      <ul>
+      <label className="btn btnGhost btnSm fileImport fileImportBlock">
+        <span>{en.detail.uploadPdf}</span>
+        <input
+          type="file"
+          accept="application/pdf"
+          className="visuallyHidden"
+          onChange={(e) => void onUploadPdf(e.target.files?.[0])}
+        />
+      </label>
+      <p className="cardTitle">{en.detail.history}</p>
+      <ul className="listPlain historyList">
         {history.map((h, idx) => (
           <li key={`${h.changed_at}-${idx}`}>
             {h.from_status ?? en.detail.newStatus} {"->"} {h.to_status} ({new Date(h.changed_at).toLocaleString()})

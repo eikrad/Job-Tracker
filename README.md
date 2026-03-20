@@ -1,8 +1,9 @@
 # Job Tracker
 
 [![CI](https://github.com/eikrad/Job-Tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/ci.yml)
+[![Alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/eikrad/Job-Tracker)
 
-Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, and optional Gemini-assisted extraction.
+Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, and optional **AI-assisted extraction** (Google **Gemini** or **Mistral**).
 
 Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
@@ -18,6 +19,15 @@ Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTIN
 sudo pacman -S --needed base-devel curl wget openssl gtk3 libappindicator-gtk3 librsvg webkit2gtk-4.1 patchelf
 ```
 
+**Windows**
+
+1. Install **Node.js 20+** (e.g. from [nodejs.org](https://nodejs.org/) or `winget install OpenJS.NodeJS.LTS`).
+2. Install **Rust** via [rustup](https://rustup.rs/) (use the `x86_64-pc-windows-msvc` toolchain).
+3. Install **Microsoft C++ Build Tools** for the Tauri/Rust native build: open [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and select the **“Desktop development with C++”** workload (or follow the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)).
+4. **WebView2** is bundled on current Windows 10/11; if the app fails to show a window, install the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
+
+From **PowerShell** or **cmd**, use the same commands as below (`git clone`, `npm ci`, `npm run tauri:dev`, etc.) in the project folder.
+
 ## Quick start (how to run)
 
 ```bash
@@ -27,7 +37,9 @@ npm ci
 npm run tauri:dev
 ```
 
-This starts the Vite dev server and opens the **desktop window** (full app: SQLite, file storage, Tauri commands).
+This starts the Vite dev server and opens the **desktop window** (full app: SQLite, file storage, Tauri commands). On Windows, run these commands in **PowerShell** or **Command Prompt** from the cloned directory.
+
+In the app: **Dashboard** (Kanban / Table / Calendar) is the home route; **Add job** opens a dedicated page; **Settings** (gear) holds API keys, board column names, and import/export.
 
 **Browser-only UI** (no database / no native features):
 
@@ -45,12 +57,14 @@ npm ci
 npm run tauri:build
 ```
 
-Installable artifacts appear under `src-tauri/target/release/` (platform-dependent).
+Installable artifacts appear under `src-tauri/target/release/` (platform-dependent; on Windows e.g. `.exe` / installer under that tree).
 
 ## Configuration
 
 1. Copy [`fake.env`](fake.env) to `.env` if you want file-based config (optional).
-2. **Gemini**: set `GEMINI_API_KEY` in `.env` or paste the key in the app (stored in browser local storage for that build).
+2. **AI extraction**: choose **Gemini** or **Mistral** in the app and paste the matching API key (stored in local storage for that build). Keys in `.env` are optional for file-based tooling; the desktop UI does not read `.env` for these calls.
+   - **Mistral**: sign up at [La Plateforme](https://console.mistral.ai/); the free **Experiment** tier is typically enough for occasional job-text extraction (high monthly token allowance; rate limits apply — see [Mistral help center](https://help.mistral.ai/)). Limits can change; check their current docs.
+   - **Gemini**: Google AI Studio API key as before.
 
 ## Google Calendar (API)
 

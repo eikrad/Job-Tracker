@@ -2,21 +2,31 @@ import { memo, useState } from "react";
 import { effectiveStatuses } from "../../lib/statusUtils";
 import type { NewJob } from "../../lib/types";
 import { DEFAULT_STATUSES } from "../../lib/types";
+import type { ExtractJobInfoResult } from "../extraction/extractJobInfo";
 import { en } from "../../i18n/en";
 
 type Props = {
   statuses: string[];
-  onSubmit: (payload: NewJob) => Promise<void>;
-  onExtract: (rawText: string) => Promise<Partial<NewJob>>;
+  onSubmit: (payload: NewJob) => Promise<boolean>;
+  onExtract: (rawText: string) => Promise<ExtractJobInfoResult>;
+  hideTitle?: boolean;
+  onSubmitted?: () => void;
 };
 
-export const JobForm = memo(function JobForm({ statuses, onSubmit, onExtract }: Props) {
+export const JobForm = memo(function JobForm({
+  statuses,
+  onSubmit,
+  onExtract,
+  hideTitle = false,
+  onSubmitted,
+}: Props) {
   const lanes = effectiveStatuses(statuses);
   const [form, setForm] = useState<NewJob>(() => ({
     company: "",
     status: lanes[0] ?? DEFAULT_STATUSES[0],
   }));
   const [error, setError] = useState("");
+  const [extractError, setExtractError] = useState("");
   const [suggestion, setSuggestion] = useState<Partial<NewJob> | null>(null);
 
   const update = (patch: Partial<NewJob>) => setForm((v) => ({ ...v, ...patch }));
@@ -25,14 +35,21 @@ export const JobForm = memo(function JobForm({ statuses, onSubmit, onExtract }: 
     if (!form.company.trim()) return setError(en.jobForm.companyRequired);
     if (!form.status) return setError(en.jobForm.statusRequired);
     setError("");
-    await onSubmit(form);
+    const saved = await onSubmit(form);
+    if (!saved) return;
     const nextLanes = effectiveStatuses(statuses);
     setForm({ company: "", status: nextLanes[0] ?? DEFAULT_STATUSES[0] });
+    onSubmitted?.();
   }
 
   async function extract() {
-    const next = await onExtract(form.raw_text ?? "");
-    setSuggestion(next);
+    setExtractError("");
+    const result = await onExtract(form.raw_text ?? "");
+    if (!result.ok) {
+      setExtractError(result.error);
+      return;
+    }
+    setSuggestion(result.partial);
   }
 
   function applySuggestion() {
@@ -43,7 +60,7 @@ export const JobForm = memo(function JobForm({ statuses, onSubmit, onExtract }: 
 
   return (
     <section className="card">
-      <h2>{en.jobForm.sectionTitle}</h2>
+      {!hideTitle && <h2>{en.jobForm.sectionTitle}</h2>}
       <div className="grid">
         <input
           placeholder={en.jobForm.companyPh}
@@ -74,31 +91,36 @@ export const JobForm = memo(function JobForm({ statuses, onSubmit, onExtract }: 
           onChange={(e) => update({ tags: e.target.value })}
         />
       </div>
-      <textarea
-        rows={5}
-        placeholder={en.jobForm.pasteAd}
-        value={form.raw_text ?? ""}
-        onChange={(e) => update({ raw_text: e.target.value })}
-      />
-      <textarea
-        rows={3}
-        placeholder={en.jobForm.notesPh}
-        value={form.notes ?? ""}
-        onChange={(e) => update({ notes: e.target.value })}
-      />
-      <div className="row">
-        <button type="button" onClick={() => void extract()}>
-          {en.jobForm.extractGemini}
+      <div className="fieldFull">
+        <textarea
+          rows={5}
+          placeholder={en.jobForm.pasteAd}
+          value={form.raw_text ?? ""}
+          onChange={(e) => update({ raw_text: e.target.value })}
+        />
+      </div>
+      <div className="fieldFull">
+        <textarea
+          rows={3}
+          placeholder={en.jobForm.notesPh}
+          value={form.notes ?? ""}
+          onChange={(e) => update({ notes: e.target.value })}
+        />
+      </div>
+      <div className="row formActions">
+        <button type="button" className="btn btnGhost" onClick={() => void extract()}>
+          {en.jobForm.extractWithAi}
         </button>
-        <button type="button" onClick={() => void submit()}>
+        <button type="button" className="btn btnPrimary" onClick={() => void submit()}>
           {en.jobForm.save}
         </button>
       </div>
-      {suggestion && (
-        <div className="card">
-          <p>{en.jobForm.suggestionReady}</p>
+      {extractError && <p className="error extractError">{extractError}</p>}
+      {suggestion && Object.keys(suggestion).length > 0 && (
+        <div className="card card--nested">
+          <p className="muted suggestionLead">{en.jobForm.suggestionReady}</p>
           <pre>{JSON.stringify(suggestion, null, 2)}</pre>
-          <button type="button" onClick={applySuggestion}>
+          <button type="button" className="btn btnPrimary" onClick={applySuggestion}>
             {en.jobForm.applySuggestion}
           </button>
         </div>
