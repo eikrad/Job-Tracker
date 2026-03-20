@@ -26,6 +26,15 @@ describe("normalizeLlmJobPartial", () => {
   it("maps employer alias to company", () => {
     expect(normalizeLlmJobPartial({ employer: "X" })).toEqual({ company: "X" });
   });
+
+  it("maps interview and start dates", () => {
+    expect(
+      normalizeLlmJobPartial({
+        interviewDate: "2026-04-10",
+        position_start: "2026-05-01",
+      }),
+    ).toEqual({ interview_date: "2026-04-10", start_date: "2026-05-01" });
+  });
 });
 
 describe("extractJobInfo", () => {

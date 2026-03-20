@@ -77,6 +77,23 @@ function JobCard({
       </div>
       <strong>{job.company}</strong>
       <span>{job.title ?? en.common.untitled}</span>
+      {(job.deadline || job.interview_date || job.start_date) && (
+        <div className="muted jobCardDates">
+          {job.deadline && <span>{en.deadlines.dateLineApply}: {job.deadline}</span>}
+          {job.interview_date && (
+            <span>
+              {job.deadline ? " · " : ""}
+              {en.deadlines.dateLineInterview}: {job.interview_date}
+            </span>
+          )}
+          {job.start_date && (
+            <span>
+              {job.deadline || job.interview_date ? " · " : ""}
+              {en.deadlines.dateLineStart}: {job.start_date}
+            </span>
+          )}
+        </div>
+      )}
       <div className="row">
         {lanes
           .filter((s) => s !== job.status)

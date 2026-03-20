@@ -9,8 +9,10 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { AddJobPage } from "./pages/AddJobPage";
 
 export default function App() {
-  const state = useJobTrackerState();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const state = useJobTrackerState({
+    openSettings: () => setSettingsOpen(true),
+  });
 
   return (
     <BrowserRouter>

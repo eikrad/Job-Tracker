@@ -221,6 +221,18 @@
   color: var(--color-text);
 }
 
+.btnDanger {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.btnDanger:hover {
+  color: #fff;
+  border-color: #b91c1c;
+  background: #b91c1c;
+}
+
 .btnSm {
   min-height: 1.85rem;
   padding: 0.25rem 0.55rem;
@@ -569,10 +581,7 @@ tbody tr:last-child td {
 }
 
 .deadlineList li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-sm);
+  display: block;
   padding: var(--space-md) 0;
   border-bottom: 1px solid var(--color-border);
   font-size: 0.875rem;
@@ -791,4 +800,247 @@ pre {
   margin-top: var(--space-md);
   line-height: 1.45;
   word-break: break-word;
+}
+
+
+.fieldLabelStack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.fieldLabelText {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.dateFieldsGrid {
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+}
+
+.jobCardDates {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  margin: 0.15rem 0 0.25rem;
+}
+
+.deadlineListHead {
+  margin-bottom: 0.25rem;
+}
+
+.deadlineListDates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.8125rem;
+}
+
+.deadlineChip {
+  white-space: nowrap;
+}
+
+.deadlineListActions {
+  margin-top: 0.25rem;
+}
+
+/* ——— Settings: Google ——— */
+.settingsGoogleBlock {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.settingsSubTitle {
+  margin: 0 0 var(--space-sm);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.settingsGoogleActions {
+  margin-top: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.settingsAdvanced {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.settingsAdvancedToggle {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.settingsAdvancedBody {
+  margin-top: var(--space-sm);
+}
+
+/* ——— Month calendar ——— */
+.jobCalendarMonth {
+  margin-top: var(--space-md);
+}
+
+.jobCalendarToolbar {
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.jobCalendarMonthTitle {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 10rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.jobCalendarHint,
+.jobCalendarConnectHint {
+  font-size: 0.8125rem;
+  margin: var(--space-sm) 0;
+}
+
+.btnLinkLike {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.btnLinkLike:hover {
+  color: var(--color-primary-hover);
+}
+
+.jobCalendarGrid {
+  margin-top: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.jobCalendarWeekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0;
+  background: color-mix(in srgb, var(--color-text) 5%, var(--color-bg-elevated));
+  border-bottom: 1px solid var(--color-border);
+}
+
+.jobCalendarWeekday {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.jobCalendarRow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  min-height: 5.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.jobCalendarCell {
+  border-right: 1px solid var(--color-border);
+  padding: 0.2rem 0.25rem 0.35rem;
+  vertical-align: top;
+  min-width: 0;
+  background: var(--color-bg-elevated);
+}
+
+.jobCalendarCell:last-child {
+  border-right: none;
+}
+
+.jobCalendarCell--empty {
+  background: color-mix(in srgb, var(--color-text) 3%, var(--color-bg));
+}
+
+.jobCalendarCell--today {
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-bg-elevated));
+}
+
+.jobCalendarDayNum {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.15rem;
+}
+
+.jobCalendarOccurrences {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.jobCalendarOccItem {
+  margin: 0;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+}
+
+.jobCalendarOccMain {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: 0.2rem 0.3rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.65rem;
+  line-height: 1.25;
+  border-radius: var(--radius-sm);
+}
+
+.jobCalendarOccMain:hover {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+.jobCalendarOccMain--selected {
+  outline: 1px solid var(--color-primary);
+}
+
+.jobCalendarOccKind {
+  font-weight: 700;
+  color: var(--color-text-muted);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.jobCalendarOccCo {
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.jobCalendarOccActions {
+  padding: 0 0.25rem 0.3rem;
+  gap: 0.2rem;
+  flex-wrap: wrap;
+}
+
+.jobCalendarOccActions .btn {
+  font-size: 0.6rem;
+  min-height: 1.4rem;
+  padding: 0.1rem 0.35rem;
 }

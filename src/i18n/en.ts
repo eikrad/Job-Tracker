@@ -30,8 +30,27 @@ export const en = {
     geminiPlaceholder: "Paste your Gemini API key",
     mistralKey: "API key (Mistral)",
     mistralPlaceholder: "Paste your Mistral API key (La Plateforme)",
-    googleToken: "Google Calendar OAuth access token (optional, for API sync)",
-    googlePlaceholder: "Bearer-style token with calendar.events scope",
+    googleCalendarHeading: "Google Calendar",
+    googleOAuthIntro:
+      "Create a Desktop OAuth client in Google Cloud Console, enable the Calendar API, then paste the Client ID below. Click “Connect with Google” to sign in via your browser (recommended).",
+    googleOAuthClientId: "Google OAuth Client ID (Desktop app)",
+    googleOAuthClientIdPlaceholder: "e.g. 123456789-abc.apps.googleusercontent.com",
+    googleSaveClientId: "Save Client ID",
+    googleConnect: "Connect with Google",
+    googleDisconnect: "Disconnect Google",
+    googleOAuthStatus: (connected: "yes" | "no") =>
+      connected === "yes"
+        ? "Google Calendar: connected (refresh token stored on this device)."
+        : "Google Calendar: not connected.",
+    googleAdvancedShow: "Advanced: manual access token",
+    googleAdvancedHide: "Hide advanced",
+    googleAdvancedHelp:
+      "Optional fallback: paste a short-lived access token (e.g. from OAuth Playground). Prefer “Connect with Google” above.",
+    googleClientIdSaved: "Client ID saved.",
+    googleClientIdRequired: "Enter and save your Google OAuth Client ID first.",
+    googleConnectSuccess: "Google Calendar connected successfully.",
+    googleToken: "Manual OAuth access token (advanced only)",
+    googlePlaceholder: "Paste access token with calendar.events scope",
     statusColumns: "Status Columns (rename/reorder)",
   },
   nav: {
@@ -63,6 +82,9 @@ export const en = {
   },
   alerts: {
     duplicateConfirm: "Possible duplicate found. Save anyway?",
+    deleteJobConfirm:
+      "Delete this job permanently? Status history is removed; an application PDF stored by the app is deleted from disk.",
+    deleteJobFailed: (err: string) => `Could not delete job: ${err}`,
     importNoRows: "No rows to import.",
     importCount: (n: number) => `Imported ${n} job(s).`,
     importFailed: (err: string) => `Import failed: ${err}`,
@@ -80,6 +102,13 @@ export const en = {
     notesPh: "Notes",
     extractWithAi: "Extract with AI",
     save: "Save",
+    saveChanges: "Save changes",
+    cancelEdit: "Cancel",
+    editSectionTitle: "Edit job details",
+    dateFieldsLegend: "Important dates",
+    deadlineLabel: "Apply / submit by",
+    interviewDateLabel: "Interview or talks (optional)",
+    startDateLabel: "Role start (optional)",
     /** After a successful extract we merge into the form automatically. */
     extractApplied:
       "Extracted fields were filled in below. If “Company” is still empty, type it in, then click Save.",
@@ -96,18 +125,38 @@ export const en = {
     company: "Company",
     titleCol: "Title",
     status: "Status",
-    deadline: "Deadline",
+    deadline: "Apply by",
+    interview: "Interview",
+    start: "Start",
     language: "Language",
   },
   deadlines: {
-    title: "Calendar View",
+    title: "Calendar",
+    pageIntro:
+      "Month view of dates from your jobs (apply by, interview, start). Use Template link to open Google Calendar in the browser, or Create in Google after you connect in Settings.",
     intro:
       "Quick add: template link (no API). API: creates an event in your primary calendar using an OAuth access token with",
-    templateLink: "Template link",
-    createViaApi: "Create via API",
+    monthIntro:
+      "Click a job name to select it in the sidebar. Template link opens Google in your browser; Create in Google uses your saved sign-in or the advanced token.",
+    monthPrev: "Previous month",
+    monthNext: "Next month",
+    monthToday: "Today",
+    notConnectedHint: "To create events inside Google from the app, connect your Google account in Settings.",
+    openSettingsLink: "Open Settings",
+    connectOrTokenHint:
+      "Connect with Google in Settings (or paste an access token under Advanced), then try again.",
+    templateLink: "Template",
+    createViaApi: "Create in Google",
+    templateSummaryApply: "Application deadline",
+    templateSummaryInterview: "Interview",
+    templateSummaryStart: "Role start",
     tokenRequired:
       "Add a Google OAuth access token (Calendar scope) in Settings.",
     eventCreated: (link: string) => `Event created. Open: ${link}`,
+    multiDateHint: "You can sync apply-by, interview, and start dates to Google when signed in.",
+    dateLineApply: "Apply",
+    dateLineInterview: "Interview",
+    dateLineStart: "Start",
   },
   reminders: {
     title: "Reminders",
@@ -122,6 +171,11 @@ export const en = {
     status: "Status:",
     pdf: "PDF:",
     uploadPdf: "Upload PDF",
+    editJob: "Edit details",
+    deadlineShort: "Apply by",
+    interviewShort: "Interview",
+    startShort: "Start",
+    deleteJob: "Delete job",
     history: "History",
     newStatus: "New",
   },

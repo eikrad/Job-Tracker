@@ -24,6 +24,8 @@ export const JobTable = memo(function JobTable({ jobs, onSelect }: Props) {
                 <th>{en.jobTable.titleCol}</th>
                 <th>{en.jobTable.status}</th>
                 <th>{en.jobTable.deadline}</th>
+                <th>{en.jobTable.interview}</th>
+                <th>{en.jobTable.start}</th>
                 <th>{en.jobTable.language}</th>
               </tr>
             </thead>
@@ -34,6 +36,8 @@ export const JobTable = memo(function JobTable({ jobs, onSelect }: Props) {
                   <td>{job.title ?? en.common.dash}</td>
                   <td>{job.status}</td>
                   <td>{job.deadline ?? en.common.dash}</td>
+                  <td>{job.interview_date ?? en.common.dash}</td>
+                  <td>{job.start_date ?? en.common.dash}</td>
                   <td>{job.detected_language ?? en.common.dash}</td>
                 </tr>
               ))}

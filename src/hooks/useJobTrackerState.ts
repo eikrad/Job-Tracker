@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   createJob,
+  deleteJob,
+  googleCalendarCreateEvent,
+  googleOauthConnect,
+  googleOauthDisconnect,
+  googleOauthStatus,
   importJobs,
   initDb,
   listJobs,
+  updateJob,
   updateJobStatus,
+  type GoogleCalendarDateKind,
 } from "../lib/tauriApi";
 import type { Job, NewJob } from "../lib/types";
 import { extractJobInfo, type LlmProvider } from "../features/extraction/extractJobInfo";
@@ -20,7 +27,12 @@ function readLlmProvider(): LlmProvider {
   return p === "mistral" ? "mistral" : "gemini";
 }
 
-export function useJobTrackerState() {
+export type JobTrackerStateOptions = {
+  /** Opens the settings modal (e.g. from calendar “connect Google” hint). */
+  openSettings?: () => void;
+};
+
+export function useJobTrackerState(options?: JobTrackerStateOptions) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selected, setSelected] = useState<Job | undefined>();
   const [view, setView] = useState<BoardView>("kanban");
@@ -30,6 +42,7 @@ export function useJobTrackerState() {
   const [googleAccessToken, setGoogleAccessToken] = useState(
     localStorage.getItem("googleAccessToken") ?? "",
   );
+  const [googleOauthConnected, setGoogleOauthConnected] = useState(false);
   const [statuses, setStatuses] = useState<string[]>(
     JSON.parse(localStorage.getItem("statuses") ?? JSON.stringify(DEFAULT_STATUSES)),
   );
@@ -40,11 +53,21 @@ export function useJobTrackerState() {
     return list;
   }, []);
 
+  const refreshGoogleOauthStatus = useCallback(async () => {
+    try {
+      const s = await googleOauthStatus();
+      setGoogleOauthConnected(s.connected);
+    } catch {
+      setGoogleOauthConnected(false);
+    }
+  }, []);
+
   useEffect(() => {
     void initDb().then(() => {
       void refresh();
+      void refreshGoogleOauthStatus();
     });
-  }, [refresh]);
+  }, [refresh, refreshGoogleOauthStatus]);
 
   useEffect(() => {
     localStorage.setItem("llmProvider", llmProvider);
@@ -107,6 +130,30 @@ export function useJobTrackerState() {
     [refresh],
   );
 
+  const onDeleteJob = useCallback(
+    async (jobId: number) => {
+      await deleteJob(jobId);
+      setSelected((s) => (s?.id === jobId ? undefined : s));
+      await refresh();
+    },
+    [refresh],
+  );
+
+  const onUpdateJob = useCallback(
+    async (jobId: number, payload: NewJob): Promise<boolean> => {
+      const duplicate = findDuplicateJob(jobs, payload, jobId);
+      if (duplicate) {
+        const proceed = window.confirm(en.alerts.duplicateConfirm);
+        if (!proceed) return false;
+      }
+      await updateJob(jobId, payload);
+      const list = await refresh();
+      setSelected((s) => (s?.id === jobId ? list.find((j) => j.id === jobId) ?? s : s));
+      return true;
+    },
+    [jobs, refresh],
+  );
+
   const onExtract = useCallback(
     (rawText: string) =>
       extractJobInfo(rawText, llmProvider, llmProvider === "gemini" ? geminiApiKey : mistralApiKey),
@@ -135,6 +182,28 @@ export function useJobTrackerState() {
     await refresh();
   }, [refresh]);
 
+  const connectGoogleCalendar = useCallback(async () => {
+    await googleOauthConnect();
+    await refreshGoogleOauthStatus();
+  }, [refreshGoogleOauthStatus]);
+
+  const disconnectGoogleCalendar = useCallback(async () => {
+    await googleOauthDisconnect();
+    await refreshGoogleOauthStatus();
+  }, [refreshGoogleOauthStatus]);
+
+  const createGoogleCalendarEvent = useCallback(
+    async (jobId: number, dateKind: GoogleCalendarDateKind): Promise<string> => {
+      const manual = googleAccessToken.trim();
+      return googleCalendarCreateEvent({
+        jobId,
+        dateKind,
+        accessToken: manual || null,
+      });
+    },
+    [googleAccessToken],
+  );
+
   return {
     jobs,
     selected,
@@ -149,10 +218,18 @@ export function useJobTrackerState() {
     setMistralApiKey,
     googleAccessToken,
     setGoogleAccessToken,
+    googleOauthConnected,
+    refreshGoogleOauthStatus,
+    connectGoogleCalendar,
+    disconnectGoogleCalendar,
+    createGoogleCalendarEvent,
+    openSettings: options?.openSettings ?? (() => undefined),
     statuses,
     onSubmit,
     onImportFile,
     onMove,
+    onDeleteJob,
+    onUpdateJob,
     onExtract,
     renameStatus,
     moveStatus,

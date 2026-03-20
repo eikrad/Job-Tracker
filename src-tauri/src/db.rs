@@ -14,6 +14,8 @@ pub struct Job {
   pub raw_text: Option<String>,
   pub status: String,
   pub deadline: Option<String>,
+  pub interview_date: Option<String>,
+  pub start_date: Option<String>,
   pub tags: Option<String>,
   pub detected_language: Option<String>,
   pub notes: Option<String>,
@@ -30,6 +32,8 @@ pub struct NewJob {
   pub raw_text: Option<String>,
   pub status: String,
   pub deadline: Option<String>,
+  pub interview_date: Option<String>,
+  pub start_date: Option<String>,
   pub tags: Option<String>,
   pub detected_language: Option<String>,
   pub notes: Option<String>,
@@ -56,8 +60,8 @@ pub(crate) fn connection(app: &tauri::AppHandle) -> Result<Connection, String> {
 }
 
 const SQL_INSERT_JOB: &str = r#"
-INSERT INTO jobs (company, title, url, raw_text, status, deadline, tags, detected_language, notes, created_at, updated_at)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+INSERT INTO jobs (company, title, url, raw_text, status, deadline, interview_date, start_date, tags, detected_language, notes, created_at, updated_at)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
 "#;
 
 fn insert_new_job(conn: &Connection, payload: &NewJob, now: &str) -> Result<usize, rusqlite::Error> {
@@ -70,6 +74,8 @@ fn insert_new_job(conn: &Connection, payload: &NewJob, now: &str) -> Result<usiz
       &payload.raw_text,
       &payload.status,
       &payload.deadline,
+      &payload.interview_date,
+      &payload.start_date,
       &payload.tags,
       &payload.detected_language,
       &payload.notes,
@@ -77,6 +83,28 @@ fn insert_new_job(conn: &Connection, payload: &NewJob, now: &str) -> Result<usiz
       now
     ],
   )
+}
+
+fn migrate_jobs_columns(conn: &Connection) -> Result<(), String> {
+  let mut stmt = conn
+    .prepare("PRAGMA table_info(jobs)")
+    .map_err(|e| e.to_string())?;
+  let cols: Vec<String> = stmt
+    .query_map([], |row| row.get::<_, String>(1))
+    .map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| e.to_string())?;
+  if !cols.iter().any(|c| c == "interview_date") {
+    conn
+      .execute("ALTER TABLE jobs ADD COLUMN interview_date TEXT", [])
+      .map_err(|e| e.to_string())?;
+  }
+  if !cols.iter().any(|c| c == "start_date") {
+    conn
+      .execute("ALTER TABLE jobs ADD COLUMN start_date TEXT", [])
+      .map_err(|e| e.to_string())?;
+  }
+  Ok(())
 }
 
 #[tauri::command]
@@ -93,6 +121,8 @@ pub fn init_db(app: tauri::AppHandle) -> Result<(), String> {
         raw_text TEXT,
         status TEXT NOT NULL,
         deadline TEXT,
+        interview_date TEXT,
+        start_date TEXT,
         tags TEXT,
         detected_language TEXT,
         notes TEXT,
@@ -110,6 +140,7 @@ pub fn init_db(app: tauri::AppHandle) -> Result<(), String> {
       "#,
     )
     .map_err(|e| format!("DB init failed: {e}"))?;
+  migrate_jobs_columns(&conn)?;
   Ok(())
 }
 
@@ -126,7 +157,7 @@ pub fn list_jobs(app: tauri::AppHandle) -> Result<Vec<Job>, String> {
   let conn = connection(&app)?;
   let mut stmt = conn
     .prepare(
-      "SELECT id, company, title, url, raw_text, status, deadline, tags, detected_language, notes, pdf_path, created_at, updated_at
+      "SELECT id, company, title, url, raw_text, status, deadline, interview_date, start_date, tags, detected_language, notes, pdf_path, created_at, updated_at
       FROM jobs ORDER BY updated_at DESC",
     )
     .map_err(|e| e.to_string())?;
@@ -140,18 +171,121 @@ pub fn list_jobs(app: tauri::AppHandle) -> Result<Vec<Job>, String> {
         raw_text: row.get(4)?,
         status: row.get(5)?,
         deadline: row.get(6)?,
-        tags: row.get(7)?,
-        detected_language: row.get(8)?,
-        notes: row.get(9)?,
-        pdf_path: row.get(10)?,
-        created_at: row.get(11)?,
-        updated_at: row.get(12)?,
+        interview_date: row.get(7)?,
+        start_date: row.get(8)?,
+        tags: row.get(9)?,
+        detected_language: row.get(10)?,
+        notes: row.get(11)?,
+        pdf_path: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
       })
     })
     .map_err(|e| e.to_string())?
     .collect::<Result<Vec<_>, _>>()
     .map_err(|e| e.to_string())?;
   Ok(jobs)
+}
+
+/// Remove stored PDF only if it lives under `app_data/storage/applications` (safety).
+fn remove_pdf_if_in_app_storage(app: &tauri::AppHandle, pdf_path: &str) -> Result<(), String> {
+  let path = Path::new(pdf_path);
+  if !path.is_file() {
+    return Ok(());
+  }
+  let app_data_dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|e| format!("Cannot resolve app data dir: {e}"))?;
+  let apps_dir = app_data_dir.join("storage").join("applications");
+  let apps_canon = apps_dir.canonicalize().unwrap_or(apps_dir);
+  let file_canon = match path.canonicalize() {
+    Ok(c) => c,
+    Err(_) => return Ok(()),
+  };
+  if file_canon.starts_with(&apps_canon) {
+    let _ = fs::remove_file(file_canon);
+  }
+  Ok(())
+}
+
+#[tauri::command]
+pub fn delete_job(app: tauri::AppHandle, job_id: i64) -> Result<(), String> {
+  let mut conn = connection(&app)?;
+  let tx = conn.transaction().map_err(|e| e.to_string())?;
+  let pdf_path: Option<String> = match tx.query_row(
+    "SELECT pdf_path FROM jobs WHERE id = ?1",
+    params![job_id],
+    |r| r.get::<_, Option<String>>(0),
+  ) {
+    Ok(p) => p,
+    Err(rusqlite::Error::QueryReturnedNoRows) => return Err("Job not found.".to_string()),
+    Err(e) => return Err(e.to_string()),
+  };
+  tx.execute(
+    "DELETE FROM status_history WHERE job_id = ?1",
+    params![job_id],
+  )
+  .map_err(|e| e.to_string())?;
+  let n = tx
+    .execute("DELETE FROM jobs WHERE id = ?1", params![job_id])
+    .map_err(|e| e.to_string())?;
+  if n == 0 {
+    return Err("Job not found.".to_string());
+  }
+  tx.commit().map_err(|e| e.to_string())?;
+
+  if let Some(ref p) = pdf_path {
+    remove_pdf_if_in_app_storage(&app, p)?;
+  }
+  Ok(())
+}
+
+#[tauri::command]
+pub fn update_job(app: tauri::AppHandle, job_id: i64, payload: NewJob) -> Result<(), String> {
+  if payload.company.trim().is_empty() {
+    return Err("Company is required.".to_string());
+  }
+  let conn = connection(&app)?;
+  let old_status: String = conn
+    .query_row("SELECT status FROM jobs WHERE id = ?1", params![job_id], |r| r.get(0))
+    .map_err(|e| format!("Job not found: {e}"))?;
+  let now = Utc::now().to_rfc3339();
+  let n = conn
+    .execute(
+      "UPDATE jobs SET company = ?1, title = ?2, url = ?3, raw_text = ?4, status = ?5,
+        deadline = ?6, interview_date = ?7, start_date = ?8, tags = ?9,
+        detected_language = ?10, notes = ?11, updated_at = ?12
+       WHERE id = ?13",
+      params![
+        payload.company.trim(),
+        payload.title,
+        payload.url,
+        payload.raw_text,
+        payload.status,
+        payload.deadline,
+        payload.interview_date,
+        payload.start_date,
+        payload.tags,
+        payload.detected_language,
+        payload.notes,
+        now,
+        job_id,
+      ],
+    )
+    .map_err(|e| e.to_string())?;
+  if n == 0 {
+    return Err("Job not found.".to_string());
+  }
+  if old_status != payload.status {
+    conn
+      .execute(
+        "INSERT INTO status_history (job_id, from_status, to_status, changed_at) VALUES (?1, ?2, ?3, ?4)",
+        params![job_id, old_status, payload.status, now],
+      )
+      .map_err(|e| e.to_string())?;
+  }
+  Ok(())
 }
 
 #[tauri::command]
@@ -257,6 +391,8 @@ mod tests {
       raw_text: None,
       status: "Interesting".to_string(),
       deadline: None,
+      interview_date: None,
+      start_date: None,
       tags: None,
       detected_language: None,
       notes: None,

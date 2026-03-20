@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Job } from "../types";
-import { googleCalendarEventLink } from "./googleSync";
+import { googleCalendarEventLink, googleCalendarTemplateUrl } from "./googleSync";
 
 function job(partial: Partial<Job> & Pick<Job, "id" | "company">): Job {
   return {
@@ -11,6 +11,8 @@ function job(partial: Partial<Job> & Pick<Job, "id" | "company">): Job {
     raw_text: partial.raw_text ?? null,
     status: partial.status ?? "Interesting",
     deadline: partial.deadline ?? null,
+    interview_date: partial.interview_date ?? null,
+    start_date: partial.start_date ?? null,
     tags: partial.tags ?? null,
     detected_language: partial.detected_language ?? null,
     notes: partial.notes ?? null,
@@ -19,6 +21,18 @@ function job(partial: Partial<Job> & Pick<Job, "id" | "company">): Job {
     updated_at: partial.updated_at ?? "2026-01-01T00:00:00Z",
   };
 }
+
+describe("googleCalendarTemplateUrl", () => {
+  it("builds URL for arbitrary date", () => {
+    const u = googleCalendarTemplateUrl({
+      date: "2026-04-01",
+      summaryLine: "Interview: Acme",
+      details: "Dev",
+    });
+    expect(u).toContain("calendar.google.com");
+    expect(u).toContain("20260401/20260401");
+  });
+});
 
 describe("googleCalendarEventLink", () => {
   it("returns null without deadline", () => {

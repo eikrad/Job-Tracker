@@ -14,7 +14,13 @@ export function DashboardPage() {
     statuses,
     googleAccessToken,
     onMove,
+    onDeleteJob,
+    onUpdateJob,
+    onExtract,
     syncJobList,
+    googleOauthConnected,
+    createGoogleCalendarEvent,
+    openSettings,
   } = useJobTracker();
 
   return (
@@ -27,14 +33,25 @@ export function DashboardPage() {
         {view === "calendar" && (
           <DeadlinesView
             jobs={jobs}
-            googleAccessToken={googleAccessToken}
-            onApiSynced={syncJobList}
+            selected={selected}
+            onSelectJob={setSelected}
+            googleOauthConnected={googleOauthConnected}
+            hasManualGoogleToken={!!googleAccessToken.trim()}
+            onCreateInGoogle={createGoogleCalendarEvent}
+            onOpenSettings={openSettings}
           />
         )}
       </div>
       <aside className="appAside">
         <ReminderCenter jobs={jobs} />
-        <JobDetailTimeline selected={selected} onSavedPdf={syncJobList} />
+        <JobDetailTimeline
+          selected={selected}
+          onSavedPdf={syncJobList}
+          onDeleteJob={onDeleteJob}
+          statuses={statuses}
+          onExtract={onExtract}
+          onUpdateJob={onUpdateJob}
+        />
       </aside>
     </div>
   );

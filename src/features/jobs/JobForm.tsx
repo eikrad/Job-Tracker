@@ -1,6 +1,6 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { effectiveStatuses } from "../../lib/statusUtils";
-import type { NewJob } from "../../lib/types";
+import type { Job, NewJob } from "../../lib/types";
 import { DEFAULT_STATUSES } from "../../lib/types";
 import type { ExtractJobInfoResult } from "../extraction/extractJobInfo";
 import { en } from "../../i18n/en";
@@ -11,7 +11,27 @@ type Props = {
   onExtract: (rawText: string) => Promise<ExtractJobInfoResult>;
   hideTitle?: boolean;
   onSubmitted?: () => void;
+  /** When set, form edits this job and uses onUpdateJob instead of onSubmit. */
+  editingJob?: Job | null;
+  onUpdateJob?: (jobId: number, payload: NewJob) => Promise<boolean>;
+  onEditClose?: () => void;
 };
+
+function jobToNewJob(j: Job): NewJob {
+  return {
+    company: j.company,
+    title: j.title ?? undefined,
+    url: j.url ?? undefined,
+    raw_text: j.raw_text ?? undefined,
+    status: j.status,
+    deadline: j.deadline ?? undefined,
+    interview_date: j.interview_date ?? undefined,
+    start_date: j.start_date ?? undefined,
+    tags: j.tags ?? undefined,
+    detected_language: j.detected_language ?? undefined,
+    notes: j.notes ?? undefined,
+  };
+}
 
 const MERGEABLE_JOB_FIELDS: (keyof NewJob)[] = [
   "company",
@@ -19,6 +39,8 @@ const MERGEABLE_JOB_FIELDS: (keyof NewJob)[] = [
   "url",
   "raw_text",
   "deadline",
+  "interview_date",
+  "start_date",
   "tags",
   "detected_language",
   "notes",
@@ -42,15 +64,29 @@ export const JobForm = memo(function JobForm({
   onExtract,
   hideTitle = false,
   onSubmitted,
+  editingJob = null,
+  onUpdateJob,
+  onEditClose,
 }: Props) {
   const lanes = effectiveStatuses(statuses);
-  const [form, setForm] = useState<NewJob>(() => ({
-    company: "",
-    status: lanes[0] ?? DEFAULT_STATUSES[0],
-  }));
+  const isEdit = !!editingJob;
+  const [form, setForm] = useState<NewJob>(() =>
+    editingJob ? jobToNewJob(editingJob) : { company: "", status: lanes[0] ?? DEFAULT_STATUSES[0] },
+  );
   const [error, setError] = useState("");
   const [extractError, setExtractError] = useState("");
   const [extractApplied, setExtractApplied] = useState(false);
+
+  useEffect(() => {
+    if (!editingJob) return;
+    // Sync local form when the edited job id changes (prop → state).
+    setForm(jobToNewJob(editingJob));
+    setError("");
+    setExtractError("");
+    setExtractApplied(false);
+    // Only re-sync when switching to a different job, not on every parent re-render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- editingJob identity; fields follow id
+  }, [editingJob?.id]);
 
   const update = (patch: Partial<NewJob>) => setForm((v) => ({ ...v, ...patch }));
 
@@ -59,6 +95,13 @@ export const JobForm = memo(function JobForm({
     if (!form.status) return setError(en.jobForm.statusRequired);
     setError("");
     try {
+      if (isEdit && editingJob && onUpdateJob) {
+        const saved = await onUpdateJob(editingJob.id, form);
+        if (!saved) return;
+        setExtractApplied(false);
+        onEditClose?.();
+        return;
+      }
       const saved = await onSubmit(form);
       if (!saved) return;
       const nextLanes = effectiveStatuses(statuses);
@@ -103,7 +146,6 @@ export const JobForm = memo(function JobForm({
             </option>
           ))}
         </select>
-        <input type="date" value={form.deadline ?? ""} onChange={(e) => update({ deadline: e.target.value })} />
         <input
           placeholder={en.jobForm.jobUrl}
           value={form.url ?? ""}
@@ -114,6 +156,35 @@ export const JobForm = memo(function JobForm({
           value={form.tags ?? ""}
           onChange={(e) => update({ tags: e.target.value })}
         />
+      </div>
+      <div className="fieldFull">
+        <p className="muted formHint">{en.jobForm.dateFieldsLegend}</p>
+        <div className="grid dateFieldsGrid">
+          <label className="fieldLabelStack">
+            <span className="fieldLabelText">{en.jobForm.deadlineLabel}</span>
+            <input
+              type="date"
+              value={form.deadline ?? ""}
+              onChange={(e) => update({ deadline: e.target.value })}
+            />
+          </label>
+          <label className="fieldLabelStack">
+            <span className="fieldLabelText">{en.jobForm.interviewDateLabel}</span>
+            <input
+              type="date"
+              value={form.interview_date ?? ""}
+              onChange={(e) => update({ interview_date: e.target.value })}
+            />
+          </label>
+          <label className="fieldLabelStack">
+            <span className="fieldLabelText">{en.jobForm.startDateLabel}</span>
+            <input
+              type="date"
+              value={form.start_date ?? ""}
+              onChange={(e) => update({ start_date: e.target.value })}
+            />
+          </label>
+        </div>
       </div>
       <div className="fieldFull">
         <p className="muted formHint">{en.jobForm.extractHelp}</p>
@@ -140,11 +211,16 @@ export const JobForm = memo(function JobForm({
       )}
       {error && <p className="error">{error}</p>}
       <div className="row formActions">
+        {isEdit && (
+          <button type="button" className="btn btnGhost" onClick={() => onEditClose?.()}>
+            {en.jobForm.cancelEdit}
+          </button>
+        )}
         <button type="button" className="btn btnGhost" onClick={() => void extract()}>
           {en.jobForm.extractWithAi}
         </button>
         <button type="button" className="btn btnPrimary" onClick={() => void submit()}>
-          {en.jobForm.save}
+          {isEdit ? en.jobForm.saveChanges : en.jobForm.save}
         </button>
       </div>
     </section>

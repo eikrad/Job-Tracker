@@ -16,7 +16,8 @@ function buildExtractionPrompt(rawText: string): string {
   return `Extract structured job information from the text below.
 Input can be Danish, German, or English.
 Return strict JSON with keys:
-company,title,url,deadline,tags,detected_language,notes
+company,title,url,deadline,interview_date,start_date,tags,detected_language,notes
+Dates as YYYY-MM-DD when known (application deadline, interview/talks day, role start).
 Use English field values when possible for normalized output.
 
 Text:
@@ -58,6 +59,24 @@ export function normalizeLlmJobPartial(raw: Record<string, unknown>): Partial<Ne
   if (url) out.url = url;
   const deadline = strField(raw, ["deadline", "Deadline", "closing_date", "apply_by"]);
   if (deadline) out.deadline = deadline;
+  const interview_date = strField(raw, [
+    "interview_date",
+    "interviewDate",
+    "InterviewDate",
+    "interviews",
+    "interview",
+    "assessment_date",
+  ]);
+  if (interview_date) out.interview_date = interview_date;
+  const start_date = strField(raw, [
+    "start_date",
+    "startDate",
+    "StartDate",
+    "position_start",
+    "role_start",
+    "contract_start",
+  ]);
+  if (start_date) out.start_date = start_date;
   let tags = strField(raw, ["tags", "Tags", "keywords"]);
   const tagsArr = raw.tags;
   if (!tags && Array.isArray(tagsArr)) {

@@ -8,6 +8,10 @@ export type Job = {
   raw_text?: string | null;
   status: string;
   deadline?: string | null;
+  /** Interview / talks / assessment day (YYYY-MM-DD). */
+  interview_date?: string | null;
+  /** Intended role start / contract begin (YYYY-MM-DD). */
+  start_date?: string | null;
   tags?: string | null;
   detected_language?: string | null;
   notes?: string | null;
@@ -23,6 +27,8 @@ export type NewJob = {
   raw_text?: string;
   status: string;
   deadline?: string;
+  interview_date?: string;
+  start_date?: string;
   tags?: string;
   detected_language?: string;
   notes?: string;

@@ -10,9 +10,31 @@ export function exportJobsAsJson(jobs: Job[]) {
 }
 
 export function exportJobsAsCsv(jobs: Job[]) {
-  const headers = ["id", "company", "title", "status", "deadline", "url", "tags", "detected_language"];
+  const headers = [
+    "id",
+    "company",
+    "title",
+    "status",
+    "deadline",
+    "interview_date",
+    "start_date",
+    "url",
+    "tags",
+    "detected_language",
+  ];
   const lines = jobs.map((j) =>
-    [j.id, j.company, j.title ?? "", j.status, j.deadline ?? "", j.url ?? "", j.tags ?? "", j.detected_language ?? ""]
+    [
+      j.id,
+      j.company,
+      j.title ?? "",
+      j.status,
+      j.deadline ?? "",
+      j.interview_date ?? "",
+      j.start_date ?? "",
+      j.url ?? "",
+      j.tags ?? "",
+      j.detected_language ?? "",
+    ]
       .map((v) => `"${String(v).replaceAll("\"", "\"\"")}"`)
       .join(","),
   );
@@ -32,6 +54,8 @@ export const NEW_JOB_KEYS = [
   "raw_text",
   "status",
   "deadline",
+  "interview_date",
+  "start_date",
   "tags",
   "detected_language",
   "notes",
@@ -47,6 +71,8 @@ function rowToNewJob(row: Record<string, unknown>): NewJob {
     raw_text: str(row.raw_text),
     status: str(row.status) ?? "Interesting",
     deadline: str(row.deadline),
+    interview_date: str(row.interview_date),
+    start_date: str(row.start_date),
     tags: str(row.tags),
     detected_language: str(row.detected_language),
     notes: str(row.notes),
@@ -79,6 +105,8 @@ export function parseJobsImportCsv(text: string): NewJob[] {
         title: row.title,
         status: row.status,
         deadline: row.deadline,
+        interview_date: row.interview_date,
+        start_date: row.start_date,
         url: row.url,
         tags: row.tags,
         detected_language: row.detected_language,

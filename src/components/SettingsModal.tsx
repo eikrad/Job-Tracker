@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useJobTracker } from "../context/JobTrackerContext";
 import { exportJobsAsCsv, exportJobsAsJson } from "../lib/export/exportBundle";
+import { googleOauthGetClientId, googleOauthSetClientId } from "../lib/tauriApi";
 import { en } from "../i18n/en";
 
 type Props = {
@@ -20,11 +21,19 @@ export function SettingsModal({ open, onClose }: Props) {
     setMistralApiKey,
     googleAccessToken,
     setGoogleAccessToken,
+    googleOauthConnected,
+    refreshGoogleOauthStatus,
+    connectGoogleCalendar,
+    disconnectGoogleCalendar,
     statuses,
     renameStatus,
     moveStatus,
     onImportFile,
   } = useJobTracker();
+
+  const [googleClientId, setGoogleClientId] = useState("");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState(false);
 
   useEffect(() => {
     const el = dialogRef.current;
@@ -35,6 +44,55 @@ export function SettingsModal({ open, onClose }: Props) {
       el.close();
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    void (async () => {
+      try {
+        const id = await googleOauthGetClientId();
+        setGoogleClientId(id);
+      } catch {
+        setGoogleClientId("");
+      }
+      await refreshGoogleOauthStatus();
+    })();
+  }, [open, refreshGoogleOauthStatus]);
+
+  async function saveGoogleClientId() {
+    try {
+      await googleOauthSetClientId(googleClientId.trim());
+      window.alert(en.app.googleClientIdSaved);
+    } catch (e) {
+      window.alert(String(e));
+    }
+  }
+
+  async function onConnectGoogle() {
+    if (!googleClientId.trim()) {
+      window.alert(en.app.googleClientIdRequired);
+      return;
+    }
+    setOauthBusy(true);
+    try {
+      await googleOauthSetClientId(googleClientId.trim());
+      await connectGoogleCalendar();
+      window.alert(en.app.googleConnectSuccess);
+    } catch (e) {
+      window.alert(String(e));
+    } finally {
+      setOauthBusy(false);
+      await refreshGoogleOauthStatus();
+    }
+  }
+
+  async function onDisconnectGoogle() {
+    try {
+      await disconnectGoogleCalendar();
+      await refreshGoogleOauthStatus();
+    } catch (e) {
+      window.alert(String(e));
+    }
+  }
 
   return (
     <dialog
@@ -87,15 +145,72 @@ export function SettingsModal({ open, onClose }: Props) {
                 autoComplete="off"
               />
             </label>
-            <label>
-              {en.app.googleToken}
-              <input
-                value={googleAccessToken}
-                onChange={(e) => setGoogleAccessToken(e.target.value)}
-                placeholder={en.app.googlePlaceholder}
-                autoComplete="off"
-              />
-            </label>
+
+            <div className="settingsGoogleBlock">
+              <h4 className="settingsSubTitle">{en.app.googleCalendarHeading}</h4>
+              <p className="muted settingsHint">{en.app.googleOAuthIntro}</p>
+              <label>
+                {en.app.googleOAuthClientId}
+                <input
+                  value={googleClientId}
+                  onChange={(e) => setGoogleClientId(e.target.value)}
+                  placeholder={en.app.googleOAuthClientIdPlaceholder}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+              <div className="row settingsGoogleActions">
+                <button type="button" className="btn btnGhost btnSm" onClick={() => void saveGoogleClientId()}>
+                  {en.app.googleSaveClientId}
+                </button>
+              </div>
+              <p className="muted settingsHint">
+                {en.app.googleOAuthStatus(googleOauthConnected ? "yes" : "no")}
+              </p>
+              <div className="row settingsGoogleActions">
+                <button
+                  type="button"
+                  className="btn btnPrimary btnSm"
+                  disabled={oauthBusy}
+                  onClick={() => void onConnectGoogle()}
+                >
+                  {en.app.googleConnect}
+                </button>
+                <button
+                  type="button"
+                  className="btn btnGhost btnSm"
+                  disabled={!googleOauthConnected}
+                  onClick={() => void onDisconnectGoogle()}
+                >
+                  {en.app.googleDisconnect}
+                </button>
+              </div>
+            </div>
+
+            <div className="settingsAdvanced">
+              <button
+                type="button"
+                className="btn btnGhost btnSm settingsAdvancedToggle"
+                aria-expanded={advancedOpen}
+                onClick={() => setAdvancedOpen((v) => !v)}
+              >
+                {advancedOpen ? en.app.googleAdvancedHide : en.app.googleAdvancedShow}
+              </button>
+              {advancedOpen && (
+                <div className="settingsAdvancedBody">
+                  <p className="muted settingsHint">{en.app.googleAdvancedHelp}</p>
+                  <label>
+                    {en.app.googleToken}
+                    <input
+                      value={googleAccessToken}
+                      onChange={(e) => setGoogleAccessToken(e.target.value)}
+                      placeholder={en.app.googlePlaceholder}
+                      autoComplete="off"
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
           </section>
 
           <section className="settingsSection">
