@@ -43,6 +43,36 @@ Emergency skip (avoid if possible): `HUSKY=0 git commit …`
 | `npm run dev` | Vite only in the browser — UI-only; no Tauri commands or DB. |
 | `npm run tauri:build` | Release build (artifacts under `src-tauri/target/release/`). |
 
+## Tauri release bundles (Linux, AppImage)
+
+`npm run tauri:build` compiles the Rust binary and, by default, **bundles** installers according to `bundle.targets` in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json).
+
+### Artifact layout
+
+- **Binary:** `src-tauri/target/release/<executable name>` (from `package.productName` / Tauri config).
+- **Installers:** `src-tauri/target/release/bundle/<format>/` (e.g. `deb/`, `rpm/`, `nsis/`, `msi/`, `macos/`, `dmg/`).
+
+### Why AppImage is off by default
+
+For **AppImage**, the Tauri bundler runs **linuxdeploy**. If `linuxdeploy` is not installed, not on `PATH`, or not marked executable, you get:
+
+```text
+failed to run linuxdeploy
+```
+
+That blocks the **entire** `tauri build` when `"appimage"` (or `"all"` on Linux) is requested. This repo therefore lists explicit targets (**deb**, **rpm**, plus Windows/macOS formats) instead of `"all"`, so a normal Linux contributor build does not require linuxdeploy.
+
+### Enabling AppImage
+
+1. Install **linuxdeploy** and the **AppImage plugin** as described in the official guide: [Tauri — AppImage](https://v2.tauri.app/distribute/appimage/).
+2. Ensure both are on **`PATH`** and executable (`chmod +x` if you downloaded release binaries).
+3. Add `"appimage"` to the `bundle.targets` array in `src-tauri/tauri.conf.json`.
+4. Run `npm run tauri:build` again; expect output under `src-tauri/target/release/bundle/appimage/`.
+
+### Changing targets for your fork
+
+You can remove formats you do not need (e.g. only `deb` on Linux) or add others Tauri supports; see [Tauri distribute](https://v2.tauri.app/distribute/) for Snap, Flatpak, AUR, etc.
+
 ## Checks before opening a PR
 
 Pre-commit already runs **`npm run verify`** (see above). For the same steps by hand:
