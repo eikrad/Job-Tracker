@@ -4,6 +4,8 @@
 
 Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, and optional Gemini-assisted extraction.
 
+Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
 ## Prerequisites
 
 - **Node.js** 20+ and npm
