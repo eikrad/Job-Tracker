@@ -34,8 +34,22 @@ npm run tauri:dev    # Desktop shell + Vite
 
 ## CI & tests
 
-- **GitHub Actions**: frontend build + lint, Rust `cargo check`, **pytest** (export JSON contract).
-- Local Python tests:
+- **GitHub Actions**: `npm run lint`, **`npm run test`** (Vitest), `npm run build`, Rust **`cargo test`**, **pytest** (export JSON contract).
+- **Frontend (Vitest)** — import/export helpers and calendar template URL:
+
+```bash
+npm ci
+npm run test        # once
+npm run test:watch  # during development
+```
+
+- **Rust** — deadline math, import filter, Google API args JSON:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+- **Python** — export fixture contract:
 
 ```bash
 pip install -r requirements-dev.txt

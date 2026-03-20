@@ -237,13 +237,17 @@ fn deadline_end_exclusive(deadline: &str) -> Result<String, String> {
   Ok((d + Duration::days(1)).format("%Y-%m-%d").to_string())
 }
 
+fn is_importable_job(payload: &NewJob) -> bool {
+  !payload.company.trim().is_empty()
+}
+
 #[tauri::command]
 fn import_jobs(app: tauri::AppHandle, jobs: Vec<NewJob>) -> Result<usize, String> {
   let conn = connection(&app)?;
   let now = Utc::now().to_rfc3339();
   let mut count = 0usize;
   for payload in jobs {
-    if payload.company.trim().is_empty() {
+    if !is_importable_job(&payload) {
       continue;
     }
     conn
@@ -343,4 +347,62 @@ pub fn run() {
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{
+    deadline_end_exclusive, is_importable_job, GoogleCalendarCreateEventArgs, NewJob,
+  };
+
+  fn sample_new_job(company: &str) -> NewJob {
+    NewJob {
+      company: company.to_string(),
+      title: None,
+      url: None,
+      raw_text: None,
+      status: "Interesting".to_string(),
+      deadline: None,
+      tags: None,
+      detected_language: None,
+      notes: None,
+    }
+  }
+
+  #[test]
+  fn deadline_end_exclusive_adds_one_day() {
+    assert_eq!(
+      deadline_end_exclusive("2026-04-01").unwrap(),
+      "2026-04-02"
+    );
+  }
+
+  #[test]
+  fn deadline_end_exclusive_crosses_year() {
+    assert_eq!(
+      deadline_end_exclusive("2026-12-31").unwrap(),
+      "2027-01-01"
+    );
+  }
+
+  #[test]
+  fn deadline_end_exclusive_rejects_bad_input() {
+    assert!(deadline_end_exclusive("32-13-99").is_err());
+    assert!(deadline_end_exclusive("not-a-date").is_err());
+  }
+
+  #[test]
+  fn is_importable_job_skips_blank_company() {
+    assert!(is_importable_job(&sample_new_job("Acme")));
+    assert!(!is_importable_job(&sample_new_job("   ")));
+    assert!(!is_importable_job(&sample_new_job("")));
+  }
+
+  #[test]
+  fn google_calendar_args_deserializes_camel_case_json() {
+    let json = r#"{"accessToken":"secret-token","jobId":42}"#;
+    let args: GoogleCalendarCreateEventArgs = serde_json::from_str(json).unwrap();
+    assert_eq!(args.access_token, "secret-token");
+    assert_eq!(args.job_id, 42);
+  }
 }
