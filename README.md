@@ -98,19 +98,6 @@ Tool config: [`pyproject.toml`](pyproject.toml).
 
 > **Forks:** Update the CI badge URL if your repo is not `eikrad/Job-Tracker`.
 
-## Documentation & best practices
-
-| Topic | Suggestion |
-|--------|------------|
-| **Secrets** | Never commit `.env` or API keys. Prefer env vars or local app storage; rotate keys if leaked. |
-| **Pre-merge** | Run `npm run lint && npm run test && npm run build` and `cargo test --manifest-path src-tauri/Cargo.toml`; for Python changes run `npm run py:lint && npm run py:test`. |
-| **Commits** | Small, focused commits with clear messages (`feat:`, `fix:`, `chore:`, …). |
-| **UI copy** | Keep user-facing strings in English and centralized (see `src/i18n/en.ts`) so adding locales later stays easy. |
-| **Tauri vs browser** | Develop features that need the DB or disk in **`npm run tauri:dev`**, not `npm run dev`. |
-| **Dependencies** | Use `npm ci` in CI and for reproducible installs; bump lockfile when changing `package.json`. |
-
-The README is intentionally short. For deeper topics, link out: [Tauri v2](https://v2.tauri.app/), [Vite](https://vite.dev/), [React](https://react.dev/).
-
 ## Tech stack
 
 - React + TypeScript + Vite
