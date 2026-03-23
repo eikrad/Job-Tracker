@@ -178,5 +178,12 @@ export const en = {
     deleteJob: "Delete job",
     history: "History",
     newStatus: "New",
+    documents: "Documents",
+    noDocuments: "No documents uploaded.",
+    uploadDocument: "Upload document",
+    docTypeCv: "CV",
+    docTypeCoverLetter: "Cover Letter",
+    docTypeOther: "Other",
+    deleteDocument: "Remove",
   },
 } as const;

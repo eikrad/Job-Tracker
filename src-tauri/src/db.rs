@@ -25,6 +25,16 @@ pub struct Job {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct JobDocument {
+  pub id: i64,
+  pub job_id: i64,
+  pub doc_type: String,
+  pub original_name: String,
+  pub file_path: String,
+  pub created_at: String,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct NewJob {
   pub company: String,
   pub title: Option<String>,
@@ -85,6 +95,44 @@ fn insert_new_job(conn: &Connection, payload: &NewJob, now: &str) -> Result<usiz
   )
 }
 
+/// One-time migration: move existing pdf_path rows into job_documents as doc_type = 'other'.
+fn migrate_pdf_path_to_documents(conn: &Connection) -> Result<(), String> {
+  let rows: Vec<(i64, String)> = {
+    let mut stmt = conn
+      .prepare("SELECT id, pdf_path FROM jobs WHERE pdf_path IS NOT NULL")
+      .map_err(|e| e.to_string())?;
+    let rows = stmt
+      .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+      .map_err(|e| e.to_string())?
+      .collect::<Result<Vec<_>, _>>()
+      .map_err(|e| e.to_string())?;
+    rows
+  };
+  let now = Utc::now().to_rfc3339();
+  for (job_id, file_path) in rows {
+    let already: i64 = conn
+      .query_row(
+        "SELECT COUNT(*) FROM job_documents WHERE job_id = ?1 AND file_path = ?2",
+        params![job_id, &file_path],
+        |r| r.get(0),
+      )
+      .map_err(|e| e.to_string())?;
+    if already == 0 {
+      let original_name = std::path::Path::new(&file_path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| file_path.clone());
+      conn
+        .execute(
+          "INSERT INTO job_documents (job_id, doc_type, original_name, file_path, created_at) VALUES (?1, 'other', ?2, ?3, ?4)",
+          params![job_id, original_name, file_path, now],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+  }
+  Ok(())
+}
+
 fn migrate_jobs_columns(conn: &Connection) -> Result<(), String> {
   let mut stmt = conn
     .prepare("PRAGMA table_info(jobs)")
@@ -137,10 +185,19 @@ pub fn init_db(app: tauri::AppHandle) -> Result<(), String> {
         to_status TEXT NOT NULL,
         changed_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS job_documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        doc_type TEXT NOT NULL,
+        original_name TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
       "#,
     )
     .map_err(|e| format!("DB init failed: {e}"))?;
   migrate_jobs_columns(&conn)?;
+  migrate_pdf_path_to_documents(&conn)?;
   Ok(())
 }
 
@@ -222,6 +279,19 @@ pub fn delete_job(app: tauri::AppHandle, job_id: i64) -> Result<(), String> {
     Err(rusqlite::Error::QueryReturnedNoRows) => return Err("Job not found.".to_string()),
     Err(e) => return Err(e.to_string()),
   };
+  let doc_paths: Vec<String> = {
+    let mut stmt = tx
+      .prepare("SELECT file_path FROM job_documents WHERE job_id = ?1")
+      .map_err(|e| e.to_string())?;
+    let paths = stmt
+      .query_map(params![job_id], |r| r.get::<_, String>(0))
+      .map_err(|e| e.to_string())?
+      .collect::<Result<Vec<_>, _>>()
+      .map_err(|e| e.to_string())?;
+    paths
+  };
+  tx.execute("DELETE FROM job_documents WHERE job_id = ?1", params![job_id])
+    .map_err(|e| e.to_string())?;
   tx.execute(
     "DELETE FROM status_history WHERE job_id = ?1",
     params![job_id],
@@ -236,6 +306,9 @@ pub fn delete_job(app: tauri::AppHandle, job_id: i64) -> Result<(), String> {
   tx.commit().map_err(|e| e.to_string())?;
 
   if let Some(ref p) = pdf_path {
+    remove_pdf_if_in_app_storage(&app, p)?;
+  }
+  for p in &doc_paths {
     remove_pdf_if_in_app_storage(&app, p)?;
   }
   Ok(())
@@ -358,6 +431,88 @@ pub fn save_application_pdf(
     )
     .map_err(|e| format!("Update pdf path failed: {e}"))?;
   Ok(target.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn list_job_documents(app: tauri::AppHandle, job_id: i64) -> Result<Vec<JobDocument>, String> {
+  let conn = connection(&app)?;
+  let mut stmt = conn
+    .prepare(
+      "SELECT id, job_id, doc_type, original_name, file_path, created_at FROM job_documents WHERE job_id = ?1 ORDER BY created_at ASC",
+    )
+    .map_err(|e| e.to_string())?;
+  let docs = stmt
+    .query_map(params![job_id], |row| {
+      Ok(JobDocument {
+        id: row.get(0)?,
+        job_id: row.get(1)?,
+        doc_type: row.get(2)?,
+        original_name: row.get(3)?,
+        file_path: row.get(4)?,
+        created_at: row.get(5)?,
+      })
+    })
+    .map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| e.to_string())?;
+  Ok(docs)
+}
+
+#[tauri::command]
+pub fn save_job_document(
+  app: tauri::AppHandle,
+  job_id: i64,
+  doc_type: String,
+  original_name: String,
+  bytes: Vec<u8>,
+) -> Result<JobDocument, String> {
+  let app_data_dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|e| format!("Cannot resolve app data dir: {e}"))?;
+  ensure_storage_dirs(&app_data_dir)?;
+  let safe_name = original_name
+    .chars()
+    .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' { c } else { '_' })
+    .collect::<String>();
+  let file_name = format!("{}_{}_{}", job_id, doc_type, safe_name);
+  let target = app_data_dir.join("storage").join("applications").join(&file_name);
+  fs::write(&target, bytes).map_err(|e| format!("Write document failed: {e}"))?;
+
+  let now = Utc::now().to_rfc3339();
+  let file_path = target.to_string_lossy().to_string();
+  let conn = connection(&app)?;
+  conn
+    .execute(
+      "INSERT INTO job_documents (job_id, doc_type, original_name, file_path, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+      params![job_id, doc_type, original_name, file_path, now],
+    )
+    .map_err(|e| format!("Insert document failed: {e}"))?;
+  let id = conn.last_insert_rowid();
+  conn
+    .execute(
+      "UPDATE jobs SET updated_at = ?1 WHERE id = ?2",
+      params![now, job_id],
+    )
+    .map_err(|e| e.to_string())?;
+  Ok(JobDocument { id, job_id, doc_type, original_name, file_path, created_at: now })
+}
+
+#[tauri::command]
+pub fn delete_job_document(app: tauri::AppHandle, doc_id: i64) -> Result<(), String> {
+  let conn = connection(&app)?;
+  let file_path: String = conn
+    .query_row(
+      "SELECT file_path FROM job_documents WHERE id = ?1",
+      params![doc_id],
+      |r| r.get(0),
+    )
+    .map_err(|e| format!("Document not found: {e}"))?;
+  conn
+    .execute("DELETE FROM job_documents WHERE id = ?1", params![doc_id])
+    .map_err(|e| e.to_string())?;
+  remove_pdf_if_in_app_storage(&app, &file_path)?;
+  Ok(())
 }
 
 #[tauri::command]

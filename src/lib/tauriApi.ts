@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Job, NewJob } from "./types";
+import type { DocType, Job, JobDocument, NewJob } from "./types";
 
 export async function initDb() {
   return invoke("init_db");
@@ -37,6 +37,23 @@ export async function saveApplicationPdf(
   bytes: number[],
 ): Promise<string> {
   return invoke("save_application_pdf", { jobId, originalName, bytes });
+}
+
+export async function listJobDocuments(jobId: number): Promise<JobDocument[]> {
+  return invoke<JobDocument[]>("list_job_documents", { jobId });
+}
+
+export async function saveJobDocument(
+  jobId: number,
+  docType: DocType,
+  originalName: string,
+  bytes: number[],
+): Promise<JobDocument> {
+  return invoke<JobDocument>("save_job_document", { jobId, docType, originalName, bytes });
+}
+
+export async function deleteJobDocument(docId: number): Promise<void> {
+  return invoke("delete_job_document", { docId });
 }
 
 export async function importJobs(jobs: NewJob[]): Promise<number> {

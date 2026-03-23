@@ -12,13 +12,13 @@
     "preview": "vite preview",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "py:format": "isort tests && black tests",
-    "py:lint": "ruff check tests && black --check tests && isort --check-only tests",
-    "py:test": "pytest -q",
+    "py:format": "uv run isort tests && uv run black tests",
+    "py:lint": "uv run ruff check tests && uv run black --check tests && uv run isort --check-only tests",
+    "py:test": "uv run pytest -q",
     "verify": "npm run verify:frontend && npm run verify:rust && npm run verify:python",
     "verify:frontend": "npm run lint && npm run test && npm run build",
     "verify:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets && cargo test --manifest-path src-tauri/Cargo.toml",
-    "verify:python": "python3 -m pip install -q -r requirements-dev.txt && npm run py:lint && npm run py:test",
+    "verify:python": "uv sync --quiet && npm run py:lint && npm run py:test",
     "prepare": "husky"
   },
   "dependencies": {

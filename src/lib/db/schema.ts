@@ -16,4 +16,5 @@ export const schema = {
     "updated_at",
   ],
   status_history: ["id", "job_id", "from_status", "to_status", "changed_at"],
+  job_documents: ["id", "job_id", "doc_type", "original_name", "file_path", "created_at"],
 };

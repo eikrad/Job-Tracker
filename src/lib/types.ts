@@ -20,6 +20,17 @@ export type Job = {
   updated_at: string;
 };
 
+export type DocType = "cv" | "cover_letter" | "other";
+
+export type JobDocument = {
+  id: number;
+  job_id: number;
+  doc_type: DocType;
+  original_name: string;
+  file_path: string;
+  created_at: string;
+};
+
 export type NewJob = {
   company: string;
   title?: string;
