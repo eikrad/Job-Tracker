@@ -18,6 +18,7 @@ export function DashboardPage() {
     onUpdateJob,
     onExtract,
     syncJobList,
+    runBackup,
     googleOauthConnected,
     createGoogleCalendarEvent,
     openSettings,
@@ -46,7 +47,7 @@ export function DashboardPage() {
         <ReminderCenter jobs={jobs} />
         <JobDetailTimeline
           selected={selected}
-          onSavedPdf={syncJobList}
+          onSavedPdf={async () => { await syncJobList(); runBackup(); }}
           onDeleteJob={onDeleteJob}
           statuses={statuses}
           onExtract={onExtract}

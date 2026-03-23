@@ -43,6 +43,10 @@ export async function importJobs(jobs: NewJob[]): Promise<number> {
   return invoke<number>("import_jobs", { jobs });
 }
 
+export async function backupToFolder(dest: string): Promise<void> {
+  await invoke("backup_to_folder", { dest });
+}
+
 export type GoogleCalendarDateKind = "apply" | "interview" | "start";
 
 export async function googleOauthGetClientId(): Promise<string> {

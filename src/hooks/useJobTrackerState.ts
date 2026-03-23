@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  backupToFolder,
   createJob,
   deleteJob,
   googleCalendarCreateEvent,
@@ -46,6 +47,9 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
   const [statuses, setStatuses] = useState<string[]>(
     JSON.parse(localStorage.getItem("statuses") ?? JSON.stringify(DEFAULT_STATUSES)),
   );
+  const [backupFolder, setBackupFolder] = useState(
+    localStorage.getItem("backupFolder") ?? "~/Jottacloud",
+  );
 
   const refresh = useCallback(async () => {
     const list = await listJobs();
@@ -84,6 +88,14 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
   useEffect(() => {
     localStorage.setItem("statuses", JSON.stringify(statuses));
   }, [statuses]);
+  useEffect(() => {
+    localStorage.setItem("backupFolder", backupFolder);
+  }, [backupFolder]);
+
+  const runBackup = useCallback(() => {
+    if (!backupFolder.trim()) return;
+    backupToFolder(backupFolder).catch((e) => console.warn("Backup failed:", e));
+  }, [backupFolder]);
 
   const onSubmit = useCallback(
     async (payload: NewJob): Promise<boolean> => {
@@ -95,9 +107,10 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
       const id = await createJob(payload);
       const list = await refresh();
       setSelected(list.find((j) => j.id === id));
+      runBackup();
       return true;
     },
-    [jobs, refresh],
+    [jobs, refresh, runBackup],
   );
 
   const onImportFile = useCallback(
@@ -114,20 +127,22 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
         }
         const n = await importJobs(rows);
         await refresh();
+        runBackup();
         window.alert(en.alerts.importCount(n));
       } catch (e) {
         window.alert(en.alerts.importFailed(String(e)));
       }
     },
-    [refresh],
+    [refresh, runBackup],
   );
 
   const onMove = useCallback(
     async (jobId: number, status: string) => {
       await updateJobStatus(jobId, status);
       await refresh();
+      runBackup();
     },
-    [refresh],
+    [refresh, runBackup],
   );
 
   const onDeleteJob = useCallback(
@@ -135,8 +150,9 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
       await deleteJob(jobId);
       setSelected((s) => (s?.id === jobId ? undefined : s));
       await refresh();
+      runBackup();
     },
-    [refresh],
+    [refresh, runBackup],
   );
 
   const onUpdateJob = useCallback(
@@ -149,9 +165,10 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
       await updateJob(jobId, payload);
       const list = await refresh();
       setSelected((s) => (s?.id === jobId ? list.find((j) => j.id === jobId) ?? s : s));
+      runBackup();
       return true;
     },
-    [jobs, refresh],
+    [jobs, refresh, runBackup],
   );
 
   const onExtract = useCallback(
@@ -225,6 +242,9 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
     createGoogleCalendarEvent,
     openSettings: options?.openSettings ?? (() => undefined),
     statuses,
+    backupFolder,
+    setBackupFolder,
+    runBackup,
     onSubmit,
     onImportFile,
     onMove,

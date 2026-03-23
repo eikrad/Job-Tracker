@@ -360,6 +360,33 @@ pub fn save_application_pdf(
   Ok(target.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+pub fn backup_to_folder(dest: String, app: tauri::AppHandle) -> Result<(), String> {
+  let app_data = app
+    .path()
+    .app_data_dir()
+    .map_err(|e| e.to_string())?;
+  let dest_path = std::path::PathBuf::from(shellexpand::tilde(&dest).as_ref());
+  let dest_dir = dest_path.join("JobTracker");
+  let dest_storage = dest_dir.join("storage").join("applications");
+
+  std::fs::create_dir_all(&dest_storage).map_err(|e| e.to_string())?;
+
+  let db_src = app_data.join("data").join("app.db");
+  let db_dst = dest_dir.join("app.db");
+  std::fs::copy(&db_src, &db_dst).map_err(|e| e.to_string())?;
+
+  let pdf_src = app_data.join("storage").join("applications");
+  if pdf_src.exists() {
+    for entry in std::fs::read_dir(&pdf_src).map_err(|e| e.to_string())? {
+      let entry = entry.map_err(|e| e.to_string())?;
+      let fname = entry.file_name();
+      std::fs::copy(entry.path(), dest_storage.join(&fname)).map_err(|e| e.to_string())?;
+    }
+  }
+  Ok(())
+}
+
 pub(crate) fn is_importable_job(payload: &NewJob) -> bool {
   !payload.company.trim().is_empty()
 }

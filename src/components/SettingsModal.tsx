@@ -29,6 +29,8 @@ export function SettingsModal({ open, onClose }: Props) {
     renameStatus,
     moveStatus,
     onImportFile,
+    backupFolder,
+    setBackupFolder,
   } = useJobTracker();
 
   const [googleClientId, setGoogleClientId] = useState("");
@@ -264,6 +266,20 @@ export function SettingsModal({ open, onClose }: Props) {
                 />
               </label>
             </div>
+
+            <h4 className="settingsSubTitle">Backup</h4>
+            <label>
+              Backup folder path
+              <input
+                type="text"
+                value={backupFolder}
+                onChange={(e) => setBackupFolder(e.target.value)}
+                placeholder="~/Jottacloud"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            <p className="muted settingsHint">Backup is automatic after every change.</p>
           </section>
         </div>
       </div>
