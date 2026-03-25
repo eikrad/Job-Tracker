@@ -21,9 +21,9 @@ Three related improvements to the Job Tracker app:
 Documents (CV, cover letter) are saved to disk via `save_job_document` but there is no way to open them from the app.
 
 ### Solution
-Add a new Tauri command `open_document(path: String)` that uses `tauri-plugin-opener` to open the file with the OS default application. Add the plugin to `Cargo.toml` and register the capability.
+Add a new Tauri command `open_document(path: String)` that calls `open::that(path)` using the `open` crate (already in `Cargo.toml` at `open = "5.2"` — no new dependency needed). No new capability entry is required.
 
-**Frontend:** Each document row in the list gets an "Open" button (with a Lucide `ExternalLink` icon) that calls `invoke("open_document", { path: doc.file_path })`.
+**Frontend:** Each document row in the list gets an "Open" button (Lucide `ExternalLink` icon) that calls `invoke("open_document", { path: doc.file_path })`. Add `open_document` to `src/lib/tauriApi.ts`.
 
 ---
 
@@ -49,13 +49,13 @@ Add a new Tauri command `open_document(path: String)` that uses `tauri-plugin-op
 All new columns are `TEXT` (nullable), except `priority` which is `INTEGER` (nullable, 1–3).
 
 ### DB migration
-A new migration step in `db::init_db` adds the columns with `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS ...` (SQLite supports this non-destructively).
+Extend the existing `migrate_jobs_columns` function in `db.rs` (which already uses the `PRAGMA table_info(jobs)` + conditional `ALTER TABLE` pattern). Read existing column names into a `Vec<String>`, then for each of the 12 new columns issue `ALTER TABLE jobs ADD COLUMN <name> <type>` only when the column is absent. **Do not use `IF NOT EXISTS`** — SQLite does not support that syntax on `ALTER TABLE`.
 
 ### Rust structs
-`Job` and `NewJob` in `db.rs` get the 12 new optional fields. The `SQL_INSERT_JOB` and `SQL_UPDATE_JOB` queries are extended accordingly.
+`Job` and `NewJob` in `db.rs` get the 12 new optional fields. The `SQL_INSERT_JOB` and `SQL_UPDATE_JOB` queries are extended accordingly. `priority` is `Option<i64>` in Rust; all others are `Option<String>`.
 
 ### TypeScript types
-`Job` and `NewJob` in `src/lib/types.ts` get the corresponding optional fields. `NewJob` excludes `priority` from the LLM-mergeable fields list (manual only).
+`Job` and `NewJob` in `src/lib/types.ts` get the corresponding optional fields. `priority` is `number | undefined` (not in AI merge — see form section). `src/lib/db/schema.ts` (a documentation mirror) must have all 12 new columns added to the `jobs` array, **and** also the two pre-existing missing columns `interview_date` and `start_date` (added in a prior migration but never reflected in the mirror).
 
 ### AI extraction prompt
 `buildExtractionPrompt` in `extractJobInfo.ts` is updated to request the new fields:
@@ -63,13 +63,19 @@ A new migration step in `db::init_db` adds the columns with `ALTER TABLE jobs AD
 ```
 contact_name, contact_email, contact_phone,
 workplace_street, workplace_city, workplace_postal_code,
-work_mode (Remote/Hybrid/On-site),
+work_mode (one of: Remote, Hybrid, On-site),
 salary_range (free text, as stated in the ad),
-contract_type (Permanent/Fixed-term/Freelance/Internship),
+contract_type (one of: Permanent, Fixed-term, Freelance, Internship),
 reference_number, source
 ```
 
-`normalizeLlmJobPartial` is extended to map the new keys into `Partial<NewJob>`.
+`normalizeLlmJobPartial` is extended to map the new keys (and common aliases) into `Partial<NewJob>`.
+
+### Form field updates (`JobForm.tsx`)
+Two constants in `JobForm.tsx` must be updated alongside the new fields:
+
+- **`jobToNewJob`** — add all 12 new fields mapping `job.field ?? undefined`.
+- **`MERGEABLE_JOB_FIELDS`** — add the 11 AI-extractable fields. Do **not** add `priority` (manual only, must never be overwritten by AI extraction).
 
 ---
 
@@ -77,87 +83,94 @@ reference_number, source
 
 ### Icons — replace all emoji with Lucide React
 
-Add `lucide-react` as a dependency. Replace all emoji used as icons throughout the app (sidebar, detail view, form hints, etc.) with the appropriate Lucide stroke icons. This gives a consistent look: single weight, no colour, scales with font size.
+Add `lucide-react` as a dependency. Replace all emoji used as icons throughout the app with the appropriate Lucide stroke icons (never Unicode star/pin/calendar characters — always the React component).
 
 Key icon mappings:
 - Calendar / dates → `Calendar`
-- Status/tag → `Tag`
+- Status / tag → `Tag`
 - Location → `MapPin`
-- Work mode → `Monitor` (remote) / `Building2` (on-site)
+- Work mode → `Monitor` (Remote), `Building2` (On-site), `Layers` (Hybrid), `HelpCircle` (Not specified)
 - Documents → `FileText`
 - Open file → `ExternalLink`
 - Delete → `Trash2`
 - Edit → `Pencil`
-- Priority stars → `Star` (filled vs outline via `fill`)
-- Arrow/navigate → `ArrowRight`
+- Priority stars → `Star` with `fill="currentColor"` for filled, `fill="none"` for outline
+- Arrow / navigate → `ArrowRight`
+
+### i18n strings (`src/i18n/en.ts`)
+All new UI labels must be added to `en.ts` rather than inlined in components. New strings needed include (at minimum): labels for all 12 new form fields, section titles ("Contact & Location", "Job Details"), sidebar button ("Full details"), detail page section headers, and select option labels for `work_mode` and `contract_type`.
 
 ### Sidebar — slim quick-overview
 
-`JobDetailTimeline` keeps its role as the right sidebar but shows only the essential glance info:
+`JobDetailTimeline` keeps its role as the right sidebar. Its Props interface is simplified — remove `onSavedPdf`, `onExtract`, and `onUpdateJob` (document upload and edit form move to the detail page). Keep `onDeleteJob` for a quick delete action. Add a `onViewDetails: (jobId: number) => void` prop that the sidebar button calls to trigger navigation.
 
+Sidebar Props after the change: remove `onSavedPdf`, `onExtract`, `onUpdateJob`, and `statuses` (all only needed by the edit form / upload, which move to the detail page). Keep `onDeleteJob`. Add `onViewDetails: (jobId: number) => void`.
+
+Sidebar shows only:
 - Company + title (heading)
-- Status + priority stars (★★☆)
+- Status + priority stars (`Star` icons)
 - Key dates (deadline, interview, start)
 - Work mode + contract type
 - Tags
-- "Full details →" button that navigates to the detail page
+- "Full details →" button (`ArrowRight` icon) that calls `onViewDetails(selected.id)`
 
-Contact info, address, documents upload, and history are removed from the sidebar. Documents list (read-only, open buttons) may optionally remain for convenience.
+Document list and edit form are removed from the sidebar.
 
 ### New full-page detail view
 
-New route: `/job/:id`
+New route: `/job/:id` — add to `App.tsx` alongside existing routes. The app already uses `BrowserRouter`. In Tauri production builds, `BrowserRouter` requires the Tauri asset server to serve `index.html` for all paths. Verify this works in a production build; if not, migrate to `HashRouter` across the whole app (routes become `/#/job/123`).
 
 New component: `JobDetailPage` at `src/pages/JobDetailPage.tsx`
+
+**Data loading:** Read `id` from `useParams`, look up the job in the `JobTrackerContext` `jobs` array (`jobs.find(j => j.id === Number(id))`). Handle two edge cases: context not yet loaded (show loading state), job not found (show "not found" message or redirect to `/`). Also load `listJobDocuments(id)` and `listStatusHistory(id)` locally within the page.
 
 Layout: three-column grid at desktop width, single column on narrow screens.
 
 **Column 1 — Overview**
-- Company, title, status, priority
+- Company, title, status, priority stars
 - Work mode, contract type, salary range
 - Dates (deadline, interview, start)
 - Tags, reference number, source, detected language
-- Edit / Delete actions
+- Edit (opens `JobForm` inline or navigates to `/jobs/edit/:id`) / Delete actions
 
 **Column 2 — Contact & Location**
-- Contact name, email (mailto link), phone (tel link)
+- Contact name, email (`mailto:` link), phone (`tel:` link)
 - Workplace street, city, postal code
 
 **Column 3 — Documents + History**
-- Document list: name, type badge, Open button (ExternalLink icon), Delete button
-- Upload new document (type selector + file input)
+- Document list: name, type badge, Open button (`ExternalLink` icon, calls `open_document`), Delete button (`Trash2` icon)
+- Upload new document (type selector + file input, calls `saveJobDocument`)
 - Status history timeline
 
-Navigation: a "← Back" button in the page header returns to the board. The sidebar "Full details →" button and clicking a job title in the table view navigate to this page.
+Navigation: "← Back" button in the page header calls `navigate(-1)` via `useNavigate`. The sidebar "Full details →" button navigates via `onViewDetails` which calls `navigate(`/job/${id}`)` in `DashboardPage`.
 
 ### Form — new field groups
 
-`JobForm` gets two new collapsible sections added below the existing fields:
+`JobForm` gets two new collapsible sections (toggle open/closed with a button) added below the existing fields:
 
-**Contact & Location** (collapsed by default, expands on click)
-- contact_name, contact_email, contact_phone
-- workplace_street, workplace_city, workplace_postal_code
+**Contact & Location** (collapsed by default)
+- `contact_name`, `contact_email`, `contact_phone`
+- `workplace_street`, `workplace_city`, `workplace_postal_code`
 
 **Job Details** (collapsed by default)
-- work_mode (select: Remote / Hybrid / On-site / Not specified)
-- contract_type (select: Permanent / Fixed-term / Freelance / Internship / Not specified)
-- salary_range (text input)
-- priority (1–3 star toggle, manual only — not in AI merge)
-- reference_number (text input)
-- source (text input)
+- `work_mode` (select: Remote / Hybrid / On-site / Not specified)
+- `contract_type` (select: Permanent / Fixed-term / Freelance / Internship / Not specified)
+- `salary_range` (text input)
+- `priority` (1–3 `Star` icon toggle — manual only, not populated by AI extract)
+- `reference_number` (text input)
+- `source` (text input)
 
-After "Extract with AI", all extractable fields in these sections are populated automatically.
+After "Extract with AI", all extractable fields in these sections are populated. `priority` is never touched by extraction.
 
 ---
 
 ## 4. Routing
 
-The app currently has no routing beyond the dashboard. Add `react-router-dom` routes (already installed):
+The app already uses `BrowserRouter` with routes at `/` and `/jobs/new`. Add:
 
-- `/` → `DashboardPage` (existing)
-- `/job/:id` → `JobDetailPage` (new)
+- `/job/:id` → `JobDetailPage`
 
-`AppHeader` or `DashboardPage` passes the selected job's id when navigating to the detail page.
+`DashboardPage` passes `onViewDetails={(id) => navigate(`/job/${id}`)}` to `JobDetailTimeline` via the existing prop chain. The `selected` state in `JobTrackerContext` is not required for `JobDetailPage` (it loads from the context's `jobs` array by id), but setting it on navigation preserves sidebar highlight state when returning to the board.
 
 ---
 
@@ -166,17 +179,19 @@ The app currently has no routing beyond the dashboard. Add `react-router-dom` ro
 - No PDF preview inside the app (open with system viewer only)
 - No map/geocoding for the workplace address
 - No AI extraction of priority (always manual)
-- No changes to export/import format in this iteration (CSV/JSON export stays as-is; new fields are just omitted from existing exports until a separate export update)
+- No changes to CSV/JSON export format in this iteration (new fields are omitted from existing exports until a separate export update)
+- No `HashRouter` migration unless production build testing reveals `BrowserRouter` path issues (test as part of step 9)
 
 ---
 
 ## Implementation order
 
-1. DB migration + Rust structs (foundation for everything)
-2. TypeScript types + tauriApi additions
-3. `open_document` Tauri command
-4. Extraction prompt + normalizer updates
-5. `lucide-react` install + emoji replacement
-6. `JobForm` new sections
-7. Sidebar slim-down
-8. `JobDetailPage` + routing
+1. DB migration in `migrate_jobs_columns` + Rust struct updates (`db.rs`)
+2. TypeScript types (`src/lib/types.ts`, `src/lib/db/schema.ts`)
+3. `open_document` Tauri command + `tauriApi.ts` binding
+4. Extraction prompt + `normalizeLlmJobPartial` + `MERGEABLE_JOB_FIELDS` + `jobToNewJob` updates
+5. `en.ts` — add all new labels
+6. `lucide-react` install + emoji replacement throughout the app
+7. `JobForm` — new Contact & Location and Job Details sections
+8. `JobDetailTimeline` sidebar slim-down (remove upload/edit/statuses props, add `onViewDetails` prop)
+9. `JobDetailPage` + `/job/:id` route in `App.tsx` — verify `BrowserRouter` works in production build; migrate to `HashRouter` if not
