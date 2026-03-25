@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from "react";
+import { Star } from "lucide-react";
 import { effectiveStatuses } from "../../lib/statusUtils";
 import type { Job, NewJob } from "../../lib/types";
 import { DEFAULT_STATUSES } from "../../lib/types";
@@ -97,6 +98,8 @@ export const JobForm = memo(function JobForm({
     editingJob ? jobToNewJob(editingJob) : { company: "", status: lanes[0] ?? DEFAULT_STATUSES[0] },
   );
   const [error, setError] = useState("");
+  const [contactOpen, setContactOpen] = useState(false);
+  const [jobDetailsOpen, setJobDetailsOpen] = useState(false);
   const [extractError, setExtractError] = useState("");
   const [extractApplied, setExtractApplied] = useState(false);
 
@@ -145,6 +148,12 @@ export const JobForm = memo(function JobForm({
       return;
     }
     setForm((v) => mergeExtractedIntoForm(v, result.partial));
+    if (result.partial.contact_name || result.partial.contact_email || result.partial.workplace_city) {
+      setContactOpen(true);
+    }
+    if (result.partial.work_mode || result.partial.salary_range || result.partial.contract_type) {
+      setJobDetailsOpen(true);
+    }
     setExtractApplied(true);
   }
 
@@ -225,6 +234,74 @@ export const JobForm = memo(function JobForm({
           value={form.notes ?? ""}
           onChange={(e) => update({ notes: e.target.value })}
         />
+      </div>
+      <div className="fieldFull">
+        <button
+          type="button"
+          className="btn btnGhost sectionToggle"
+          onClick={() => setContactOpen((v) => !v)}
+        >
+          {contactOpen ? "▾" : "▸"} {en.jobForm.contactSectionTitle}
+        </button>
+        {contactOpen && (
+          <div className="grid" style={{ marginTop: "0.5rem" }}>
+            <input placeholder={en.jobForm.contactNamePh} value={form.contact_name ?? ""} onChange={(e) => update({ contact_name: e.target.value })} />
+            <input placeholder={en.jobForm.contactEmailPh} value={form.contact_email ?? ""} onChange={(e) => update({ contact_email: e.target.value })} />
+            <input placeholder={en.jobForm.contactPhonePh} value={form.contact_phone ?? ""} onChange={(e) => update({ contact_phone: e.target.value })} />
+            <input placeholder={en.jobForm.workplaceStreetPh} value={form.workplace_street ?? ""} onChange={(e) => update({ workplace_street: e.target.value })} />
+            <input placeholder={en.jobForm.workplaceCityPh} value={form.workplace_city ?? ""} onChange={(e) => update({ workplace_city: e.target.value })} />
+            <input placeholder={en.jobForm.workplacePostalCodePh} value={form.workplace_postal_code ?? ""} onChange={(e) => update({ workplace_postal_code: e.target.value })} />
+          </div>
+        )}
+      </div>
+      <div className="fieldFull">
+        <button
+          type="button"
+          className="btn btnGhost sectionToggle"
+          onClick={() => setJobDetailsOpen((v) => !v)}
+        >
+          {jobDetailsOpen ? "▾" : "▸"} {en.jobForm.jobDetailsSectionTitle}
+        </button>
+        {jobDetailsOpen && (
+          <div className="grid" style={{ marginTop: "0.5rem" }}>
+            <select value={form.work_mode ?? ""} onChange={(e) => update({ work_mode: e.target.value || undefined })}>
+              <option value="">{en.jobForm.workModeUnknown}</option>
+              <option value="Remote">{en.jobForm.workModeRemote}</option>
+              <option value="Hybrid">{en.jobForm.workModeHybrid}</option>
+              <option value="On-site">{en.jobForm.workModeOnSite}</option>
+            </select>
+            <select value={form.contract_type ?? ""} onChange={(e) => update({ contract_type: e.target.value || undefined })}>
+              <option value="">{en.jobForm.contractTypeUnknown}</option>
+              <option value="Permanent">{en.jobForm.contractTypePermanent}</option>
+              <option value="Fixed-term">{en.jobForm.contractTypeFixedTerm}</option>
+              <option value="Freelance">{en.jobForm.contractTypeFreelance}</option>
+              <option value="Internship">{en.jobForm.contractTypeInternship}</option>
+            </select>
+            <input placeholder={en.jobForm.salaryRangePh} value={form.salary_range ?? ""} onChange={(e) => update({ salary_range: e.target.value })} />
+            <input placeholder={en.jobForm.referenceNumberPh} value={form.reference_number ?? ""} onChange={(e) => update({ reference_number: e.target.value })} />
+            <input placeholder={en.jobForm.sourcePh} value={form.source ?? ""} onChange={(e) => update({ source: e.target.value })} />
+            <div>
+              <span className="fieldLabelText">{en.jobForm.priorityLabel}</span>
+              <div className="row" style={{ gap: "0.25rem", marginTop: "0.25rem" }}>
+                {[1, 2, 3].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    className="btn btnGhost btnSm"
+                    onClick={() => update({ priority: form.priority === n ? undefined : n })}
+                    aria-pressed={form.priority === n}
+                    style={{ padding: "0.2rem" }}
+                  >
+                    <Star
+                      size={16}
+                      fill={form.priority != null && form.priority >= n ? "currentColor" : "none"}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       {extractError && <p className="error extractError">{extractError}</p>}
       {extractApplied && (
