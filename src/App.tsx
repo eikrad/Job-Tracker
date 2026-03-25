@@ -7,6 +7,7 @@ import { JobTrackerProvider } from "./context/JobTrackerContext";
 import { useJobTrackerState } from "./hooks/useJobTrackerState";
 import { DashboardPage } from "./pages/DashboardPage";
 import { AddJobPage } from "./pages/AddJobPage";
+import { JobDetailPage } from "./pages/JobDetailPage";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -23,6 +24,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/jobs/new" element={<AddJobPage />} />
+            <Route path="/job/:id" element={<JobDetailPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

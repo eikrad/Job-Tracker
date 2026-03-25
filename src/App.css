@@ -1044,3 +1044,57 @@ pre {
   min-height: 1.4rem;
   padding: 0.1rem 0.35rem;
 }
+
+.jobDetailPage {
+  padding: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.jobDetailPageHeader {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.jobDetailPageHeader h1 {
+  flex: 1;
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.jobDetailGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .jobDetailGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.detailRowList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.detailRow {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  align-items: center;
+}
+
+.detailRowLabel {
+  color: var(--text-muted, #888);
+  min-width: 90px;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
