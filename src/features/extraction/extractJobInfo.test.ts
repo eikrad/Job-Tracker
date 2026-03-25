@@ -35,6 +35,50 @@ describe("normalizeLlmJobPartial", () => {
       }),
     ).toEqual({ interview_date: "2026-04-10", start_date: "2026-05-01" });
   });
+
+  it("maps new contact and location fields", () => {
+    expect(
+      normalizeLlmJobPartial({
+        contact_name: "Jana Hansen",
+        contact_email: "jana@acme.dk",
+        contact_phone: "+45 12 34 56 78",
+        workplace_street: "Nørrebrogade 10",
+        workplace_city: "Copenhagen",
+        workplace_postal_code: "2200",
+      }),
+    ).toEqual({
+      contact_name: "Jana Hansen",
+      contact_email: "jana@acme.dk",
+      contact_phone: "+45 12 34 56 78",
+      workplace_street: "Nørrebrogade 10",
+      workplace_city: "Copenhagen",
+      workplace_postal_code: "2200",
+    });
+  });
+
+  it("maps work_mode, salary_range, contract_type, reference_number, source", () => {
+    expect(
+      normalizeLlmJobPartial({
+        work_mode: "Remote",
+        salary_range: "65-75k DKK/mo",
+        contract_type: "Permanent",
+        reference_number: "JOB-2024-112",
+        source: "LinkedIn",
+      }),
+    ).toEqual({
+      work_mode: "Remote",
+      salary_range: "65-75k DKK/mo",
+      contract_type: "Permanent",
+      reference_number: "JOB-2024-112",
+      source: "LinkedIn",
+    });
+  });
+
+  it("does not map priority (manual only)", () => {
+    const result = normalizeLlmJobPartial({ priority: 2, company: "Acme" });
+    expect(result).not.toHaveProperty("priority");
+    expect(result.company).toBe("Acme");
+  });
 });
 
 describe("extractJobInfo", () => {

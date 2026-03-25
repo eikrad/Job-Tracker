@@ -16,8 +16,15 @@ function buildExtractionPrompt(rawText: string): string {
   return `Extract structured job information from the text below.
 Input can be Danish, German, or English.
 Return strict JSON with keys:
-company,title,url,deadline,interview_date,start_date,tags,detected_language,notes
-Dates as YYYY-MM-DD when known (application deadline, interview/talks day, role start).
+company, title, url, deadline, interview_date, start_date, tags, detected_language, notes,
+contact_name, contact_email, contact_phone,
+workplace_street, workplace_city, workplace_postal_code,
+work_mode (one of: Remote, Hybrid, On-site, or omit if unknown),
+salary_range (free text as stated in the ad, or omit if not mentioned),
+contract_type (one of: Permanent, Fixed-term, Freelance, Internship, or omit if unknown),
+reference_number (job reference/ID if mentioned, else omit),
+source (where the job was posted if mentioned, else omit)
+Dates as YYYY-MM-DD when known.
 Use English field values when possible for normalized output.
 
 Text:
@@ -93,6 +100,29 @@ export function normalizeLlmJobPartial(raw: Record<string, unknown>): Partial<Ne
   if (detected_language) out.detected_language = detected_language;
   const notes = strField(raw, ["notes", "Notes", "summary"]);
   if (notes) out.notes = notes;
+  const contact_name = strField(raw, ["contact_name", "contactName", "contact"]);
+  if (contact_name) out.contact_name = contact_name;
+  const contact_email = strField(raw, ["contact_email", "contactEmail", "email"]);
+  if (contact_email) out.contact_email = contact_email;
+  const contact_phone = strField(raw, ["contact_phone", "contactPhone", "phone"]);
+  if (contact_phone) out.contact_phone = contact_phone;
+  const workplace_street = strField(raw, ["workplace_street", "street", "address"]);
+  if (workplace_street) out.workplace_street = workplace_street;
+  const workplace_city = strField(raw, ["workplace_city", "city"]);
+  if (workplace_city) out.workplace_city = workplace_city;
+  const workplace_postal_code = strField(raw, ["workplace_postal_code", "postalCode", "postal_code", "zip"]);
+  if (workplace_postal_code) out.workplace_postal_code = workplace_postal_code;
+  const work_mode = strField(raw, ["work_mode", "workMode", "remote", "location_type"]);
+  if (work_mode) out.work_mode = work_mode;
+  const salary_range = strField(raw, ["salary_range", "salaryRange", "salary", "compensation"]);
+  if (salary_range) out.salary_range = salary_range;
+  const contract_type = strField(raw, ["contract_type", "contractType", "employment_type", "contract"]);
+  if (contract_type) out.contract_type = contract_type;
+  // priority is intentionally excluded — manual only, never set from LLM output
+  const reference_number = strField(raw, ["reference_number", "referenceNumber", "ref", "job_ref", "job_id"]);
+  if (reference_number) out.reference_number = reference_number;
+  const source = strField(raw, ["source", "Source", "job_source", "platform"]);
+  if (source) out.source = source;
   return out;
 }
 

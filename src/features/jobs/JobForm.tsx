@@ -30,6 +30,18 @@ function jobToNewJob(j: Job): NewJob {
     tags: j.tags ?? undefined,
     detected_language: j.detected_language ?? undefined,
     notes: j.notes ?? undefined,
+    contact_name: j.contact_name ?? undefined,
+    contact_email: j.contact_email ?? undefined,
+    contact_phone: j.contact_phone ?? undefined,
+    workplace_street: j.workplace_street ?? undefined,
+    workplace_city: j.workplace_city ?? undefined,
+    workplace_postal_code: j.workplace_postal_code ?? undefined,
+    work_mode: j.work_mode ?? undefined,
+    salary_range: j.salary_range ?? undefined,
+    contract_type: j.contract_type ?? undefined,
+    priority: j.priority ?? undefined,
+    reference_number: j.reference_number ?? undefined,
+    source: j.source ?? undefined,
   };
 }
 
@@ -44,6 +56,17 @@ const MERGEABLE_JOB_FIELDS: (keyof NewJob)[] = [
   "tags",
   "detected_language",
   "notes",
+  "contact_name",
+  "contact_email",
+  "contact_phone",
+  "workplace_street",
+  "workplace_city",
+  "workplace_postal_code",
+  "work_mode",
+  "salary_range",
+  "contract_type",
+  "reference_number",
+  "source",
 ];
 
 /** Merge LLM partial fields into the form without wiping status or filling with empty/null junk. */
