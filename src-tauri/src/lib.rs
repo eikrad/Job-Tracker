@@ -29,6 +29,7 @@ pub fn run() {
       db::delete_job_document,
       db::import_jobs,
       db::backup_to_folder,
+      db::open_document,
       calendar::google_calendar_create_event,
       google_oauth::google_oauth_get_client_id,
       google_oauth::google_oauth_set_client_id,

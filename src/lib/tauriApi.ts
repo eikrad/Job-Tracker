@@ -64,6 +64,10 @@ export async function backupToFolder(dest: string): Promise<void> {
   await invoke("backup_to_folder", { dest });
 }
 
+export async function openDocument(path: string): Promise<void> {
+  return invoke("open_document", { path });
+}
+
 export type GoogleCalendarDateKind = "apply" | "interview" | "start";
 
 export async function googleOauthGetClientId(): Promise<string> {

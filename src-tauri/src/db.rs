@@ -638,6 +638,11 @@ pub fn backup_to_folder(dest: String, app: tauri::AppHandle) -> Result<(), Strin
   Ok(())
 }
 
+#[tauri::command]
+pub fn open_document(path: String) -> Result<(), String> {
+  open::that(&path).map_err(|e| format!("Could not open file: {e}"))
+}
+
 pub(crate) fn is_importable_job(payload: &NewJob) -> bool {
   !payload.company.trim().is_empty()
 }
