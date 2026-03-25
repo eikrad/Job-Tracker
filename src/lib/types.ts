@@ -15,6 +15,18 @@ export type Job = {
   tags?: string | null;
   detected_language?: string | null;
   notes?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  workplace_street?: string | null;
+  workplace_city?: string | null;
+  workplace_postal_code?: string | null;
+  work_mode?: string | null;
+  salary_range?: string | null;
+  contract_type?: string | null;
+  priority?: number | null;
+  reference_number?: string | null;
+  source?: string | null;
   pdf_path?: string | null;
   created_at: string;
   updated_at: string;
@@ -43,6 +55,18 @@ export type NewJob = {
   tags?: string;
   detected_language?: string;
   notes?: string;
+  contact_name?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  workplace_street?: string;
+  workplace_city?: string;
+  workplace_postal_code?: string;
+  work_mode?: string;
+  salary_range?: string;
+  contract_type?: string;
+  priority?: number;
+  reference_number?: string;
+  source?: string;
 };
 
 export const DEFAULT_STATUSES: JobStatus[] = [
