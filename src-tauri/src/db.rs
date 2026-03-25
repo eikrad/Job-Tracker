@@ -19,6 +19,18 @@ pub struct Job {
   pub tags: Option<String>,
   pub detected_language: Option<String>,
   pub notes: Option<String>,
+  pub contact_name: Option<String>,
+  pub contact_email: Option<String>,
+  pub contact_phone: Option<String>,
+  pub workplace_street: Option<String>,
+  pub workplace_city: Option<String>,
+  pub workplace_postal_code: Option<String>,
+  pub work_mode: Option<String>,
+  pub salary_range: Option<String>,
+  pub contract_type: Option<String>,
+  pub priority: Option<i64>,
+  pub reference_number: Option<String>,
+  pub source: Option<String>,
   pub pdf_path: Option<String>,
   pub created_at: String,
   pub updated_at: String,
@@ -47,6 +59,18 @@ pub struct NewJob {
   pub tags: Option<String>,
   pub detected_language: Option<String>,
   pub notes: Option<String>,
+  pub contact_name: Option<String>,
+  pub contact_email: Option<String>,
+  pub contact_phone: Option<String>,
+  pub workplace_street: Option<String>,
+  pub workplace_city: Option<String>,
+  pub workplace_postal_code: Option<String>,
+  pub work_mode: Option<String>,
+  pub salary_range: Option<String>,
+  pub contract_type: Option<String>,
+  pub priority: Option<i64>,
+  pub reference_number: Option<String>,
+  pub source: Option<String>,
 }
 
 fn ensure_storage_dirs(base: &Path) -> Result<(), String> {
@@ -70,8 +94,12 @@ pub(crate) fn connection(app: &tauri::AppHandle) -> Result<Connection, String> {
 }
 
 const SQL_INSERT_JOB: &str = r#"
-INSERT INTO jobs (company, title, url, raw_text, status, deadline, interview_date, start_date, tags, detected_language, notes, created_at, updated_at)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+INSERT INTO jobs (company, title, url, raw_text, status, deadline, interview_date, start_date, tags,
+  detected_language, notes, contact_name, contact_email, contact_phone,
+  workplace_street, workplace_city, workplace_postal_code,
+  work_mode, salary_range, contract_type, priority, reference_number, source,
+  created_at, updated_at)
+VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)
 "#;
 
 fn insert_new_job(conn: &Connection, payload: &NewJob, now: &str) -> Result<usize, rusqlite::Error> {
@@ -89,6 +117,18 @@ fn insert_new_job(conn: &Connection, payload: &NewJob, now: &str) -> Result<usiz
       &payload.tags,
       &payload.detected_language,
       &payload.notes,
+      &payload.contact_name,
+      &payload.contact_email,
+      &payload.contact_phone,
+      &payload.workplace_street,
+      &payload.workplace_city,
+      &payload.workplace_postal_code,
+      &payload.work_mode,
+      &payload.salary_range,
+      &payload.contract_type,
+      &payload.priority,
+      &payload.reference_number,
+      &payload.source,
       now,
       now
     ],
@@ -142,15 +182,29 @@ fn migrate_jobs_columns(conn: &Connection) -> Result<(), String> {
     .map_err(|e| e.to_string())?
     .collect::<Result<Vec<_>, _>>()
     .map_err(|e| e.to_string())?;
-  if !cols.iter().any(|c| c == "interview_date") {
-    conn
-      .execute("ALTER TABLE jobs ADD COLUMN interview_date TEXT", [])
-      .map_err(|e| e.to_string())?;
-  }
-  if !cols.iter().any(|c| c == "start_date") {
-    conn
-      .execute("ALTER TABLE jobs ADD COLUMN start_date TEXT", [])
-      .map_err(|e| e.to_string())?;
+
+  let new_cols: &[(&str, &str)] = &[
+    ("interview_date", "TEXT"),
+    ("start_date", "TEXT"),
+    ("contact_name", "TEXT"),
+    ("contact_email", "TEXT"),
+    ("contact_phone", "TEXT"),
+    ("workplace_street", "TEXT"),
+    ("workplace_city", "TEXT"),
+    ("workplace_postal_code", "TEXT"),
+    ("work_mode", "TEXT"),
+    ("salary_range", "TEXT"),
+    ("contract_type", "TEXT"),
+    ("priority", "INTEGER"),
+    ("reference_number", "TEXT"),
+    ("source", "TEXT"),
+  ];
+  for (col, col_type) in new_cols {
+    if !cols.iter().any(|c| c == col) {
+      conn
+        .execute(&format!("ALTER TABLE jobs ADD COLUMN {col} {col_type}"), [])
+        .map_err(|e| e.to_string())?;
+    }
   }
   Ok(())
 }
@@ -214,7 +268,7 @@ pub fn list_jobs(app: tauri::AppHandle) -> Result<Vec<Job>, String> {
   let conn = connection(&app)?;
   let mut stmt = conn
     .prepare(
-      "SELECT id, company, title, url, raw_text, status, deadline, interview_date, start_date, tags, detected_language, notes, pdf_path, created_at, updated_at
+      "SELECT id, company, title, url, raw_text, status, deadline, interview_date, start_date, tags, detected_language, notes, contact_name, contact_email, contact_phone, workplace_street, workplace_city, workplace_postal_code, work_mode, salary_range, contract_type, priority, reference_number, source, pdf_path, created_at, updated_at
       FROM jobs ORDER BY updated_at DESC",
     )
     .map_err(|e| e.to_string())?;
@@ -233,9 +287,21 @@ pub fn list_jobs(app: tauri::AppHandle) -> Result<Vec<Job>, String> {
         tags: row.get(9)?,
         detected_language: row.get(10)?,
         notes: row.get(11)?,
-        pdf_path: row.get(12)?,
-        created_at: row.get(13)?,
-        updated_at: row.get(14)?,
+        contact_name: row.get(12)?,
+        contact_email: row.get(13)?,
+        contact_phone: row.get(14)?,
+        workplace_street: row.get(15)?,
+        workplace_city: row.get(16)?,
+        workplace_postal_code: row.get(17)?,
+        work_mode: row.get(18)?,
+        salary_range: row.get(19)?,
+        contract_type: row.get(20)?,
+        priority: row.get(21)?,
+        reference_number: row.get(22)?,
+        source: row.get(23)?,
+        pdf_path: row.get(24)?,
+        created_at: row.get(25)?,
+        updated_at: row.get(26)?,
       })
     })
     .map_err(|e| e.to_string())?
@@ -326,10 +392,15 @@ pub fn update_job(app: tauri::AppHandle, job_id: i64, payload: NewJob) -> Result
   let now = Utc::now().to_rfc3339();
   let n = conn
     .execute(
-      "UPDATE jobs SET company = ?1, title = ?2, url = ?3, raw_text = ?4, status = ?5,
-        deadline = ?6, interview_date = ?7, start_date = ?8, tags = ?9,
-        detected_language = ?10, notes = ?11, updated_at = ?12
-       WHERE id = ?13",
+      "UPDATE jobs SET company=?1, title=?2, url=?3, raw_text=?4, status=?5,
+        deadline=?6, interview_date=?7, start_date=?8, tags=?9,
+        detected_language=?10, notes=?11,
+        contact_name=?12, contact_email=?13, contact_phone=?14,
+        workplace_street=?15, workplace_city=?16, workplace_postal_code=?17,
+        work_mode=?18, salary_range=?19, contract_type=?20, priority=?21,
+        reference_number=?22, source=?23,
+        updated_at=?24
+       WHERE id=?25",
       params![
         payload.company.trim(),
         payload.title,
@@ -342,6 +413,18 @@ pub fn update_job(app: tauri::AppHandle, job_id: i64, payload: NewJob) -> Result
         payload.tags,
         payload.detected_language,
         payload.notes,
+        payload.contact_name,
+        payload.contact_email,
+        payload.contact_phone,
+        payload.workplace_street,
+        payload.workplace_city,
+        payload.workplace_postal_code,
+        payload.work_mode,
+        payload.salary_range,
+        payload.contract_type,
+        payload.priority,
+        payload.reference_number,
+        payload.source,
         now,
         job_id,
       ],
@@ -568,16 +651,14 @@ mod tests {
   fn sample_new_job(company: &str) -> NewJob {
     NewJob {
       company: company.to_string(),
-      title: None,
-      url: None,
-      raw_text: None,
+      title: None, url: None, raw_text: None,
       status: "Interesting".to_string(),
-      deadline: None,
-      interview_date: None,
-      start_date: None,
-      tags: None,
-      detected_language: None,
-      notes: None,
+      deadline: None, interview_date: None, start_date: None,
+      tags: None, detected_language: None, notes: None,
+      contact_name: None, contact_email: None, contact_phone: None,
+      workplace_street: None, workplace_city: None, workplace_postal_code: None,
+      work_mode: None, salary_range: None, contract_type: None,
+      priority: None, reference_number: None, source: None,
     }
   }
 
