@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ChevronUp, ChevronDown } from "lucide-react";
 import { useJobTracker } from "../context/JobTrackerContext";
 import { exportJobsAsCsv, exportJobsAsJson } from "../lib/export/exportBundle";
 import { googleOauthGetClientId, googleOauthSetClientId } from "../lib/tauriApi";
@@ -232,7 +233,7 @@ export function SettingsModal({ open, onClose }: Props) {
                   aria-label={en.app.moveColumnUp}
                   onClick={() => moveStatus(index, -1)}
                 >
-                  ↑
+                  <ChevronUp size={14} />
                 </button>
                 <button
                   type="button"
@@ -240,7 +241,7 @@ export function SettingsModal({ open, onClose }: Props) {
                   aria-label={en.app.moveColumnDown}
                   onClick={() => moveStatus(index, 1)}
                 >
-                  ↓
+                  <ChevronDown size={14} />
                 </button>
               </div>
             ))}

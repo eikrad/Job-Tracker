@@ -14,6 +14,7 @@ import { effectiveStatuses } from "../../lib/statusUtils";
 import type { Job } from "../../lib/types";
 import { WorkspaceEmpty } from "../../components/WorkspaceEmpty";
 import { en } from "../../i18n/en";
+import { GripVertical } from "lucide-react";
 
 type Props = {
   statuses: string[];
@@ -73,7 +74,7 @@ function JobCard({
       onClick={() => onSelect(job)}
     >
       <div className="dragHandle" {...listeners} {...attributes} title={en.jobBoard.dragToMoveStatus}>
-        ⋮⋮
+        <GripVertical size={14} />
       </div>
       <strong>{job.company}</strong>
       <span>{job.title ?? en.common.untitled}</span>
