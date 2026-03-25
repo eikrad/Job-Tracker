@@ -201,6 +201,7 @@ fn migrate_jobs_columns(conn: &Connection) -> Result<(), String> {
   ];
   for (col, col_type) in new_cols {
     if !cols.iter().any(|c| c == col) {
+      // col and col_type are compile-time constants; no user input involved
       conn
         .execute(&format!("ALTER TABLE jobs ADD COLUMN {col} {col_type}"), [])
         .map_err(|e| e.to_string())?;
@@ -229,6 +230,18 @@ pub fn init_db(app: tauri::AppHandle) -> Result<(), String> {
         detected_language TEXT,
         notes TEXT,
         pdf_path TEXT,
+        contact_name TEXT,
+        contact_email TEXT,
+        contact_phone TEXT,
+        workplace_street TEXT,
+        workplace_city TEXT,
+        workplace_postal_code TEXT,
+        work_mode TEXT,
+        salary_range TEXT,
+        contract_type TEXT,
+        priority INTEGER,
+        reference_number TEXT,
+        source TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
