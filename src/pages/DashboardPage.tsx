@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { JobBoard } from "../features/jobs/JobBoard";
 import { JobTable } from "../features/jobs/JobTable";
 import { JobDetailTimeline } from "../features/jobs/JobDetailTimeline";
@@ -6,6 +7,7 @@ import { ReminderCenter } from "../features/reminders/ReminderCenter";
 import { useJobTracker } from "../context/JobTrackerContext";
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const {
     jobs,
     selected,
@@ -15,10 +17,6 @@ export function DashboardPage() {
     googleAccessToken,
     onMove,
     onDeleteJob,
-    onUpdateJob,
-    onExtract,
-    syncJobList,
-    runBackup,
     googleOauthConnected,
     createGoogleCalendarEvent,
     openSettings,
@@ -47,11 +45,8 @@ export function DashboardPage() {
         <ReminderCenter jobs={jobs} />
         <JobDetailTimeline
           selected={selected}
-          onSavedPdf={async () => { await syncJobList(); runBackup(); }}
           onDeleteJob={onDeleteJob}
-          statuses={statuses}
-          onExtract={onExtract}
-          onUpdateJob={onUpdateJob}
+          onViewDetails={(id) => navigate(`/job/${id}`)}
         />
       </aside>
     </div>
