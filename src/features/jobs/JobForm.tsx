@@ -16,6 +16,8 @@ type Props = {
   editingJob?: Job | null;
   onUpdateJob?: (jobId: number, payload: NewJob) => Promise<boolean>;
   onEditClose?: () => void;
+  /** Pre-fill the Job URL field (e.g. when coming from the Search page). */
+  initialUrl?: string;
 };
 
 function jobToNewJob(j: Job): NewJob {
@@ -91,11 +93,14 @@ export const JobForm = memo(function JobForm({
   editingJob = null,
   onUpdateJob,
   onEditClose,
+  initialUrl,
 }: Props) {
   const lanes = effectiveStatuses(statuses);
   const isEdit = !!editingJob;
   const [form, setForm] = useState<NewJob>(() =>
-    editingJob ? jobToNewJob(editingJob) : { company: "", status: lanes[0] ?? DEFAULT_STATUSES[0] },
+    editingJob
+      ? jobToNewJob(editingJob)
+      : { company: "", status: lanes[0] ?? DEFAULT_STATUSES[0], url: initialUrl },
   );
   const [error, setError] = useState("");
   const [contactOpen, setContactOpen] = useState(false);

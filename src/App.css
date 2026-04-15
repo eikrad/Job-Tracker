@@ -1098,3 +1098,361 @@ pre {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+
+/* ══════════════════════════════════════════════════════════
+   Job Search Page
+   ══════════════════════════════════════════════════════════ */
+
+.jobSearchPage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+}
+
+.jobSearchTop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.jobSearchTitle {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.jobSearchSubtitle {
+  margin: 0;
+  max-width: 52rem;
+}
+
+/* ── Controls card ── */
+.jobSearchCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.jobSearchSection {
+  padding: var(--space-xl);
+}
+
+.jobSearchDivider {
+  height: 1px;
+  background: var(--color-border);
+}
+
+.jobSearchSectionTitle {
+  margin: 0 0 var(--space-sm);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.jobSearchHint {
+  margin: 0 0 var(--space-md);
+  font-size: 0.8125rem;
+}
+
+.jobSearchActions {
+  padding: var(--space-lg) var(--space-xl);
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  background: var(--color-bg);
+}
+
+/* ── Keyword chips ── */
+.searchKeywordPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.searchKeywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.searchKeywordChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+  border-radius: 999px;
+  border: 1.5px solid var(--color-border-strong);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+  line-height: 1;
+  overflow: hidden;
+}
+
+.searchKeywordChipActive {
+  background: var(--color-primary-muted);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.searchKeywordChipCustom {
+  border-style: dashed;
+}
+
+.searchKeywordChipLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.3em 0.65em;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 999px 0 0 999px;
+}
+
+.searchKeywordChip:not(.searchKeywordChipCustom) .searchKeywordChipLabel {
+  border-radius: 999px;
+}
+
+.searchKeywordChipLabel:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.searchKeywordCount {
+  font-size: 0.7em;
+  font-weight: 700;
+  opacity: 0.65;
+}
+
+.searchKeywordRemove {
+  padding: 0.3em 0.5em 0.3em 0.1em;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: 700;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.5;
+  line-height: 1;
+  border-radius: 0 999px 999px 0;
+}
+
+.searchKeywordRemove:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  color: var(--color-danger);
+}
+
+.searchCustomInput {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+  max-width: 26rem;
+}
+
+.searchCustomInputField {
+  flex: 1;
+}
+
+/* ── Location ── */
+.searchLocationRow {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+  max-width: 26rem;
+}
+
+.searchLocationInput {
+  flex: 1;
+}
+
+/* ── Platforms ── */
+.searchPlatforms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md) var(--space-xl);
+  margin-bottom: var(--space-md);
+}
+
+.searchPlatformToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.searchPlatformNote {
+  font-weight: 400;
+  font-size: 0.8125rem;
+}
+
+.searchIndeedRegion {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-top: var(--space-sm);
+}
+
+.searchIndeedRegionLabel {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.searchIndeedRegion select {
+  width: auto;
+  max-width: 18rem;
+}
+
+/* ── Results sections ── */
+.searchResultSections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+}
+
+.platformSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.platformHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.platformTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.platformCount {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: var(--color-border);
+  padding: 0.15em 0.55em;
+  border-radius: 999px;
+}
+
+.platformBrowserOnly,
+.platformError,
+.platformEmpty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  align-items: flex-start;
+}
+
+.platformBrowserOnly {
+  padding: var(--space-lg);
+}
+
+.platformError code {
+  font-size: 0.75rem;
+  background: var(--color-bg);
+  padding: 0.1em 0.35em;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  word-break: break-all;
+}
+
+.platformLoading {
+  padding: var(--space-md) 0;
+}
+
+.platformLinkedinOpened {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+/* ── Result list & cards ── */
+.searchResultList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.searchResultCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s;
+}
+
+.searchResultCard:hover {
+  border-color: var(--color-border-strong);
+}
+
+.searchResultMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.searchResultTitle {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-text);
+}
+
+.searchResultMeta {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.searchResultDate {
+  color: var(--color-text-muted);
+}
+
+.searchResultDesc {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.searchResultActions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
