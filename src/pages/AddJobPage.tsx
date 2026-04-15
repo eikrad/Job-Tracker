@@ -1,10 +1,17 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { JobForm } from "../features/jobs/JobForm";
 import { useJobTracker } from "../context/JobTrackerContext";
 import { en } from "../i18n/en";
 
+interface AddJobRouteState {
+  /** Pre-fill the URL field when arriving from the Search page. */
+  prefillUrl?: string;
+}
+
 export function AddJobPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const routeState = location.state as AddJobRouteState | null;
   const { statuses, onSubmit, onExtract } = useJobTracker();
 
   return (
@@ -21,6 +28,7 @@ export function AddJobPage() {
         onExtract={onExtract}
         hideTitle
         onSubmitted={() => navigate("/")}
+        initialUrl={routeState?.prefillUrl}
       />
     </div>
   );
