@@ -57,6 +57,30 @@ fn strip_html(html: &str) -> String {
     .replace("&#8203;", "")
 }
 
+fn parse_tags(tags_str: &str) -> Vec<String> {
+  let trimmed = tags_str.trim();
+  if trimmed.is_empty() {
+    return Vec::new();
+  }
+
+  // Support JSON array style tags from imports, e.g. ["rust","tauri"].
+  if trimmed.starts_with('[') {
+    if let Ok(values) = serde_json::from_str::<Vec<String>>(trimmed) {
+      return values
+        .into_iter()
+        .map(|v| v.trim().to_lowercase())
+        .filter(|v| !v.is_empty())
+        .collect();
+    }
+  }
+
+  trimmed
+    .split(|c: char| [',', ';', '|', '\n', '\t'].contains(&c))
+    .map(|part| part.trim().trim_matches('"').trim_matches('\'').to_lowercase())
+    .filter(|part| !part.is_empty())
+    .collect()
+}
+
 /// Parse an RSS/Atom XML string into a list of search results.
 fn parse_rss(xml: &str, platform: &str) -> Result<Vec<JobSearchResult>, String> {
   let doc =
@@ -117,7 +141,8 @@ fn parse_rss(xml: &str, platform: &str) -> Result<Vec<JobSearchResult>, String> 
         company = right.trim().to_string();
         title = left.trim().to_string();
       } else {
-        let parts: Vec<&str> = title.splitn(3, " - ").collect();
+        let title_for_split = title.clone();
+        let parts: Vec<&str> = title_for_split.splitn(3, " - ").collect();
         match parts.len() {
           2 => {
             company = parts[1].trim().to_string();
@@ -175,11 +200,8 @@ pub fn get_keyword_stats(app: tauri::AppHandle) -> Result<Vec<KeywordStat>, Stri
 
   let mut counts: HashMap<String, u32> = HashMap::new();
   for tags_str in rows {
-    for tag in tags_str.split(',') {
-      let normalized = tag.trim().to_lowercase();
-      if !normalized.is_empty() {
-        *counts.entry(normalized).or_insert(0) += 1;
-      }
+    for tag in parse_tags(&tags_str) {
+      *counts.entry(tag).or_insert(0) += 1;
     }
   }
 

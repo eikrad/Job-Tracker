@@ -80,7 +80,11 @@ export function useJobSearch() {
   const toggleKeyword = useCallback((keyword: string) => {
     setSelectedKeywords((prev) => {
       const next = new Set(prev);
-      next.has(keyword) ? next.delete(keyword) : next.add(keyword);
+      if (next.has(keyword)) {
+        next.delete(keyword);
+      } else {
+        next.add(keyword);
+      }
       return next;
     });
   }, []);
@@ -110,7 +114,11 @@ export function useJobSearch() {
   const togglePlatform = useCallback((platform: Platform) => {
     setActivePlatforms((prev) => {
       const next = new Set(prev);
-      next.has(platform) ? next.delete(platform) : next.add(platform);
+      if (next.has(platform)) {
+        next.delete(platform);
+      } else {
+        next.add(platform);
+      }
       return next;
     });
   }, []);

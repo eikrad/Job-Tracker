@@ -52,19 +52,18 @@ export function JobSearchPage() {
         <section className="jobSearchSection">
           <h2 className="jobSearchSectionTitle">{en.jobSearch.keywordsLabel}</h2>
           <p className="muted jobSearchHint">{en.jobSearch.keywordsHint}</p>
-          {allKeywords.length === 0 ? (
+          {allKeywords.length === 0 && (
             <p className="muted">{en.jobSearch.noKeywords}</p>
-          ) : (
-            <KeywordPanel
-              keywords={allKeywords}
-              selected={selectedKeywords}
-              onToggle={toggleKeyword}
-              onRemoveCustom={removeCustomKeyword}
-              customKeyword={customKeyword}
-              onCustomChange={setCustomKeyword}
-              onAddCustom={addCustomKeyword}
-            />
           )}
+          <KeywordPanel
+            keywords={allKeywords}
+            selected={selectedKeywords}
+            onToggle={toggleKeyword}
+            onRemoveCustom={removeCustomKeyword}
+            customKeyword={customKeyword}
+            onCustomChange={setCustomKeyword}
+            onAddCustom={addCustomKeyword}
+          />
         </section>
 
         <div className="jobSearchDivider" />
