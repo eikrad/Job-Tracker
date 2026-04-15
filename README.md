@@ -1,6 +1,8 @@
 # Job Tracker
 
-[![CI](https://github.com/eikrad/Job-Tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/ci.yml)
+[![Frontend](https://github.com/eikrad/Job-Tracker/actions/workflows/frontend.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/frontend.yml)
+[![Rust](https://github.com/eikrad/Job-Tracker/actions/workflows/rust.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/rust.yml)
+[![Python](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml)
 [![Alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/eikrad/Job-Tracker)
 
 Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, optional **AI-assisted extraction** (Google **Gemini** or **Mistral**), and web-based job discovery.
@@ -145,7 +147,13 @@ Use this to confirm OAuth and the month calendar end-to-end on your machine:
 
 ## CI & tests
 
-GitHub Actions runs: `npm run lint`, `npm run test` (Vitest), `npm run build`, `cargo test`, then Python **`ruff check`**, **`black --check`**, **`isort --check-only`**, **`pytest`**.
+GitHub Actions runs three independent workflows (each with its own status badge above):
+
+| Workflow | What it checks |
+|---|---|
+| **Frontend** | `npm run lint` → `npm run test` (Vitest) → `npm run build` |
+| **Rust** | `cargo clippy` → `cargo test` |
+| **Python** | `ruff check` → `black --check` → `isort --check-only` → `pytest` |
 
 ### Frontend (Vitest)
 
@@ -174,7 +182,7 @@ npm run py:test    # pytest
 
 Tool config: [`pyproject.toml`](pyproject.toml).
 
-> **Forks:** Update the CI badge URL if your repo is not `eikrad/Job-Tracker`.
+> **Forks:** Update the badge URLs if your repo is not `eikrad/Job-Tracker`.
 
 ## Tech stack
 

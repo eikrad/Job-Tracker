@@ -390,3 +390,428 @@ pub fn build_search_url(
 pub fn open_url_in_browser(url: String) -> Result<(), String> {
   open::that(&url).map_err(|e| format!("Could not open browser: {e}"))
 }
+
+// ─── Tests ─────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // ── parse_tags ─────────────────────────────────────────────────────────
+
+  #[test]
+  fn parse_tags_empty_returns_empty() {
+    assert!(parse_tags("").is_empty());
+    assert!(parse_tags("   ").is_empty());
+  }
+
+  #[test]
+  fn parse_tags_comma_separated() {
+    let tags = parse_tags("Rust, Tauri, React");
+    assert_eq!(tags, vec!["rust", "tauri", "react"]);
+  }
+
+  #[test]
+  fn parse_tags_semicolon_separator() {
+    let tags = parse_tags("python;django;postgres");
+    assert_eq!(tags, vec!["python", "django", "postgres"]);
+  }
+
+  #[test]
+  fn parse_tags_pipe_separator() {
+    let tags = parse_tags("go|grpc|kubernetes");
+    assert_eq!(tags, vec!["go", "grpc", "kubernetes"]);
+  }
+
+  #[test]
+  fn parse_tags_newline_separator() {
+    let tags = parse_tags("a\nb\nc");
+    assert_eq!(tags, vec!["a", "b", "c"]);
+  }
+
+  #[test]
+  fn parse_tags_strips_quotes() {
+    let tags = parse_tags(r#""Rust","TypeScript""#);
+    assert_eq!(tags, vec!["rust", "typescript"]);
+  }
+
+  #[test]
+  fn parse_tags_json_array_style() {
+    let tags = parse_tags(r#"["rust","tauri","react"]"#);
+    assert_eq!(tags, vec!["rust", "tauri", "react"]);
+  }
+
+  #[test]
+  fn parse_tags_json_array_whitespace_trimmed() {
+    let tags = parse_tags(r#"["  Rust  ", "  Node.js  "]"#);
+    assert_eq!(tags, vec!["rust", "node.js"]);
+  }
+
+  #[test]
+  fn parse_tags_normalises_to_lowercase() {
+    let tags = parse_tags("TypeScript, REACT, Vue.js");
+    assert_eq!(tags, vec!["typescript", "react", "vue.js"]);
+  }
+
+  #[test]
+  fn parse_tags_filters_empty_parts() {
+    let tags = parse_tags("rust,,,,typescript");
+    assert_eq!(tags, vec!["rust", "typescript"]);
+  }
+
+  // ── normalize_company ──────────────────────────────────────────────────
+
+  #[test]
+  fn normalize_company_splits_on_first_dash() {
+    let (title, company) = normalize_company("Senior Developer - Acme Corp");
+    assert_eq!(title, "Senior Developer");
+    assert_eq!(company, "Acme Corp");
+  }
+
+  #[test]
+  fn normalize_company_no_dash_returns_whole_title_empty_company() {
+    let (title, company) = normalize_company("Software Engineer");
+    assert_eq!(title, "Software Engineer");
+    assert_eq!(company, "");
+  }
+
+  #[test]
+  fn normalize_company_splits_only_on_first_dash() {
+    // "A - B - C" → title="A", company="B - C"
+    let (title, company) = normalize_company("Frontend Engineer - Acme Corp - Copenhagen");
+    assert_eq!(title, "Frontend Engineer");
+    assert_eq!(company, "Acme Corp - Copenhagen");
+  }
+
+  #[test]
+  fn normalize_company_trims_whitespace() {
+    let (title, company) = normalize_company("  Dev  -  BigCo  ");
+    assert_eq!(title, "Dev");
+    assert_eq!(company, "BigCo");
+  }
+
+  // ── domain_for_platform ────────────────────────────────────────────────
+
+  #[test]
+  fn domain_for_platform_jobindex() {
+    assert_eq!(domain_for_platform("jobindex"), "jobindex.dk");
+  }
+
+  #[test]
+  fn domain_for_platform_indeed() {
+    assert_eq!(domain_for_platform("indeed"), "indeed.");
+  }
+
+  #[test]
+  fn domain_for_platform_unknown_returns_empty() {
+    assert_eq!(domain_for_platform("linkedin"), "");
+    assert_eq!(domain_for_platform("unknown"), "");
+  }
+
+  // ── keep_platform_result ───────────────────────────────────────────────
+
+  #[test]
+  fn keep_platform_result_jobindex_matching_url() {
+    assert!(keep_platform_result("jobindex", "https://www.jobindex.dk/job/123"));
+  }
+
+  #[test]
+  fn keep_platform_result_jobindex_non_matching_url() {
+    assert!(!keep_platform_result("jobindex", "https://www.example.com/job/123"));
+  }
+
+  #[test]
+  fn keep_platform_result_indeed_matching_url() {
+    assert!(keep_platform_result("indeed", "https://dk.indeed.com/viewjob?jk=abc"));
+  }
+
+  #[test]
+  fn keep_platform_result_indeed_non_matching_url() {
+    assert!(!keep_platform_result("indeed", "https://www.example.com/jobs"));
+  }
+
+  #[test]
+  fn keep_platform_result_unknown_platform_always_keeps() {
+    assert!(keep_platform_result("linkedin", "https://www.anything.com/job/1"));
+  }
+
+  // ── build_provider_query ───────────────────────────────────────────────
+
+  #[test]
+  fn build_provider_query_jobindex_adds_site_domain() {
+    let q = build_provider_query("jobindex", "rust developer", "");
+    assert!(q.contains("site:jobindex.dk"));
+    assert!(q.contains("rust developer"));
+  }
+
+  #[test]
+  fn build_provider_query_indeed_adds_site_domain() {
+    let q = build_provider_query("indeed", "react", "Copenhagen");
+    assert!(q.contains("site:indeed."));
+    assert!(q.contains("Copenhagen"));
+  }
+
+  #[test]
+  fn build_provider_query_unknown_platform_no_site() {
+    let q = build_provider_query("unknown", "job", "");
+    assert!(!q.contains("site:"));
+  }
+
+  #[test]
+  fn build_provider_query_empty_location_not_added() {
+    let q = build_provider_query("jobindex", "python", "");
+    let parts: Vec<&str> = q.split_whitespace().collect();
+    // Should be: "python site:jobindex.dk"
+    assert_eq!(parts[0], "python");
+    assert!(q.contains("site:jobindex.dk"));
+    assert!(!q.contains("  ")); // no double spaces
+  }
+
+  // ── parse_serpapi_results ─────────────────────────────────────────────
+
+  #[test]
+  fn parse_serpapi_results_basic() {
+    let payload = r#"{
+      "organic_results": [
+        {
+          "link": "https://www.jobindex.dk/job/1",
+          "title": "Senior Dev - Acme Corp",
+          "snippet": "Great opportunity for developers",
+          "date": "3 days ago"
+        }
+      ]
+    }"#;
+    let results = parse_serpapi_results(payload, "jobindex", "Copenhagen").unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].title, "Senior Dev");
+    assert_eq!(results[0].company, "Acme Corp");
+    assert_eq!(results[0].description, "Great opportunity for developers");
+    assert_eq!(results[0].published_date, "3 days ago");
+    assert_eq!(results[0].location, "Copenhagen");
+    assert_eq!(results[0].platform, "jobindex");
+  }
+
+  #[test]
+  fn parse_serpapi_results_filters_non_platform_urls() {
+    let payload = r#"{
+      "organic_results": [
+        {
+          "link": "https://www.other.com/job/1",
+          "title": "Some Job"
+        },
+        {
+          "link": "https://www.jobindex.dk/job/2",
+          "title": "Real Job"
+        }
+      ]
+    }"#;
+    let results = parse_serpapi_results(payload, "jobindex", "").unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].url, "https://www.jobindex.dk/job/2");
+  }
+
+  #[test]
+  fn parse_serpapi_results_truncates_description_at_400() {
+    let long_snippet = "x".repeat(500);
+    let payload = format!(
+      r#"{{"organic_results":[{{"link":"https://www.jobindex.dk/job/1","title":"Dev","snippet":"{}"}}]}}"#,
+      long_snippet
+    );
+    let results = parse_serpapi_results(&payload, "jobindex", "").unwrap();
+    assert_eq!(results[0].description.chars().count(), 400);
+  }
+
+  #[test]
+  fn parse_serpapi_results_empty_organic_results() {
+    let payload = r#"{"organic_results":[]}"#;
+    let results = parse_serpapi_results(payload, "jobindex", "").unwrap();
+    assert!(results.is_empty());
+  }
+
+  #[test]
+  fn parse_serpapi_results_missing_organic_results_key() {
+    let payload = r#"{"search_metadata":{}}"#;
+    let results = parse_serpapi_results(payload, "jobindex", "").unwrap();
+    assert!(results.is_empty());
+  }
+
+  #[test]
+  fn parse_serpapi_results_invalid_json_returns_error() {
+    let err = parse_serpapi_results("not json {{{", "jobindex", "").unwrap_err();
+    assert!(err.contains("SerpAPI JSON parse error"));
+  }
+
+  // ── parse_brave_results ───────────────────────────────────────────────
+
+  #[test]
+  fn parse_brave_results_basic() {
+    let payload = r#"{
+      "web": {
+        "results": [
+          {
+            "url": "https://dk.indeed.com/viewjob?jk=abc",
+            "title": "Backend Engineer - Beta AS",
+            "description": "Looking for a backend engineer",
+            "page_age": "2026-04-10T12:00:00"
+          }
+        ]
+      }
+    }"#;
+    let results = parse_brave_results(payload, "indeed", "Aarhus").unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].title, "Backend Engineer");
+    assert_eq!(results[0].company, "Beta AS");
+    assert_eq!(results[0].description, "Looking for a backend engineer");
+    assert_eq!(results[0].location, "Aarhus");
+    assert_eq!(results[0].platform, "indeed");
+  }
+
+  #[test]
+  fn parse_brave_results_filters_non_platform_urls() {
+    let payload = r#"{
+      "web": {
+        "results": [
+          {"url": "https://www.other.com/job/1", "title": "Filtered"},
+          {"url": "https://dk.indeed.com/viewjob?jk=xyz", "title": "Kept"}
+        ]
+      }
+    }"#;
+    let results = parse_brave_results(payload, "indeed", "").unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].url, "https://dk.indeed.com/viewjob?jk=xyz");
+  }
+
+  #[test]
+  fn parse_brave_results_missing_web_key() {
+    let payload = r#"{"type":"search"}"#;
+    let results = parse_brave_results(payload, "indeed", "").unwrap();
+    assert!(results.is_empty());
+  }
+
+  #[test]
+  fn parse_brave_results_invalid_json_returns_error() {
+    let err = parse_brave_results("{{ bad json", "indeed", "").unwrap_err();
+    assert!(err.contains("Brave JSON parse error"));
+  }
+
+  // ── build_search_url ───────────────────────────────────────────────────
+
+  #[test]
+  fn build_search_url_jobindex_contains_base_and_query() {
+    let url = build_search_url(
+      "jobindex".to_string(),
+      vec!["react".to_string(), "typescript".to_string()],
+      None,
+      None,
+    )
+    .unwrap();
+    assert!(url.contains("jobindex.dk/jobsoeg"));
+    assert!(url.contains("react"));
+    assert!(url.contains("typescript"));
+  }
+
+  #[test]
+  fn build_search_url_jobindex_with_location() {
+    let url = build_search_url(
+      "jobindex".to_string(),
+      vec!["rust".to_string()],
+      Some("Copenhagen".to_string()),
+      None,
+    )
+    .unwrap();
+    assert!(url.contains("where=Copenhagen") || url.contains("where=Copenhagen"));
+    assert!(url.contains("jobindex.dk"));
+  }
+
+  #[test]
+  fn build_search_url_jobindex_no_location_omits_where() {
+    let url = build_search_url("jobindex".to_string(), vec!["go".to_string()], None, None)
+      .unwrap();
+    assert!(!url.contains("where="));
+  }
+
+  #[test]
+  fn build_search_url_indeed_dk_default() {
+    let url = build_search_url(
+      "indeed".to_string(),
+      vec!["python".to_string()],
+      None,
+      Some("dk".to_string()),
+    )
+    .unwrap();
+    assert!(url.contains("dk.indeed.com"));
+  }
+
+  #[test]
+  fn build_search_url_indeed_de_region() {
+    let url = build_search_url(
+      "indeed".to_string(),
+      vec!["java".to_string()],
+      None,
+      Some("de".to_string()),
+    )
+    .unwrap();
+    assert!(url.contains("de.indeed.com"));
+  }
+
+  #[test]
+  fn build_search_url_indeed_com_international() {
+    let url = build_search_url(
+      "indeed".to_string(),
+      vec!["scala".to_string()],
+      None,
+      Some("com".to_string()),
+    )
+    .unwrap();
+    assert!(url.contains("www.indeed.com"));
+    assert!(!url.contains("com.indeed.com"));
+  }
+
+  #[test]
+  fn build_search_url_linkedin_uses_keywords_param() {
+    let url = build_search_url(
+      "linkedin".to_string(),
+      vec!["devops".to_string()],
+      None,
+      None,
+    )
+    .unwrap();
+    assert!(url.contains("linkedin.com/jobs/search"));
+    assert!(url.contains("keywords="));
+    assert!(url.contains("devops"));
+  }
+
+  #[test]
+  fn build_search_url_linkedin_with_location() {
+    let url = build_search_url(
+      "linkedin".to_string(),
+      vec!["sre".to_string()],
+      Some("Aarhus".to_string()),
+      None,
+    )
+    .unwrap();
+    assert!(url.contains("location="));
+    assert!(url.contains("Aarhus"));
+  }
+
+  #[test]
+  fn build_search_url_unknown_platform_returns_err() {
+    let err = build_search_url("monster".to_string(), vec!["x".to_string()], None, None);
+    assert!(err.is_err());
+    assert!(err.unwrap_err().contains("Unknown platform"));
+  }
+
+  #[test]
+  fn build_search_url_multiple_keywords_joined_with_space() {
+    let url = build_search_url(
+      "jobindex".to_string(),
+      vec!["react".to_string(), "node".to_string()],
+      None,
+      None,
+    )
+    .unwrap();
+    // URL-encoded space is %20; both keywords must appear
+    assert!(url.contains("react"));
+    assert!(url.contains("node"));
+  }
+}
