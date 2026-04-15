@@ -59,6 +59,12 @@ export function AppHeader({ onOpenSettings }: Props) {
           )}
             <div className="appToolbar appToolbarEnd" role="toolbar" aria-label={en.app.navAriaToolbar}>
             <NavLink
+              to="/job-search"
+              className={({ isActive }) => `btn ${isActive ? "btnPrimary" : "btnGhost"}`}
+            >
+              {en.jobSearch.navLink}
+            </NavLink>
+            <NavLink
               to="/jobs/new"
               className={({ isActive }) => `btn ${isActive ? "btnPrimary" : "btnGhost"}`}
               aria-label={en.app.navAddJobAria}

@@ -90,6 +90,63 @@ export async function googleOauthDisconnect(): Promise<void> {
   return invoke("google_oauth_disconnect");
 }
 
+// ─── Job Search ──────────────────────────────────────────────────────────────
+
+export interface KeywordStat {
+  keyword: string;
+  count: number;
+}
+
+export interface JobSearchResult {
+  title: string;
+  company: string;
+  location: string;
+  url: string;
+  description: string;
+  published_date: string;
+  platform: string;
+}
+
+export async function getKeywordStats(): Promise<KeywordStat[]> {
+  return invoke<KeywordStat[]>("get_keyword_stats");
+}
+
+export async function getLocationSuggestions(): Promise<string[]> {
+  return invoke<string[]>("get_location_suggestions");
+}
+
+export async function fetchJobSearchRss(params: {
+  platform: string;
+  keywords: string[];
+  location?: string | null;
+  region?: string | null;
+}): Promise<JobSearchResult[]> {
+  return invoke<JobSearchResult[]>("fetch_job_search_rss", {
+    platform: params.platform,
+    keywords: params.keywords,
+    location: params.location ?? null,
+    region: params.region ?? null,
+  });
+}
+
+export async function buildSearchUrl(params: {
+  platform: string;
+  keywords: string[];
+  location?: string | null;
+  region?: string | null;
+}): Promise<string> {
+  return invoke<string>("build_search_url", {
+    platform: params.platform,
+    keywords: params.keywords,
+    location: params.location ?? null,
+    region: params.region ?? null,
+  });
+}
+
+export async function openUrlInBrowser(url: string): Promise<void> {
+  return invoke("open_url_in_browser", { url });
+}
+
 export async function googleCalendarCreateEvent(params: {
   jobId: number;
   dateKind: GoogleCalendarDateKind;
