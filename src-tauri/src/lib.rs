@@ -39,7 +39,7 @@ pub fn run() {
       google_oauth::google_oauth_disconnect,
       job_search::get_keyword_stats,
       job_search::get_location_suggestions,
-      job_search::fetch_job_search_rss,
+      job_search::fetch_job_search_results,
       job_search::build_search_url,
       job_search::open_url_in_browser,
     ])

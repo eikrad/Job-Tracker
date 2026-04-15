@@ -30,6 +30,12 @@ export const en = {
     geminiPlaceholder: "Paste your Gemini API key",
     mistralKey: "API key (Mistral)",
     mistralPlaceholder: "Paste your Mistral API key (La Plateforme)",
+    serpApiKey: "API key (SerpAPI)",
+    serpApiPlaceholder: "Paste your SerpAPI key",
+    braveSearchApiKey: "API key (Brave Search)",
+    braveSearchApiPlaceholder: "Paste your Brave Search API key",
+    jobSearchProviderHint:
+      "Job search uses SerpAPI first and falls back to Brave Search when needed.",
     googleCalendarHeading: "Google Calendar",
     googleOAuthIntro:
       "Create a Desktop OAuth client in Google Cloud Console, enable the Calendar API, then paste the Client ID below. Click “Connect with Google” to sign in via your browser (recommended).",

@@ -20,6 +20,10 @@ export function SettingsModal({ open, onClose }: Props) {
     setGeminiApiKey,
     mistralApiKey,
     setMistralApiKey,
+    serpApiKey,
+    setSerpApiKey,
+    braveSearchApiKey,
+    setBraveSearchApiKey,
     googleAccessToken,
     setGoogleAccessToken,
     googleOauthConnected,
@@ -148,6 +152,28 @@ export function SettingsModal({ open, onClose }: Props) {
                 autoComplete="off"
               />
             </label>
+
+            <label>
+              {en.app.serpApiKey}
+              <input
+                value={serpApiKey}
+                onChange={(e) => setSerpApiKey(e.target.value)}
+                placeholder={en.app.serpApiPlaceholder}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            <label>
+              {en.app.braveSearchApiKey}
+              <input
+                value={braveSearchApiKey}
+                onChange={(e) => setBraveSearchApiKey(e.target.value)}
+                placeholder={en.app.braveSearchApiPlaceholder}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            <p className="muted settingsHint">{en.app.jobSearchProviderHint}</p>
 
             <div className="settingsGoogleBlock">
               <h4 className="settingsSubTitle">{en.app.googleCalendarHeading}</h4>

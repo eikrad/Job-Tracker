@@ -115,17 +115,21 @@ export async function getLocationSuggestions(): Promise<string[]> {
   return invoke<string[]>("get_location_suggestions");
 }
 
-export async function fetchJobSearchRss(params: {
+export async function fetchJobSearchResults(params: {
   platform: string;
   keywords: string[];
   location?: string | null;
   region?: string | null;
+  serpApiKey?: string | null;
+  braveSearchApiKey?: string | null;
 }): Promise<JobSearchResult[]> {
-  return invoke<JobSearchResult[]>("fetch_job_search_rss", {
+  return invoke<JobSearchResult[]>("fetch_job_search_results", {
     platform: params.platform,
     keywords: params.keywords,
     location: params.location ?? null,
     region: params.region ?? null,
+    serpApiKey: params.serpApiKey ?? null,
+    braveSearchApiKey: params.braveSearchApiKey ?? null,
   });
 }
 

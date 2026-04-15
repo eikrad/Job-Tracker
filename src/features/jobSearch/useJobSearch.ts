@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import {
   getKeywordStats,
   getLocationSuggestions,
-  fetchJobSearchRss,
+  fetchJobSearchResults,
   buildSearchUrl,
   openUrlInBrowser,
   type KeywordStat,
   type JobSearchResult,
 } from "../../lib/tauriApi";
+import { useJobTracker } from "../../context/JobTrackerContext";
 
 export type { KeywordStat, JobSearchResult };
 
@@ -31,6 +32,7 @@ function makePlatformRecord<T>(value: T): PlatformRecord<T> {
 }
 
 export function useJobSearch() {
+  const { serpApiKey, braveSearchApiKey } = useJobTracker();
   // ── Keyword state ──────────────────────────────────────────────────────────
   const [allKeywords, setAllKeywords] = useState<KeywordStat[]>([]);
   const [selectedKeywords, setSelectedKeywords] = useState<Set<string>>(new Set());
@@ -149,32 +151,34 @@ export function useJobSearch() {
     setHasSearched(true);
     setLinkedinOpened(false);
 
-    // RSS-capable platforms
-    const rssPlats = (["jobindex", "indeed"] as Platform[]).filter((p) =>
+    // API-backed platforms
+    const apiPlats = (["jobindex", "indeed"] as Platform[]).filter((p) =>
       activePlatforms.has(p),
     );
 
-    if (rssPlats.length > 0) {
+    if (apiPlats.length > 0) {
       setLoading((prev) => {
         const next = { ...prev };
-        for (const platform of rssPlats) next[platform] = true;
+        for (const platform of apiPlats) next[platform] = true;
         return next;
       });
       setErrors((prev) => {
         const next = { ...prev };
-        for (const platform of rssPlats) next[platform] = "";
+        for (const platform of apiPlats) next[platform] = "";
         return next;
       });
     }
 
-    // Fire all RSS fetches in parallel
-    const fetches = rssPlats.map(async (platform) => {
+    // Fire all API searches in parallel
+    const fetches = apiPlats.map(async (platform) => {
       try {
-        const data = await fetchJobSearchRss({
+        const data = await fetchJobSearchResults({
           platform,
           keywords,
           location: location || null,
           region: platform === "indeed" ? indeedRegion : null,
+          serpApiKey: serpApiKey || null,
+          braveSearchApiKey: braveSearchApiKey || null,
         });
         setResults((prev) => ({ ...prev, [platform]: data }));
       } catch (e) {
@@ -195,7 +199,15 @@ export function useJobSearch() {
     }
 
     await Promise.allSettled(fetches);
-  }, [selectedKeywords, activePlatforms, location, indeedRegion, openInBrowser]);
+  }, [
+    selectedKeywords,
+    activePlatforms,
+    location,
+    indeedRegion,
+    openInBrowser,
+    serpApiKey,
+    braveSearchApiKey,
+  ]);
 
   return {
     // Keywords

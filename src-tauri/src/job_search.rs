@@ -1,6 +1,7 @@
 use reqwest::blocking::Client;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use tauri::Manager;
 use url::Url;
@@ -32,32 +33,6 @@ fn get_db_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
   Ok(data_dir.join("data").join("app.db"))
 }
 
-/// Strip HTML tags and decode common entities.
-fn strip_html(html: &str) -> String {
-  let mut result = String::with_capacity(html.len());
-  let mut in_tag = false;
-  for c in html.chars() {
-    match c {
-      '<' => in_tag = true,
-      '>' => {
-        in_tag = false;
-        result.push(' ');
-      }
-      _ if !in_tag => result.push(c),
-      _ => {}
-    }
-  }
-  let collapsed = result.split_whitespace().collect::<Vec<_>>().join(" ");
-  collapsed
-    .replace("&amp;", "&")
-    .replace("&lt;", "<")
-    .replace("&gt;", ">")
-    .replace("&quot;", "\"")
-    .replace("&#39;", "'")
-    .replace("&nbsp;", " ")
-    .replace("&#8203;", "")
-}
-
 fn parse_tags(tags_str: &str) -> Vec<String> {
   let trimmed = tags_str.trim();
   if trimmed.is_empty() {
@@ -82,103 +57,121 @@ fn parse_tags(tags_str: &str) -> Vec<String> {
     .collect()
 }
 
-/// Parse an RSS/Atom XML string into a list of search results.
-fn parse_rss(xml: &str, platform: &str) -> Result<Vec<JobSearchResult>, String> {
-  let doc =
-    roxmltree::Document::parse(xml).map_err(|e| format!("XML parse error: {e}"))?;
-
-  let mut results = Vec::new();
-
-  for item in doc
-    .descendants()
-    .filter(|n| n.tag_name().name() == "item")
-  {
-    let mut title = String::new();
-    let mut link = String::new();
-    let mut description = String::new();
-    let mut pub_date = String::new();
-    let mut company = String::new();
-    let mut location = String::new();
-
-    for child in item.children().filter(|n| n.is_element()) {
-      let tag = child.tag_name().name();
-      let text = child.text().unwrap_or("").trim().to_string();
-
-      match tag {
-        "title" => title = text,
-        "link" => {
-          if link.is_empty() {
-            link = text;
-          }
-        }
-        "description" => description = strip_html(&text),
-        "pubDate" => pub_date = text,
-        // Company / author variations
-        "company" | "creator" => {
-          if company.is_empty() {
-            company = text;
-          }
-        }
-        "location" => {
-          if location.is_empty() {
-            location = text;
-          }
-        }
-        // guid is a reliable fallback URL
-        "guid" => {
-          if link.is_empty() && text.starts_with("http") {
-            link = text;
-          }
-        }
-        _ => {}
-      }
-    }
-
-    // Try to parse company / location from the title string.
-    // Jobindex uses "Title hos Company" or "Title - Company".
-    // Indeed uses  "Title - Company - City, Country".
-    if company.is_empty() && !title.is_empty() {
-      if let Some((left, right)) = title.split_once(" hos ") {
-        company = right.trim().to_string();
-        title = left.trim().to_string();
-      } else {
-        let title_for_split = title.clone();
-        let parts: Vec<&str> = title_for_split.splitn(3, " - ").collect();
-        match parts.len() {
-          2 => {
-            company = parts[1].trim().to_string();
-            title = parts[0].trim().to_string();
-          }
-          3 => {
-            title = parts[0].trim().to_string();
-            company = parts[1].trim().to_string();
-            if location.is_empty() {
-              location = parts[2].trim().to_string();
-            }
-          }
-          _ => {}
-        }
-      }
-    }
-
-    if !link.is_empty() {
-      results.push(JobSearchResult {
-        title: if title.is_empty() {
-          "Untitled".to_string()
-        } else {
-          title
-        },
-        company,
-        location,
-        url: link,
-        description: description.chars().take(400).collect(),
-        published_date: pub_date,
-        platform: platform.to_string(),
-      });
-    }
+fn domain_for_platform(platform: &str) -> &'static str {
+  match platform {
+    "jobindex" => "jobindex.dk",
+    "indeed" => "indeed.",
+    _ => "",
   }
+}
 
-  Ok(results)
+fn build_provider_query(platform: &str, keywords: &str, location: &str) -> String {
+  let domain = domain_for_platform(platform);
+  let mut query = keywords.to_string();
+  if !location.trim().is_empty() {
+    query.push(' ');
+    query.push_str(location.trim());
+  }
+  if !domain.is_empty() {
+    query.push(' ');
+    query.push_str("site:");
+    query.push_str(domain);
+  }
+  query
+}
+
+fn normalize_company(title: &str) -> (String, String) {
+  let parts: Vec<&str> = title.splitn(2, " - ").collect();
+  if parts.len() == 2 {
+    (parts[0].trim().to_string(), parts[1].trim().to_string())
+  } else {
+    (title.trim().to_string(), String::new())
+  }
+}
+
+fn keep_platform_result(platform: &str, url: &str) -> bool {
+  let domain = domain_for_platform(platform);
+  if domain.is_empty() {
+    return true;
+  }
+  url.contains(domain)
+}
+
+fn parse_serpapi_results(payload: &str, platform: &str, location: &str) -> Result<Vec<JobSearchResult>, String> {
+  let data: Value = serde_json::from_str(payload)
+    .map_err(|e| format!("SerpAPI JSON parse error: {e}"))?;
+  let Some(items) = data.get("organic_results").and_then(Value::as_array) else {
+    return Ok(Vec::new());
+  };
+  let mut out = Vec::new();
+  for item in items {
+    let url = item.get("link").and_then(Value::as_str).unwrap_or("").to_string();
+    if url.is_empty() || !keep_platform_result(platform, &url) {
+      continue;
+    }
+    let title_raw = item.get("title").and_then(Value::as_str).unwrap_or("Untitled");
+    let (title, company) = normalize_company(title_raw);
+    let desc = item
+      .get("snippet")
+      .and_then(Value::as_str)
+      .unwrap_or("")
+      .chars()
+      .take(400)
+      .collect::<String>();
+    let published = item.get("date").and_then(Value::as_str).unwrap_or("").to_string();
+    out.push(JobSearchResult {
+      title,
+      company,
+      location: location.to_string(),
+      url,
+      description: desc,
+      published_date: published,
+      platform: platform.to_string(),
+    });
+  }
+  Ok(out)
+}
+
+fn parse_brave_results(payload: &str, platform: &str, location: &str) -> Result<Vec<JobSearchResult>, String> {
+  let data: Value = serde_json::from_str(payload)
+    .map_err(|e| format!("Brave JSON parse error: {e}"))?;
+  let Some(items) = data
+    .get("web")
+    .and_then(|w| w.get("results"))
+    .and_then(Value::as_array) else {
+    return Ok(Vec::new());
+  };
+  let mut out = Vec::new();
+  for item in items {
+    let url = item.get("url").and_then(Value::as_str).unwrap_or("").to_string();
+    if url.is_empty() || !keep_platform_result(platform, &url) {
+      continue;
+    }
+    let title_raw = item.get("title").and_then(Value::as_str).unwrap_or("Untitled");
+    let (title, company) = normalize_company(title_raw);
+    let desc = item
+      .get("description")
+      .and_then(Value::as_str)
+      .unwrap_or("")
+      .chars()
+      .take(400)
+      .collect::<String>();
+    let published = item
+      .get("page_age")
+      .and_then(Value::as_str)
+      .unwrap_or("")
+      .to_string();
+    out.push(JobSearchResult {
+      title,
+      company,
+      location: location.to_string(),
+      url,
+      description: desc,
+      published_date: published,
+      platform: platform.to_string(),
+    });
+  }
+  Ok(out)
 }
 
 // ─── Tauri commands ────────────────────────────────────────────────────────
@@ -240,54 +233,23 @@ pub fn get_location_suggestions(app: tauri::AppHandle) -> Result<Vec<String>, St
   Ok(cities)
 }
 
-/// Fetch and parse an RSS job feed for the given platform.
+/// Fetch and parse job search results using SerpAPI first, Brave Search as fallback.
 /// Supported platforms: "jobindex", "indeed".
 #[tauri::command]
-pub fn fetch_job_search_rss(
+pub fn fetch_job_search_results(
   platform: String,
   keywords: Vec<String>,
   location: Option<String>,
   region: Option<String>,
+  serp_api_key: Option<String>,
+  brave_search_api_key: Option<String>,
 ) -> Result<Vec<JobSearchResult>, String> {
   let query = keywords.join(" ");
   let loc = location.unwrap_or_default();
-
-  let feed_url: String = match platform.as_str() {
-    "jobindex" => {
-      let mut url = Url::parse("https://www.jobindex.dk/jobsoeg/rss")
-        .map_err(|e| e.to_string())?;
-      {
-        let mut pairs = url.query_pairs_mut();
-        pairs.append_pair("q", &query);
-        if !loc.is_empty() {
-          pairs.append_pair("where", &loc);
-        }
-        pairs.append_pair("jobnr", "");
-        pairs.append_pair("supid", "0");
-        pairs.append_pair("lang", "");
-        pairs.append_pair("period", "0");
-      }
-      url.into()
-    }
-    "indeed" => {
-      let domain = region.as_deref().unwrap_or("dk");
-      let base_str = if domain == "com" {
-        "https://www.indeed.com/rss".to_string()
-      } else {
-        format!("https://{}.indeed.com/rss", domain)
-      };
-      let mut url = Url::parse(&base_str).map_err(|e| e.to_string())?;
-      {
-        let mut pairs = url.query_pairs_mut();
-        pairs.append_pair("q", &query);
-        if !loc.is_empty() {
-          pairs.append_pair("l", &loc);
-        }
-      }
-      url.into()
-    }
+  match platform.as_str() {
+    "jobindex" | "indeed" => {}
     other => return Err(format!("Unknown platform: {}", other)),
-  };
+  }
 
   let client = Client::builder()
     .user_agent(
@@ -298,24 +260,69 @@ pub fn fetch_job_search_rss(
     .build()
     .map_err(|e| e.to_string())?;
 
-  let response = client
-    .get(&feed_url)
-    .send()
-    .map_err(|e| format!("Request failed: {e}"))?;
+  let provider_query = build_provider_query(&platform, &query, &loc);
+  let gl = region
+    .as_deref()
+    .unwrap_or("dk")
+    .to_lowercase();
+  let brave_country = gl.to_uppercase();
 
-  if !response.status().is_success() {
-    return Err(format!(
-      "HTTP {} from {}",
-      response.status().as_u16(),
-      feed_url
-    ));
+  let serp_key = serp_api_key.unwrap_or_default();
+  if !serp_key.trim().is_empty() {
+    let response = client
+      .get("https://serpapi.com/search.json")
+      .query(&[
+        ("engine", "google"),
+        ("q", provider_query.as_str()),
+        ("gl", gl.as_str()),
+        ("hl", "en"),
+        ("num", "20"),
+        ("api_key", serp_key.trim()),
+      ])
+      .send()
+      .map_err(|e| format!("SerpAPI request failed: {e}"))?;
+
+    if response.status().is_success() {
+      let body = response
+        .text()
+        .map_err(|e| format!("SerpAPI read failed: {e}"))?;
+      let results = parse_serpapi_results(&body, &platform, &loc)?;
+      if !results.is_empty() {
+        return Ok(results);
+      }
+    }
   }
 
-  let text = response
-    .text()
-    .map_err(|e| format!("Failed to read response: {e}"))?;
+  let brave_key = brave_search_api_key.unwrap_or_default();
+  if !brave_key.trim().is_empty() {
+    let response = client
+      .get("https://api.search.brave.com/res/v1/web/search")
+      .header("X-Subscription-Token", brave_key.trim())
+      .query(&[
+        ("q", provider_query.as_str()),
+        ("country", brave_country.as_str()),
+        ("search_lang", "en"),
+        ("count", "20"),
+      ])
+      .send()
+      .map_err(|e| format!("Brave request failed: {e}"))?;
 
-  parse_rss(&text, &platform)
+    if response.status().is_success() {
+      let body = response
+        .text()
+        .map_err(|e| format!("Brave read failed: {e}"))?;
+      let results = parse_brave_results(&body, &platform, &loc)?;
+      if !results.is_empty() {
+        return Ok(results);
+      }
+    }
+  }
+
+  if serp_key.trim().is_empty() && brave_key.trim().is_empty() {
+    return Err("Missing search API keys. Add SerpAPI and/or Brave Search API key in Settings.".to_string());
+  }
+
+  Ok(Vec::new())
 }
 
 /// Build and return the browser search URL without opening it.

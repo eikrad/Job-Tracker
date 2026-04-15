@@ -3,7 +3,7 @@
 [![CI](https://github.com/eikrad/Job-Tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/ci.yml)
 [![Alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/eikrad/Job-Tracker)
 
-Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, and optional **AI-assisted extraction** (Google **Gemini** or **Mistral**).
+Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, optional **AI-assisted extraction** (Google **Gemini** or **Mistral**), and web-based job discovery.
 
 Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
@@ -79,6 +79,25 @@ Installable artifacts appear under `src-tauri/target/release/` (platform-depende
 2. **AI extraction**: choose **Gemini** or **Mistral** in the app and paste the matching API key (stored in local storage for that build). Keys in `.env` are optional for file-based tooling; the desktop UI does not read `.env` for these calls.
    - **Mistral**: sign up at [La Plateforme](https://console.mistral.ai/); the free **Experiment** tier is typically enough for occasional job-text extraction (high monthly token allowance; rate limits apply — see [Mistral help center](https://help.mistral.ai/)). Limits can change; check their current docs.
    - **Gemini**: Google AI Studio API key as before.
+3. **Job Search providers**: in **Settings**, add one or both:
+   - **SerpAPI key** (primary provider)
+   - **Brave Search API key** (fallback provider)
+   
+   Provider order is:
+   1. SerpAPI
+   2. Brave Search (if SerpAPI returns no usable results)
+   
+   If both are empty, Job Search will return a configuration error and still allow manual **Open in browser**.
+
+## Job Search
+
+- Platforms in-app: **Jobindex**, **Indeed**, **LinkedIn**.
+- **Jobindex** and **Indeed** now use provider-based web search (SerpAPI + Brave fallback), not RSS.
+- **LinkedIn** remains browser-only and opens directly in your default browser.
+- Search result cards support:
+  - **Add as Interesting** (one-click save with status `Interesting`)
+  - auto-tags from source platform/location
+  - **Open form** if you want to edit details before saving
 
 ## Google Calendar
 
@@ -117,6 +136,7 @@ Use this to confirm OAuth and the month calendar end-to-end on your machine:
 
 - **SQLite and uploaded PDFs** live in the OS app data directory for the Tauri app (not in this repo).
 - The repo `storage/` folder is for optional manual files; see `.gitignore`.
+- User-entered API keys in Settings are stored in local storage for this app profile.
 
 ## Import / export
 

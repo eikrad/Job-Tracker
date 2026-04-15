@@ -40,6 +40,10 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
   const [llmProvider, setLlmProvider] = useState<LlmProvider>(readLlmProvider);
   const [geminiApiKey, setGeminiApiKey] = useState(localStorage.getItem("geminiApiKey") ?? "");
   const [mistralApiKey, setMistralApiKey] = useState(localStorage.getItem("mistralApiKey") ?? "");
+  const [serpApiKey, setSerpApiKey] = useState(localStorage.getItem("serpApiKey") ?? "");
+  const [braveSearchApiKey, setBraveSearchApiKey] = useState(
+    localStorage.getItem("braveSearchApiKey") ?? "",
+  );
   const [googleAccessToken, setGoogleAccessToken] = useState(
     localStorage.getItem("googleAccessToken") ?? "",
   );
@@ -82,6 +86,12 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
   useEffect(() => {
     localStorage.setItem("mistralApiKey", mistralApiKey);
   }, [mistralApiKey]);
+  useEffect(() => {
+    localStorage.setItem("serpApiKey", serpApiKey);
+  }, [serpApiKey]);
+  useEffect(() => {
+    localStorage.setItem("braveSearchApiKey", braveSearchApiKey);
+  }, [braveSearchApiKey]);
   useEffect(() => {
     localStorage.setItem("googleAccessToken", googleAccessToken);
   }, [googleAccessToken]);
@@ -233,6 +243,10 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
     setGeminiApiKey,
     mistralApiKey,
     setMistralApiKey,
+    serpApiKey,
+    setSerpApiKey,
+    braveSearchApiKey,
+    setBraveSearchApiKey,
     googleAccessToken,
     setGoogleAccessToken,
     googleOauthConnected,
