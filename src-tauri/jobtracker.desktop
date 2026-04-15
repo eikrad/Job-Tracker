@@ -1,0 +1,8 @@
+[Desktop Entry]
+Categories=Office;ProjectManagement;
+Comment=Track job applications, deadlines, and follow-ups
+Exec=job-tracker
+Icon=job-tracker
+Name=Job Tracker
+Terminal=false
+Type=Application

@@ -53,6 +53,20 @@ function strField(raw: Record<string, unknown>, keys: string[]): string | undefi
   return undefined;
 }
 
+const VALID_WORK_MODES: Record<string, string> = {
+  remote: "Remote",
+  hybrid: "Hybrid",
+  "on-site": "On-site",
+  onsite: "On-site",
+  "on site": "On-site",
+  office: "On-site",
+};
+
+function normalizeWorkMode(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  return VALID_WORK_MODES[raw.toLowerCase().trim()] ?? undefined;
+}
+
 /**
  * Map messy LLM JSON (alternate key casings, a few aliases) into Partial<NewJob>.
  */
@@ -112,7 +126,7 @@ export function normalizeLlmJobPartial(raw: Record<string, unknown>): Partial<Ne
   if (workplace_city) out.workplace_city = workplace_city;
   const workplace_postal_code = strField(raw, ["workplace_postal_code", "postalCode", "postal_code", "zip"]);
   if (workplace_postal_code) out.workplace_postal_code = workplace_postal_code;
-  const work_mode = strField(raw, ["work_mode", "workMode", "remote", "location_type"]);
+  const work_mode = normalizeWorkMode(strField(raw, ["work_mode", "workMode", "location_type"]));
   if (work_mode) out.work_mode = work_mode;
   const salary_range = strField(raw, ["salary_range", "salaryRange", "salary", "compensation"]);
   if (salary_range) out.salary_range = salary_range;

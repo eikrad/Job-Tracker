@@ -6,8 +6,14 @@ import { en } from "../../i18n/en";
 
 type Props = { jobs: Job[] };
 
-/** Matches default pipeline; reminders ignore jobs moved to this status by name. */
 const DONE_STATUS_NAME = "Done";
+
+function urgencyClass(days: number): string {
+  if (days < 0) return "reminderOverdue";
+  if (days <= 2) return "reminderUrgent";
+  if (days <= 7) return "reminderSoon";
+  return "reminderOk";
+}
 
 export const ReminderCenter = memo(function ReminderCenter({ jobs }: Props) {
   const reminders = useMemo(() => {
@@ -41,10 +47,13 @@ export const ReminderCenter = memo(function ReminderCenter({ jobs }: Props) {
                   ? en.reminders.followUp14
                   : null;
             return (
-              <li key={job.id}>
-                {job.company} - {job.title ?? en.common.untitled}:{" "}
-                {days < 0 ? en.reminders.overdue(Math.abs(days)) : en.reminders.dueIn(days)}
-                {followUp ? ` | ${followUp}` : ""}
+              <li key={job.id} className={urgencyClass(days)}>
+                <span className="reminderBadge">
+                  {days < 0 ? en.reminders.overdue(Math.abs(days)) : en.reminders.dueIn(days)}
+                </span>
+                {" "}
+                {job.company} - {job.title ?? en.common.untitled}
+                {followUp ? <span className="reminderFollowUp"> {followUp}</span> : ""}
               </li>
             );
           })}

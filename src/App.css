@@ -570,14 +570,79 @@ tbody tr:last-child td {
 }
 
 .reminderList li {
-  padding: var(--space-sm) 0;
+  padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--color-border);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-sm);
   font-size: 0.875rem;
   line-height: 1.45;
+  margin-bottom: 2px;
+  transition: background 0.15s ease;
 }
 
 .reminderList li:last-child {
   border-bottom: none;
+}
+
+.reminderList li.reminderOverdue {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.reminderList li.reminderUrgent {
+  border-left-color: #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.reminderList li.reminderSoon {
+  border-left-color: #3b82f6;
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+.reminderList li.reminderOk {
+  border-left-color: #10b981;
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.reminderBadge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.reminderOverdue .reminderBadge {
+  background: #dc2626;
+  color: #fff;
+}
+
+.reminderUrgent .reminderBadge {
+  background: #f59e0b;
+  color: #fff;
+}
+
+.reminderSoon .reminderBadge {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.reminderOk .reminderBadge {
+  background: #10b981;
+  color: #fff;
+}
+
+.reminderFollowUp {
+  display: block;
+  font-size: 0.75rem;
+  opacity: 0.7;
+  margin-top: 0.15rem;
 }
 
 .deadlineList li {
