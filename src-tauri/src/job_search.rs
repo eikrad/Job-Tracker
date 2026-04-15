@@ -28,7 +28,8 @@ pub struct JobSearchResult {
 
 fn get_db_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
   let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-  Ok(data_dir.join("data").join("jobs.db"))
+  // Keep this aligned with db::connection()/init_db, which uses app.db.
+  Ok(data_dir.join("data").join("app.db"))
 }
 
 /// Strip HTML tags and decode common entities.

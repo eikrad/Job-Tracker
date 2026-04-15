@@ -79,6 +79,23 @@ fn ensure_storage_dirs(base: &Path) -> Result<(), String> {
   Ok(())
 }
 
+fn sanitize_file_name(name: &str) -> String {
+  name
+    .chars()
+    .map(|c| {
+      if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' {
+        c
+      } else {
+        '_'
+      }
+    })
+    .collect::<String>()
+}
+
+fn path_to_string(path: &Path) -> String {
+  path.to_string_lossy().to_string()
+}
+
 fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
   let app_data_dir = app
     .path()
@@ -260,6 +277,11 @@ pub fn init_db(app: tauri::AppHandle) -> Result<(), String> {
         file_path TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS idx_jobs_updated_at ON jobs(updated_at);
+      CREATE INDEX IF NOT EXISTS idx_status_history_job_changed
+        ON status_history(job_id, changed_at);
+      CREATE INDEX IF NOT EXISTS idx_job_documents_job_created
+        ON job_documents(job_id, created_at);
       "#,
     )
     .map_err(|e| format!("DB init failed: {e}"))?;
@@ -459,23 +481,25 @@ pub fn update_job(app: tauri::AppHandle, job_id: i64, payload: NewJob) -> Result
 
 #[tauri::command]
 pub fn update_job_status(app: tauri::AppHandle, job_id: i64, new_status: String) -> Result<(), String> {
-  let conn = connection(&app)?;
-  let old_status: String = conn
+  let mut conn = connection(&app)?;
+  let tx = conn.transaction().map_err(|e| e.to_string())?;
+  let old_status: String = tx
     .query_row("SELECT status FROM jobs WHERE id = ?1", params![job_id], |r| r.get(0))
     .map_err(|e| format!("Fetch old status failed: {e}"))?;
   let now = Utc::now().to_rfc3339();
-  conn
+  tx
     .execute(
       "UPDATE jobs SET status = ?1, updated_at = ?2 WHERE id = ?3",
       params![new_status, now, job_id],
     )
     .map_err(|e| e.to_string())?;
-  conn
+  tx
     .execute(
       "INSERT INTO status_history (job_id, from_status, to_status, changed_at) VALUES (?1, ?2, ?3, ?4)",
       params![job_id, old_status, new_status, now],
     )
     .map_err(|e| e.to_string())?;
+  tx.commit().map_err(|e| e.to_string())?;
   Ok(())
 }
 
@@ -511,22 +535,20 @@ pub fn save_application_pdf(
     .app_data_dir()
     .map_err(|e| format!("Cannot resolve app data dir: {e}"))?;
   ensure_storage_dirs(&app_data_dir)?;
-  let safe_name = original_name
-    .chars()
-    .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' { c } else { '_' })
-    .collect::<String>();
+  let safe_name = sanitize_file_name(&original_name);
   let file_name = format!("{}_{}", job_id, safe_name);
   let target = app_data_dir.join("storage").join("applications").join(file_name);
   fs::write(&target, bytes).map_err(|e| format!("Write pdf failed: {e}"))?;
 
   let conn = connection(&app)?;
+  let target_path = path_to_string(&target);
   conn
     .execute(
       "UPDATE jobs SET pdf_path = ?1, updated_at = ?2 WHERE id = ?3",
-      params![target.to_string_lossy().to_string(), Utc::now().to_rfc3339(), job_id],
+      params![target_path, Utc::now().to_rfc3339(), job_id],
     )
     .map_err(|e| format!("Update pdf path failed: {e}"))?;
-  Ok(target.to_string_lossy().to_string())
+  Ok(path_to_string(&target))
 }
 
 #[tauri::command]
@@ -567,16 +589,13 @@ pub fn save_job_document(
     .app_data_dir()
     .map_err(|e| format!("Cannot resolve app data dir: {e}"))?;
   ensure_storage_dirs(&app_data_dir)?;
-  let safe_name = original_name
-    .chars()
-    .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' { c } else { '_' })
-    .collect::<String>();
+  let safe_name = sanitize_file_name(&original_name);
   let file_name = format!("{}_{}_{}", job_id, doc_type, safe_name);
   let target = app_data_dir.join("storage").join("applications").join(&file_name);
   fs::write(&target, bytes).map_err(|e| format!("Write document failed: {e}"))?;
 
   let now = Utc::now().to_rfc3339();
-  let file_path = target.to_string_lossy().to_string();
+  let file_path = path_to_string(&target);
   let conn = connection(&app)?;
   conn
     .execute(
@@ -649,16 +668,18 @@ pub(crate) fn is_importable_job(payload: &NewJob) -> bool {
 
 #[tauri::command]
 pub fn import_jobs(app: tauri::AppHandle, jobs: Vec<NewJob>) -> Result<usize, String> {
-  let conn = connection(&app)?;
+  let mut conn = connection(&app)?;
+  let tx = conn.transaction().map_err(|e| e.to_string())?;
   let now = Utc::now().to_rfc3339();
   let mut count = 0usize;
   for payload in jobs {
     if !is_importable_job(&payload) {
       continue;
     }
-    insert_new_job(&conn, &payload, &now).map_err(|e| format!("Import job failed: {e}"))?;
+    insert_new_job(&tx, &payload, &now).map_err(|e| format!("Import job failed: {e}"))?;
     count += 1;
   }
+  tx.commit().map_err(|e| e.to_string())?;
   Ok(count)
 }
 

@@ -268,7 +268,11 @@ export const en = {
     openLinkedIn: "Open LinkedIn Jobs ↗",
     linkedinBrowserOnly:
       "LinkedIn does not offer a public job search API. Open the search in your browser below.",
-    addToTracker: "+ Add to Tracker",
+    addAsInteresting: "+ Add as Interesting",
+    addingToTracker: "Adding…",
+    addedToTracker: "Added",
+    openForm: "Open form",
+    unknownCompany: "Unknown company",
     resultsCount: (n: number) => `${n} result${n === 1 ? "" : "s"}`,
     linkedinOpened: "Opened LinkedIn in your browser.",
     navLink: "Search",

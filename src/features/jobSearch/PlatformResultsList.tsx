@@ -18,6 +18,17 @@ interface Props {
   onOpenInBrowser: (platform: Platform) => void;
 }
 
+function resultKey(result: JobSearchResult): string {
+  if (result.url) return `${result.platform}|${result.url}`;
+  return [
+    result.platform,
+    result.title,
+    result.company,
+    result.location,
+    result.published_date,
+  ].join("|");
+}
+
 export function PlatformResultsList({
   platform,
   isActive,
@@ -99,8 +110,8 @@ export function PlatformResultsList({
         </div>
       ) : (
         <div className="searchResultList">
-          {results.map((result, i) => (
-            <SearchResultCard key={`${result.url}-${i}`} result={result} />
+          {results.map((result) => (
+            <SearchResultCard key={resultKey(result)} result={result} />
           ))}
         </div>
       )}

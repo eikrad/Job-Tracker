@@ -1,10 +1,31 @@
+import { memo, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { openUrlInBrowser } from "../../lib/tauriApi";
 import { en } from "../../i18n/en";
+import { useJobTracker } from "../../context/JobTrackerContext";
 import type { JobSearchResult } from "./useJobSearch";
 
 interface Props {
   result: JobSearchResult;
+}
+
+function buildAutoTags(result: JobSearchResult): string | undefined {
+  const tags = new Set<string>();
+
+  if (result.platform.trim()) {
+    tags.add(result.platform.trim().toLowerCase());
+  }
+
+  if (result.location.trim()) {
+    result.location
+      .split(/[,\-/|]/)
+      .map((part) => part.trim().toLowerCase())
+      .filter(Boolean)
+      .forEach((part) => tags.add(part));
+  }
+
+  if (tags.size === 0) return undefined;
+  return Array.from(tags).join(", ");
 }
 
 function formatRelativeDate(dateStr: string): string {
@@ -24,21 +45,53 @@ function formatRelativeDate(dateStr: string): string {
   }
 }
 
-export function SearchResultCard({ result }: Props) {
+export const SearchResultCard = memo(function SearchResultCard({ result }: Props) {
   const navigate = useNavigate();
+  const { onSubmit } = useJobTracker();
+  const [isSaving, setIsSaving] = useState(false);
+  const [added, setAdded] = useState(false);
 
   function handleOpenBrowser() {
     openUrlInBrowser(result.url).catch(console.error);
   }
 
-  function handleAddToTracker() {
+  async function handleAddToTracker() {
+    if (isSaving || added) return;
+    setIsSaving(true);
+    try {
+      const ok = await onSubmit({
+        company: result.company || en.jobSearch.unknownCompany,
+        title: result.title || undefined,
+        url: result.url || undefined,
+        raw_text: result.description || undefined,
+        status: "Interesting",
+        tags: autoTags,
+        source: result.platform || undefined,
+        workplace_city: result.location || undefined,
+      });
+      if (ok) setAdded(true);
+    } catch (error) {
+      console.error("Failed to add job:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function handleOpenFullForm() {
     navigate("/jobs/new", {
       state: { prefillUrl: result.url },
     });
   }
 
-  const metaParts = [result.company, result.location].filter(Boolean);
-  const dateLabel = formatRelativeDate(result.published_date);
+  const autoTags = useMemo(() => buildAutoTags(result), [result]);
+  const metaParts = useMemo(
+    () => [result.company, result.location].filter(Boolean),
+    [result.company, result.location],
+  );
+  const dateLabel = useMemo(
+    () => formatRelativeDate(result.published_date),
+    [result.published_date],
+  );
 
   return (
     <article className="searchResultCard">
@@ -62,10 +115,22 @@ export function SearchResultCard({ result }: Props) {
         <button type="button" className="btn btnGhost btnSm" onClick={handleOpenBrowser}>
           {en.jobSearch.openInBrowser}
         </button>
-        <button type="button" className="btn btnPrimary btnSm" onClick={handleAddToTracker}>
-          {en.jobSearch.addToTracker}
+        <button
+          type="button"
+          className="btn btnPrimary btnSm"
+          onClick={() => void handleAddToTracker()}
+          disabled={isSaving || added}
+        >
+          {added
+            ? en.jobSearch.addedToTracker
+            : isSaving
+              ? en.jobSearch.addingToTracker
+              : en.jobSearch.addAsInteresting}
+        </button>
+        <button type="button" className="btn btnGhost btnSm" onClick={handleOpenFullForm}>
+          {en.jobSearch.openForm}
         </button>
       </div>
     </article>
   );
-}
+});

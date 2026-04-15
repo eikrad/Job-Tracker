@@ -154,10 +154,21 @@ export function useJobSearch() {
       activePlatforms.has(p),
     );
 
+    if (rssPlats.length > 0) {
+      setLoading((prev) => {
+        const next = { ...prev };
+        for (const platform of rssPlats) next[platform] = true;
+        return next;
+      });
+      setErrors((prev) => {
+        const next = { ...prev };
+        for (const platform of rssPlats) next[platform] = "";
+        return next;
+      });
+    }
+
     // Fire all RSS fetches in parallel
     const fetches = rssPlats.map(async (platform) => {
-      setLoading((prev) => ({ ...prev, [platform]: true }));
-      setErrors((prev) => ({ ...prev, [platform]: "" }));
       try {
         const data = await fetchJobSearchRss({
           platform,
