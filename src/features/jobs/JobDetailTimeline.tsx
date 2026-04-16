@@ -26,7 +26,7 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
 
   if (!selected) {
     return (
-      <section className="card">
+      <section className="card dashboardPanel">
         <h2>{en.detail.title}</h2>
         <p className="muted">{en.detail.selectJob}</p>
       </section>
@@ -34,48 +34,50 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
   }
 
   return (
-    <section className="card">
+    <section className="card dashboardPanel">
       <h2>{en.detail.title}</h2>
-      <p className="detailMeta">
-        <strong>{selected.company}</strong>
-        {selected.title ? ` — ${selected.title}` : ""}
-      </p>
-      <p className="detailMeta">
-        {en.detail.status} <span>{selected.status}</span>
-        {selected.priority != null && (
-          <span style={{ marginLeft: "0.5rem" }}>
-            {[1, 2, 3].map((n) => (
-              <Star key={n} size={13} fill={selected.priority! >= n ? "currentColor" : "none"} style={{ display: "inline" }} />
-            ))}
-          </span>
+      <div className="dashboardPanelScroll">
+        <p className="detailMeta">
+          <strong>{selected.company}</strong>
+          {selected.title ? ` — ${selected.title}` : ""}
+        </p>
+        <p className="detailMeta">
+          {en.detail.status} <span>{selected.status}</span>
+          {selected.priority != null && (
+            <span style={{ marginLeft: "0.5rem" }}>
+              {[1, 2, 3].map((n) => (
+                <Star key={n} size={13} fill={selected.priority! >= n ? "currentColor" : "none"} style={{ display: "inline" }} />
+              ))}
+            </span>
+          )}
+        </p>
+        {(selected.deadline || selected.interview_date || selected.start_date) && (
+          <p className="detailMeta detailDates">
+            {selected.deadline && <><Calendar size={13} style={{ display: "inline", marginRight: 3 }} />{en.detail.deadlineShort}: <span>{selected.deadline}</span></>}
+            {selected.interview_date && <>{selected.deadline ? " · " : null}{en.detail.interviewShort}: <span>{selected.interview_date}</span></>}
+            {selected.start_date && <>{(selected.deadline || selected.interview_date) ? " · " : null}{en.detail.startShort}: <span>{selected.start_date}</span></>}
+          </p>
         )}
-      </p>
-      {(selected.deadline || selected.interview_date || selected.start_date) && (
-        <p className="detailMeta detailDates">
-          {selected.deadline && <><Calendar size={13} style={{ display: "inline", marginRight: 3 }} />{en.detail.deadlineShort}: <span>{selected.deadline}</span></>}
-          {selected.interview_date && <>{selected.deadline ? " · " : null}{en.detail.interviewShort}: <span>{selected.interview_date}</span></>}
-          {selected.start_date && <>{(selected.deadline || selected.interview_date) ? " · " : null}{en.detail.startShort}: <span>{selected.start_date}</span></>}
-        </p>
-      )}
-      {(selected.work_mode || selected.contract_type) && (
-        <p className="detailMeta">
-          <Monitor size={13} style={{ display: "inline", marginRight: 3 }} />
-          {[selected.work_mode, selected.contract_type].filter(Boolean).join(" · ")}
-        </p>
-      )}
-      {selected.tags && (
-        <p className="detailMeta">
-          <Tag size={13} style={{ display: "inline", marginRight: 3 }} />
-          {selected.tags}
-        </p>
-      )}
-      <div className="detailActions row" style={{ marginTop: "0.75rem" }}>
-        <button type="button" className="btn btnPrimary btnSm" onClick={() => onViewDetails(selected.id)}>
-          {en.detail.viewFullDetails} <ArrowRight size={13} style={{ display: "inline", marginLeft: 3 }} />
-        </button>
-        <button type="button" className="btn btnDanger btnSm" onClick={() => void onDelete()}>
-          <Trash2 size={13} />
-        </button>
+        {(selected.work_mode || selected.contract_type) && (
+          <p className="detailMeta">
+            <Monitor size={13} style={{ display: "inline", marginRight: 3 }} />
+            {[selected.work_mode, selected.contract_type].filter(Boolean).join(" · ")}
+          </p>
+        )}
+        {selected.tags && (
+          <p className="detailMeta">
+            <Tag size={13} style={{ display: "inline", marginRight: 3 }} />
+            {selected.tags}
+          </p>
+        )}
+        <div className="detailActions row" style={{ marginTop: "0.75rem" }}>
+          <button type="button" className="btn btnPrimary btnSm" onClick={() => onViewDetails(selected.id)}>
+            {en.detail.viewFullDetails} <ArrowRight size={13} style={{ display: "inline", marginLeft: 3 }} />
+          </button>
+          <button type="button" className="btn btnDanger btnSm" onClick={() => void onDelete()}>
+            <Trash2 size={13} />
+          </button>
+        </div>
       </div>
     </section>
   );

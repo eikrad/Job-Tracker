@@ -36,7 +36,7 @@ export type JobTrackerStateOptions = {
 export function useJobTrackerState(options?: JobTrackerStateOptions) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selected, setSelected] = useState<Job | undefined>();
-  const [view, setView] = useState<BoardView>("kanban");
+  const [view, setView] = useState<BoardView>("table");
   const [llmProvider, setLlmProvider] = useState<LlmProvider>(readLlmProvider);
   const [geminiApiKey, setGeminiApiKey] = useState(localStorage.getItem("geminiApiKey") ?? "");
   const [mistralApiKey, setMistralApiKey] = useState(localStorage.getItem("mistralApiKey") ?? "");

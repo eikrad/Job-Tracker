@@ -184,6 +184,10 @@ export async function openUrlInBrowser(url: string): Promise<void> {
   return invoke("open_url_in_browser", { url });
 }
 
+export async function fetchJobSearchResultPageText(url: string): Promise<string> {
+  return invoke<string>("fetch_job_search_result_page_text", { url });
+}
+
 export async function googleCalendarCreateEvent(params: {
   jobId: number;
   dateKind: GoogleCalendarDateKind;

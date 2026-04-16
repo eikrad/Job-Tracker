@@ -259,6 +259,80 @@ fn parse_brave_results(
     Ok(out)
 }
 
+fn strip_html_to_text(html: &str) -> String {
+    let mut cleaned = String::with_capacity(html.len());
+    let mut in_tag = false;
+    let mut previous_was_space = false;
+
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if in_tag => {}
+            '&' => {
+                cleaned.push(ch);
+                previous_was_space = false;
+            }
+            c if c.is_whitespace() => {
+                if !previous_was_space {
+                    cleaned.push(' ');
+                    previous_was_space = true;
+                }
+            }
+            _ => {
+                cleaned.push(ch);
+                previous_was_space = false;
+            }
+        }
+    }
+
+    cleaned
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string()
+}
+
+fn extract_job_page_text_from_html(html: &str) -> String {
+    let lower = html.to_lowercase();
+    let body_start = lower.find("<body").unwrap_or(0);
+    let body_html = &html[body_start..];
+    let stripped = strip_html_to_text(body_html);
+    stripped.chars().take(12_000).collect()
+}
+
+fn fetch_job_page_text(url: &str) -> Result<String, String> {
+    if url.trim().is_empty() {
+        return Ok(String::new());
+    }
+
+    let client = Client::builder()
+        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let response = client
+        .get(url)
+        .send()
+        .map_err(|e| format!("Failed to fetch job page: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Failed to fetch job page: HTTP {}", response.status()));
+    }
+
+    let body = response
+        .text()
+        .map_err(|e| format!("Failed to read job page: {e}"))?;
+    Ok(extract_job_page_text_from_html(&body))
+}
+
 fn parse_age_days(value: &str) -> Option<f64> {
     let txt = value.trim().to_lowercase();
     if txt.is_empty() {
@@ -725,6 +799,11 @@ pub fn open_url_in_browser(url: String) -> Result<(), String> {
     open::that(&url).map_err(|e| format!("Could not open browser: {e}"))
 }
 
+#[tauri::command]
+pub fn fetch_job_search_result_page_text(url: String) -> Result<String, String> {
+    fetch_job_page_text(&url)
+}
+
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1046,6 +1125,26 @@ mod tests {
     fn parse_brave_results_invalid_json_returns_error() {
         let err = parse_brave_results("{{ bad json", "indeed", "").unwrap_err();
         assert!(err.contains("Brave JSON parse error"));
+    }
+
+    #[test]
+    fn extract_job_page_text_from_html_strips_tags_and_entities() {
+        let html = r#"
+        <html>
+          <body>
+            <article>
+              <h1>Senior Developer</h1>
+              <p>Build APIs &amp; integrations</p>
+              <p>Apply from Copenhagen</p>
+            </article>
+          </body>
+        </html>
+        "#;
+        let text = extract_job_page_text_from_html(html);
+        assert!(text.contains("Senior Developer"));
+        assert!(text.contains("Build APIs & integrations"));
+        assert!(text.contains("Apply from Copenhagen"));
+        assert!(!text.contains("<article>"));
     }
 
     // ── build_search_url ───────────────────────────────────────────────────

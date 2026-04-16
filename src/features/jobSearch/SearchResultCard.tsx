@@ -1,31 +1,13 @@
 import { memo, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { openUrlInBrowser } from "../../lib/tauriApi";
+import { fetchJobSearchResultPageText, openUrlInBrowser } from "../../lib/tauriApi";
 import { en } from "../../i18n/en";
 import { useJobTracker } from "../../context/JobTrackerContext";
 import type { JobSearchResult } from "./useJobSearch";
+import { buildSavedJobPayload } from "./saveSearchResult";
 
 interface Props {
   result: JobSearchResult;
-}
-
-function buildAutoTags(result: JobSearchResult): string | undefined {
-  const tags = new Set<string>();
-
-  if (result.platform.trim()) {
-    tags.add(result.platform.trim().toLowerCase());
-  }
-
-  if (result.location.trim()) {
-    result.location
-      .split(/[,\-/|]/)
-      .map((part) => part.trim().toLowerCase())
-      .filter(Boolean)
-      .forEach((part) => tags.add(part));
-  }
-
-  if (tags.size === 0) return undefined;
-  return Array.from(tags).join(", ");
 }
 
 function formatRelativeDate(dateStr: string): string {
@@ -71,16 +53,8 @@ export const SearchResultCard = memo(function SearchResultCard({ result }: Props
     if (isSaving || added) return;
     setIsSaving(true);
     try {
-      const ok = await onSubmit({
-        company: result.company || en.jobSearch.unknownCompany,
-        title: result.title || undefined,
-        url: result.url || undefined,
-        raw_text: result.description || undefined,
-        status: "Interesting",
-        tags: autoTags,
-        source: result.platform || undefined,
-        workplace_city: result.location || undefined,
-      });
+      const payload = await buildSavedJobPayload(result, fetchJobSearchResultPageText);
+      const ok = await onSubmit(payload);
       if (ok) setAdded(true);
     } catch (error) {
       console.error("Failed to add job:", error);
@@ -95,7 +69,6 @@ export const SearchResultCard = memo(function SearchResultCard({ result }: Props
     });
   }
 
-  const autoTags = useMemo(() => buildAutoTags(result), [result]);
   const metaParts = useMemo(
     () => [result.company, result.location].filter(Boolean),
     [result.company, result.location],

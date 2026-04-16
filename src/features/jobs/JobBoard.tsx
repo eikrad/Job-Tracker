@@ -42,7 +42,7 @@ function Lane({
   return (
     <div ref={setNodeRef} className={`column ${isOver ? "columnOver" : ""}`}>
       <h3>{status}</h3>
-      {children}
+      <div className="columnBody">{children}</div>
     </div>
   );
 }

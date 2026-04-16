@@ -29,7 +29,7 @@ export const ReminderCenter = memo(function ReminderCenter({ jobs }: Props) {
   }, [jobs]);
 
   return (
-    <section className="card">
+    <section className="card dashboardPanel">
       <h2>{en.reminders.title}</h2>
       {reminders.length === 0 ? (
         <WorkspaceEmpty
@@ -38,26 +38,28 @@ export const ReminderCenter = memo(function ReminderCenter({ jobs }: Props) {
           cta={en.empty.remindersCta}
         />
       ) : (
-        <ul className="listPlain reminderList">
-          {reminders.map(({ job, days }) => {
-            const followUp =
-              days <= 7
-                ? en.reminders.followUp7
-                : days <= 14
-                  ? en.reminders.followUp14
-                  : null;
-            return (
-              <li key={job.id} className={urgencyClass(days)}>
-                <span className="reminderBadge">
-                  {days < 0 ? en.reminders.overdue(Math.abs(days)) : en.reminders.dueIn(days)}
-                </span>
-                {" "}
-                {job.company} - {job.title ?? en.common.untitled}
-                {followUp ? <span className="reminderFollowUp"> {followUp}</span> : ""}
-              </li>
-            );
-          })}
-        </ul>
+        <div className="dashboardPanelScroll">
+          <ul className="listPlain reminderList">
+            {reminders.map(({ job, days }) => {
+              const followUp =
+                days <= 7
+                  ? en.reminders.followUp7
+                  : days <= 14
+                    ? en.reminders.followUp14
+                    : null;
+              return (
+                <li key={job.id} className={urgencyClass(days)}>
+                  <span className="reminderBadge">
+                    {days < 0 ? en.reminders.overdue(Math.abs(days)) : en.reminders.dueIn(days)}
+                  </span>
+                  {" "}
+                  {job.company} - {job.title ?? en.common.untitled}
+                  {followUp ? <span className="reminderFollowUp"> {followUp}</span> : ""}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </section>
   );

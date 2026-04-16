@@ -168,6 +168,14 @@
   min-width: 0;
 }
 
+.dashboardPanel {
+  min-height: 0;
+}
+
+.dashboardPanelScroll {
+  min-height: 0;
+}
+
 /* ——— Buttons ——— */
 .btn {
   display: inline-flex;
@@ -441,6 +449,12 @@ textarea {
   padding: var(--space-md);
   min-height: 180px;
   background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+}
+
+.columnBody {
+  min-height: 0;
 }
 
 .columnOver {
@@ -499,6 +513,28 @@ textarea {
 .jobCard span:not(.dragHandle) {
   font-size: 0.8125rem;
   color: var(--color-text-secondary);
+}
+
+@media (min-width: 1024px) {
+  .dashboardPanelScroll {
+    max-height: calc(100vh - 12rem);
+    overflow-y: auto;
+    padding-right: 0.15rem;
+  }
+
+  .columnBody {
+    max-height: calc(100vh - 16rem);
+    overflow-y: auto;
+    padding-right: 0.15rem;
+  }
+}
+
+@media (max-width: 1023px) {
+  .dashboardPanelScroll,
+  .columnBody {
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 /* ——— Table ——— */

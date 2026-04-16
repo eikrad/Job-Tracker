@@ -42,6 +42,7 @@ pub fn run() {
             job_search::fetch_job_search_results,
             job_search::fetch_job_search_bundle,
             job_search::build_search_url,
+            job_search::fetch_job_search_result_page_text,
             job_search::open_url_in_browser,
         ])
         .run(tauri::generate_context!())
