@@ -2,6 +2,8 @@
   "name": "app",
   "private": true,
   "version": "0.2.1",
+  "author": "Eike F. Rades",
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
