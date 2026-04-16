@@ -21,4 +21,5 @@ src-tauri/target/
 
 # Git worktrees
 .worktrees/
+.claude/worktrees/
 __pycache__/
