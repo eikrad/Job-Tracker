@@ -312,3 +312,147 @@ pub fn google_oauth_connect(app: AppHandle) -> Result<(), String> {
   store_refresh_token(&refresh)?;
   Ok(())
 }
+
+// ─── Tests ─────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // ── gen_code_verifier ──────────────────────────────────────────────────
+
+  #[test]
+  fn gen_code_verifier_has_length_64() {
+    assert_eq!(gen_code_verifier().len(), 64);
+  }
+
+  #[test]
+  fn gen_code_verifier_only_valid_chars() {
+    const CHARSET: &[u8] =
+      b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+    let v = gen_code_verifier();
+    for b in v.bytes() {
+      assert!(
+        CHARSET.contains(&b),
+        "char '{}' is not in the allowed PKCE charset",
+        b as char
+      );
+    }
+  }
+
+  #[test]
+  fn gen_code_verifier_is_non_deterministic() {
+    // Probability of collision is astronomically small with a 64-char random string
+    assert_ne!(gen_code_verifier(), gen_code_verifier());
+  }
+
+  // ── pkce_challenge ─────────────────────────────────────────────────────
+
+  /// RFC 7636 Appendix B test vector.
+  #[test]
+  fn pkce_challenge_rfc7636_known_vector() {
+    let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+    let expected = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+    assert_eq!(pkce_challenge(verifier), expected);
+  }
+
+  #[test]
+  fn pkce_challenge_no_padding_chars() {
+    let challenge = pkce_challenge("some-verifier-value");
+    assert!(!challenge.contains('='), "base64url output must not contain padding '='");
+  }
+
+  #[test]
+  fn pkce_challenge_url_safe_alphabet() {
+    let challenge = pkce_challenge("another-test-value-here");
+    assert!(!challenge.contains('+'), "base64url must not contain '+'");
+    assert!(!challenge.contains('/'), "base64url must not contain '/'");
+  }
+
+  // ── random_state ───────────────────────────────────────────────────────
+
+  #[test]
+  fn random_state_has_length_64() {
+    // 32 bytes × 2 hex chars each = 64 characters
+    assert_eq!(random_state().len(), 64);
+  }
+
+  #[test]
+  fn random_state_only_lowercase_hex_chars() {
+    let s = random_state();
+    assert!(
+      s.chars().all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
+      "state '{}' contains non-hex or uppercase chars",
+      s
+    );
+  }
+
+  #[test]
+  fn random_state_is_non_deterministic() {
+    assert_ne!(random_state(), random_state());
+  }
+
+  // ── parse_oauth_redirect ───────────────────────────────────────────────
+
+  fn req(path: &str) -> Vec<u8> {
+    format!("GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", path).into_bytes()
+  }
+
+  #[test]
+  fn parse_oauth_redirect_valid_returns_code() {
+    let buf = req("/?code=auth_code_abc&state=mystate123");
+    assert_eq!(
+      parse_oauth_redirect(&buf, "mystate123").unwrap(),
+      "auth_code_abc"
+    );
+  }
+
+  #[test]
+  fn parse_oauth_redirect_google_error_param() {
+    let buf = req("/?error=access_denied&state=s");
+    let err = parse_oauth_redirect(&buf, "s").unwrap_err();
+    assert!(err.contains("access_denied"));
+  }
+
+  #[test]
+  fn parse_oauth_redirect_state_mismatch() {
+    let buf = req("/?code=c&state=wrong");
+    let err = parse_oauth_redirect(&buf, "expected").unwrap_err();
+    assert!(err.contains("mismatch"));
+  }
+
+  #[test]
+  fn parse_oauth_redirect_missing_state() {
+    let buf = req("/?code=c");
+    let err = parse_oauth_redirect(&buf, "s").unwrap_err();
+    assert!(err.to_lowercase().contains("state"));
+  }
+
+  #[test]
+  fn parse_oauth_redirect_missing_code() {
+    let buf = req("/?state=s");
+    let err = parse_oauth_redirect(&buf, "s").unwrap_err();
+    assert!(err.to_lowercase().contains("code"));
+  }
+
+  #[test]
+  fn parse_oauth_redirect_empty_buffer() {
+    let err = parse_oauth_redirect(b"", "s").unwrap_err();
+    assert!(!err.is_empty());
+  }
+
+  #[test]
+  fn parse_oauth_redirect_malformed_request_line() {
+    // Only one token on the request line — parts.len() < 2
+    let buf = b"BADREQUEST\r\n\r\n";
+    let err = parse_oauth_redirect(buf, "s").unwrap_err();
+    assert!(!err.is_empty());
+  }
+
+  #[test]
+  fn parse_oauth_redirect_invalid_utf8() {
+    let buf: &[u8] = &[0xFF, 0xFE, 0x00];
+    let err = parse_oauth_redirect(buf, "s").unwrap_err();
+    assert!(err.to_lowercase().contains("invalid"));
+  }
+}

@@ -104,3 +104,67 @@ describe("NEW_JOB_KEYS", () => {
     expect(NEW_JOB_KEYS).toContain("deadline");
   });
 });
+
+describe("parseJobsImportJson – additional edge cases", () => {
+  it("preserves interview_date, start_date, and notes", () => {
+    const rows = parseJobsImportJson(
+      JSON.stringify([
+        {
+          company: "Corp",
+          status: "Feedback",
+          interview_date: "2026-05-20",
+          start_date: "2026-06-01",
+          notes: "Looked promising",
+        },
+      ]),
+    );
+    expect(rows[0].interview_date).toBe("2026-05-20");
+    expect(rows[0].start_date).toBe("2026-06-01");
+    expect(rows[0].notes).toBe("Looked promising");
+  });
+
+  it("treats whitespace-only company as Unknown", () => {
+    const rows = parseJobsImportJson(JSON.stringify([{ company: "   ", status: "Done" }]));
+    expect(rows[0].company).toBe("Unknown");
+  });
+
+  it("maps null optional fields to undefined, not the string 'null'", () => {
+    const rows = parseJobsImportJson(
+      JSON.stringify([{ company: "X", status: "Interesting", url: null, title: null }]),
+    );
+    expect(rows[0].url).toBeUndefined();
+    expect(rows[0].title).toBeUndefined();
+  });
+});
+
+describe("parseJobsImportCsv – additional edge cases", () => {
+  it("unescapes doubled double-quotes inside fields", () => {
+    // CSV: "say ""hello""" → field value: say "hello"
+    const csv = [
+      "id,company,title,status,deadline,interview_date,start_date,url,tags,detected_language",
+      '"1","Firm","say ""hello""","Interesting","","","","","",""',
+    ].join("\n");
+    const rows = parseJobsImportCsv(csv);
+    expect(rows[0].title).toBe('say "hello"');
+  });
+
+  it("handles CRLF line endings", () => {
+    const csv =
+      "id,company,title,status,deadline,interview_date,start_date,url,tags,detected_language\r\n" +
+      '"1","CRLF Corp","Dev","Interesting","","","","","",""\r\n';
+    const rows = parseJobsImportCsv(csv);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].company).toBe("CRLF Corp");
+  });
+
+  it("maps interview_date and start_date columns", () => {
+    const csv = [
+      "id,company,title,status,deadline,interview_date,start_date,url,tags,detected_language",
+      '"1","Acme","Dev","Interesting","2026-05-01","2026-05-20","2026-06-01","","",""',
+    ].join("\n");
+    const rows = parseJobsImportCsv(csv);
+    expect(rows[0].deadline).toBe("2026-05-01");
+    expect(rows[0].interview_date).toBe("2026-05-20");
+    expect(rows[0].start_date).toBe("2026-06-01");
+  });
+});
