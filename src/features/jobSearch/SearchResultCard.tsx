@@ -45,6 +45,18 @@ function formatRelativeDate(dateStr: string): string {
   }
 }
 
+function normalizeScore(value?: number): number {
+  if (typeof value !== "number" || Number.isNaN(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function scoreToneClass(totalScore?: number): string {
+  const score = normalizeScore(totalScore);
+  if (score >= 0.75) return "searchScoreToneHigh";
+  if (score >= 0.45) return "searchScoreToneMedium";
+  return "searchScoreToneLow";
+}
+
 export const SearchResultCard = memo(function SearchResultCard({ result }: Props) {
   const navigate = useNavigate();
   const { onSubmit } = useJobTracker();
@@ -92,6 +104,19 @@ export const SearchResultCard = memo(function SearchResultCard({ result }: Props
     () => formatRelativeDate(result.published_date),
     [result.published_date],
   );
+  const scoreLabel = useMemo(
+    () =>
+      en.jobSearch.scoreBreakdown(
+        normalizeScore(result.freshness_score),
+        normalizeScore(result.keyword_score),
+        normalizeScore(result.total_score),
+      ),
+    [result.freshness_score, result.keyword_score, result.total_score],
+  );
+  const scoreTone = useMemo(
+    () => scoreToneClass(result.total_score),
+    [result.total_score],
+  );
 
   return (
     <article className="searchResultCard">
@@ -109,6 +134,7 @@ export const SearchResultCard = memo(function SearchResultCard({ result }: Props
         {result.description && (
           <p className="searchResultDesc">{result.description}</p>
         )}
+        <p className={`searchScoreBadge ${scoreTone}`}>{scoreLabel}</p>
       </div>
 
       <div className="searchResultActions">

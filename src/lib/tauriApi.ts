@@ -105,6 +105,21 @@ export interface JobSearchResult {
   description: string;
   published_date: string;
   platform: string;
+  freshness_score?: number;
+  keyword_score?: number;
+  total_score?: number;
+}
+
+export interface JobSearchFallbackHint {
+  reason: string;
+  browser_url: string;
+}
+
+export interface JobSearchResultsBundle {
+  global_top5: JobSearchResult[];
+  top5_per_platform: Record<string, JobSearchResult[]>;
+  all_ranked: JobSearchResult[];
+  fallback_hints: Record<string, JobSearchFallbackHint>;
 }
 
 export async function getKeywordStats(): Promise<KeywordStat[]> {
@@ -128,6 +143,24 @@ export async function fetchJobSearchResults(params: {
     keywords: params.keywords,
     location: params.location ?? null,
     region: params.region ?? null,
+    serpApiKey: params.serpApiKey ?? null,
+    braveSearchApiKey: params.braveSearchApiKey ?? null,
+  });
+}
+
+export async function fetchJobSearchResultsBundle(params: {
+  keywords: string[];
+  location?: string | null;
+  region?: string | null;
+  platforms: string[];
+  serpApiKey?: string | null;
+  braveSearchApiKey?: string | null;
+}): Promise<JobSearchResultsBundle> {
+  return invoke<JobSearchResultsBundle>("fetch_job_search_bundle", {
+    keywords: params.keywords,
+    location: params.location ?? null,
+    region: params.region ?? null,
+    platforms: params.platforms,
     serpApiKey: params.serpApiKey ?? null,
     braveSearchApiKey: params.braveSearchApiKey ?? null,
   });

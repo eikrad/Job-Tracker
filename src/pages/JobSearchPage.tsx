@@ -2,12 +2,14 @@ import { en } from "../i18n/en";
 import { useJobSearch, INDEED_REGIONS } from "../features/jobSearch/useJobSearch";
 import { KeywordPanel } from "../features/jobSearch/KeywordPanel";
 import { PlatformResultsList } from "../features/jobSearch/PlatformResultsList";
+import { SearchResultCard } from "../features/jobSearch/SearchResultCard";
 import type { Platform } from "../features/jobSearch/useJobSearch";
 
 const PLATFORMS: { id: Platform; label: string }[] = [
   { id: "jobindex", label: "Jobindex.dk" },
   { id: "indeed", label: "Indeed" },
   { id: "linkedin", label: "LinkedIn" },
+  { id: "thehub", label: "The Hub" },
 ];
 
 export function JobSearchPage() {
@@ -27,10 +29,13 @@ export function JobSearchPage() {
     activePlatforms,
     togglePlatform,
     results,
+    globalTop5,
+    viewMode,
+    setViewMode,
+    fallbackHints,
     loading,
     errors,
     hasSearched,
-    linkedinOpened,
     search,
     openInBrowser,
   } = useJobSearch();
@@ -110,11 +115,6 @@ export function JobSearchPage() {
                   onChange={() => togglePlatform(id)}
                 />
                 <span>{label}</span>
-                {id === "linkedin" && (
-                  <span className="muted searchPlatformNote">
-                    {" "}({en.jobSearch.browserOnly})
-                  </span>
-                )}
               </label>
             ))}
           </div>
@@ -162,15 +162,69 @@ export function JobSearchPage() {
       {/* ── Results ── */}
       {hasSearched && (
         <div className="searchResultSections">
+          <section className="platformSection">
+            <div className="platformHeader">
+              <h2 className="platformTitle">{en.jobSearch.rankModeTitle}</h2>
+              <div className="searchPlatforms">
+                <label className="searchPlatformToggle">
+                  <input
+                    type="radio"
+                    name="rankMode"
+                    checked={viewMode === "global"}
+                    onChange={() => setViewMode("global")}
+                  />
+                  <span>{en.jobSearch.rankModeGlobal}</span>
+                </label>
+                <label className="searchPlatformToggle">
+                  <input
+                    type="radio"
+                    name="rankMode"
+                    checked={viewMode === "perPlatform"}
+                    onChange={() => setViewMode("perPlatform")}
+                  />
+                  <span>{en.jobSearch.rankModePerPlatform}</span>
+                </label>
+              </div>
+            </div>
+            <div className="searchScoreLegend" aria-label={en.jobSearch.scoreLegendTitle}>
+              <span className="searchScoreBadge searchScoreToneHigh">{en.jobSearch.scoreLegendHigh}</span>
+              <span className="searchScoreBadge searchScoreToneMedium">{en.jobSearch.scoreLegendMedium}</span>
+              <span className="searchScoreBadge searchScoreToneLow">{en.jobSearch.scoreLegendLow}</span>
+            </div>
+          </section>
+
+          {viewMode === "global" && (
+            <section className="platformSection">
+              <div className="platformHeader">
+                <h2 className="platformTitle">
+                  {en.jobSearch.globalTopFive}
+                  {globalTop5.length > 0 && (
+                    <span className="platformCount">{en.jobSearch.resultsCount(globalTop5.length)}</span>
+                  )}
+                </h2>
+              </div>
+              {globalTop5.length === 0 ? (
+                <p className="muted">{en.jobSearch.noResults}</p>
+              ) : (
+                <div className="searchResultList">
+                  {globalTop5.map((result) => (
+                    <SearchResultCard key={`${result.platform}|${result.url}|global`} result={result} />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
           {PLATFORMS.map(({ id }) => (
             <PlatformResultsList
               key={id}
               platform={id}
               isActive={activePlatforms.has(id)}
+              hidden={viewMode === "global"}
               results={results[id]}
               loading={loading[id]}
               error={errors[id]}
-              linkedinOpened={linkedinOpened}
+              fallbackHint={fallbackHints[id]}
               onOpenInBrowser={openInBrowser}
             />
           ))}

@@ -250,7 +250,7 @@ export const en = {
   jobSearch: {
     title: "Job Search",
     subtitle:
-      "Find new jobs on Jobindex, Indeed, and LinkedIn based on the keywords from your tracked applications.",
+      "Find new jobs on Jobindex, Indeed, LinkedIn, and The Hub based on your tracked application keywords.",
     keywordsLabel: "Keywords",
     keywordsHint:
       "Extracted from the tags on your saved jobs. Larger chips appear more often — click to select or deselect. Add your own with the input below.",
@@ -262,8 +262,15 @@ export const en = {
     locationPh: "City or region (optional)",
     clearLocation: "Clear",
     platformsLabel: "Platforms",
-    browserOnly: "browser only",
     indeedRegion: "Indeed region",
+    rankModeTitle: "Ranking mode",
+    rankModeGlobal: "Global top 5",
+    rankModePerPlatform: "Top 5 per platform",
+    globalTopFive: "Top 5 across platforms",
+    scoreLegendTitle: "Score guide",
+    scoreLegendHigh: "High total score",
+    scoreLegendMedium: "Medium total score",
+    scoreLegendLow: "Low total score",
     search: "Search",
     searchingWith: (n: number) => `Searching with ${n} keyword${n === 1 ? "" : "s"}`,
     loading: "Loading results…",
@@ -271,16 +278,14 @@ export const en = {
     tryInBrowser: "Try in browser ↗",
     noResults: "No results found. Try different keywords or open the search in your browser.",
     openInBrowser: "Open in browser ↗",
-    openLinkedIn: "Open LinkedIn Jobs ↗",
-    linkedinBrowserOnly:
-      "LinkedIn does not offer a public job search API. Open the search in your browser below.",
     addAsInteresting: "+ Add as Interesting",
     addingToTracker: "Adding…",
     addedToTracker: "Added",
     openForm: "Open form",
     unknownCompany: "Unknown company",
+    scoreBreakdown: (fresh: number, keyword: number, total: number) =>
+      `Fresh ${fresh.toFixed(2)} · Keyword ${keyword.toFixed(2)} · Total ${total.toFixed(2)}`,
     resultsCount: (n: number) => `${n} result${n === 1 ? "" : "s"}`,
-    linkedinOpened: "Opened LinkedIn in your browser.",
     navLink: "Search",
   },
 } as const;

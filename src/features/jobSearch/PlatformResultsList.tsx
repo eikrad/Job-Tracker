@@ -1,20 +1,23 @@
 import { en } from "../../i18n/en";
 import { SearchResultCard } from "./SearchResultCard";
 import type { JobSearchResult, Platform } from "./useJobSearch";
+import type { JobSearchFallbackHint } from "../../lib/tauriApi";
 
 const PLATFORM_LABELS: Record<Platform, string> = {
   jobindex: "Jobindex.dk",
   indeed: "Indeed",
   linkedin: "LinkedIn",
+  thehub: "The Hub",
 };
 
 interface Props {
   platform: Platform;
   isActive: boolean;
+  hidden?: boolean;
   results: JobSearchResult[];
   loading: boolean;
   error: string;
-  linkedinOpened?: boolean;
+  fallbackHint?: JobSearchFallbackHint | null;
   onOpenInBrowser: (platform: Platform) => void;
 }
 
@@ -32,55 +35,38 @@ function resultKey(result: JobSearchResult): string {
 export function PlatformResultsList({
   platform,
   isActive,
+  hidden = false,
   results,
   loading,
   error,
-  linkedinOpened,
+  fallbackHint,
   onOpenInBrowser,
 }: Props) {
-  if (!isActive) return null;
+  if (!isActive || hidden) return null;
 
   const label = PLATFORM_LABELS[platform];
-  const isLinkedIn = platform === "linkedin";
 
   return (
     <section className="platformSection">
       <div className="platformHeader">
         <h2 className="platformTitle">
           {label}
-          {!isLinkedIn && !loading && !error && results.length > 0 && (
+          {!loading && !error && results.length > 0 && (
             <span className="platformCount">
               {en.jobSearch.resultsCount(results.length)}
             </span>
           )}
         </h2>
-        {!isLinkedIn && (
-          <button
-            type="button"
-            className="btn btnGhost btnSm"
-            onClick={() => onOpenInBrowser(platform)}
-          >
-            {en.jobSearch.openInBrowser}
-          </button>
-        )}
+        <button
+          type="button"
+          className="btn btnGhost btnSm"
+          onClick={() => onOpenInBrowser(platform)}
+        >
+          {en.jobSearch.openInBrowser}
+        </button>
       </div>
 
-      {isLinkedIn ? (
-        <div className="platformBrowserOnly card">
-          <p className="muted">{en.jobSearch.linkedinBrowserOnly}</p>
-          {linkedinOpened ? (
-            <p className="platformLinkedinOpened">{en.jobSearch.linkedinOpened}</p>
-          ) : (
-            <button
-              type="button"
-              className="btn btnPrimary"
-              onClick={() => onOpenInBrowser("linkedin")}
-            >
-              {en.jobSearch.openLinkedIn}
-            </button>
-          )}
-        </div>
-      ) : loading ? (
+      {loading ? (
         <div className="platformLoading">
           <span className="muted">{en.jobSearch.loading}</span>
         </div>
@@ -99,7 +85,9 @@ export function PlatformResultsList({
         </div>
       ) : results.length === 0 ? (
         <div className="platformEmpty">
-          <p className="muted">{en.jobSearch.noResults}</p>
+          <p className="muted">
+            {fallbackHint?.reason || en.jobSearch.noResults}
+          </p>
           <button
             type="button"
             className="btn btnGhost btnSm"

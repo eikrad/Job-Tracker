@@ -2,11 +2,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  buildSearchUrl,
-  fetchJobSearchResults,
+  fetchJobSearchResultsBundle,
   getKeywordStats,
   getLocationSuggestions,
-  openUrlInBrowser,
 } from "../../lib/tauriApi";
 import { useJobSearch } from "./useJobSearch";
 
@@ -14,9 +12,7 @@ import { useJobSearch } from "./useJobSearch";
 vi.mock("../../lib/tauriApi", () => ({
   getKeywordStats: vi.fn(),
   getLocationSuggestions: vi.fn(),
-  fetchJobSearchResults: vi.fn(),
-  buildSearchUrl: vi.fn(),
-  openUrlInBrowser: vi.fn(),
+  fetchJobSearchResultsBundle: vi.fn(),
 }));
 
 // ── Mock JobTrackerContext so the hook doesn't need a provider ─────────────
@@ -52,9 +48,17 @@ const mockResult = {
 beforeEach(() => {
   vi.mocked(getKeywordStats).mockResolvedValue(mockKeywords);
   vi.mocked(getLocationSuggestions).mockResolvedValue(mockCities);
-  vi.mocked(fetchJobSearchResults).mockResolvedValue([]);
-  vi.mocked(buildSearchUrl).mockResolvedValue("https://example.com/search");
-  vi.mocked(openUrlInBrowser).mockResolvedValue(undefined);
+  vi.mocked(fetchJobSearchResultsBundle).mockResolvedValue({
+    global_top5: [mockResult],
+    top5_per_platform: {
+      jobindex: [mockResult],
+      indeed: [],
+      linkedin: [],
+      thehub: [],
+    },
+    all_ranked: [mockResult],
+    fallback_hints: {},
+  });
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -62,11 +66,12 @@ afterEach(() => vi.clearAllMocks());
 // ── Initial state ──────────────────────────────────────────────────────────
 
 describe("initial state", () => {
-  it("activates all three platforms by default", () => {
+  it("activates all platforms by default", () => {
     const { result } = renderHook(() => useJobSearch());
     expect(result.current.activePlatforms.has("jobindex")).toBe(true);
     expect(result.current.activePlatforms.has("indeed")).toBe(true);
     expect(result.current.activePlatforms.has("linkedin")).toBe(true);
+    expect(result.current.activePlatforms.has("thehub")).toBe(true);
   });
 
   it("starts with empty keyword and result lists", () => {
@@ -136,7 +141,9 @@ describe("addCustomKeyword", () => {
     act(() => result.current.setCustomKeyword("GraphQL"));
     act(() => result.current.addCustomKeyword());
 
-    expect(result.current.allKeywords.some((k) => k.keyword === "graphql")).toBe(true);
+    expect(
+      result.current.allKeywords.some((k: { keyword: string }) => k.keyword === "graphql"),
+    ).toBe(true);
     expect(result.current.selectedKeywords.has("graphql")).toBe(true);
     expect(result.current.customKeyword).toBe("");
   });
@@ -173,7 +180,9 @@ describe("removeCustomKeyword", () => {
     expect(result.current.selectedKeywords.has("custom-kw")).toBe(true);
 
     act(() => result.current.removeCustomKeyword("custom-kw"));
-    expect(result.current.allKeywords.some((k) => k.keyword === "custom-kw")).toBe(false);
+    expect(
+      result.current.allKeywords.some((k: { keyword: string }) => k.keyword === "custom-kw"),
+    ).toBe(false);
     expect(result.current.selectedKeywords.has("custom-kw")).toBe(false);
   });
 
@@ -182,7 +191,9 @@ describe("removeCustomKeyword", () => {
     await waitFor(() => expect(result.current.allKeywords.length).toBeGreaterThan(0));
 
     act(() => result.current.removeCustomKeyword("react")); // count=10, should stay
-    expect(result.current.allKeywords.some((k) => k.keyword === "react")).toBe(true);
+    expect(
+      result.current.allKeywords.some((k: { keyword: string }) => k.keyword === "react"),
+    ).toBe(true);
   });
 });
 
@@ -212,12 +223,11 @@ describe("search", () => {
     await act(async () => {
       await result.current.search();
     });
-    expect(fetchJobSearchResults).not.toHaveBeenCalled();
+    expect(fetchJobSearchResultsBundle).not.toHaveBeenCalled();
     expect(result.current.hasSearched).toBe(false);
   });
 
-  it("calls fetchJobSearchResults for jobindex and indeed when active", async () => {
-    vi.mocked(fetchJobSearchResults).mockResolvedValue([mockResult]);
+  it("calls fetchJobSearchResultsBundle when searching", async () => {
     const { result } = renderHook(() => useJobSearch());
     await waitFor(() => expect(result.current.allKeywords.length).toBeGreaterThan(0));
 
@@ -225,46 +235,14 @@ describe("search", () => {
       await result.current.search();
     });
 
-    const platforms = vi.mocked(fetchJobSearchResults).mock.calls.map(
-      (c) => c[0].platform,
-    );
-    expect(platforms).toContain("jobindex");
-    expect(platforms).toContain("indeed");
+    expect(fetchJobSearchResultsBundle).toHaveBeenCalled();
     expect(result.current.hasSearched).toBe(true);
     expect(result.current.results.jobindex).toHaveLength(1);
-  });
-
-  it("does NOT call fetchJobSearchResults for LinkedIn", async () => {
-    const { result } = renderHook(() => useJobSearch());
-    await waitFor(() => expect(result.current.allKeywords.length).toBeGreaterThan(0));
-
-    await act(async () => {
-      await result.current.search();
-    });
-
-    const platforms = vi.mocked(fetchJobSearchResults).mock.calls.map(
-      (c) => c[0].platform,
-    );
-    expect(platforms).not.toContain("linkedin");
-  });
-
-  it("opens the browser for LinkedIn", async () => {
-    const { result } = renderHook(() => useJobSearch());
-    await waitFor(() => expect(result.current.allKeywords.length).toBeGreaterThan(0));
-
-    await act(async () => {
-      await result.current.search();
-    });
-
-    expect(buildSearchUrl).toHaveBeenCalledWith(
-      expect.objectContaining({ platform: "linkedin" }),
-    );
-    expect(openUrlInBrowser).toHaveBeenCalled();
-    expect(result.current.linkedinOpened).toBe(true);
+    expect(result.current.globalTop5).toHaveLength(1);
   });
 
   it("sets per-platform error state when fetch fails", async () => {
-    vi.mocked(fetchJobSearchResults).mockRejectedValue(new Error("API blocked"));
+    vi.mocked(fetchJobSearchResultsBundle).mockRejectedValue(new Error("API blocked"));
     const { result } = renderHook(() => useJobSearch());
     await waitFor(() => expect(result.current.allKeywords.length).toBeGreaterThan(0));
 
@@ -298,13 +276,13 @@ describe("search", () => {
       await result.current.search();
     });
 
-    const platforms = vi.mocked(fetchJobSearchResults).mock.calls.map(
-      (c) => c[0].platform,
+    const platforms = vi.mocked(fetchJobSearchResultsBundle).mock.calls.map(
+      (c: [{ platforms: string[] }]) => c[0].platforms,
     );
-    expect(platforms).not.toContain("indeed");
+    expect(platforms.flat()).not.toContain("indeed");
   });
 
-  it("passes serpApiKey and braveSearchApiKey to fetchJobSearchResults", async () => {
+  it("passes selected platforms to bundle call", async () => {
     const { result } = renderHook(() => useJobSearch());
     await waitFor(() => expect(result.current.allKeywords.length).toBeGreaterThan(0));
 
@@ -316,9 +294,9 @@ describe("search", () => {
       await result.current.search();
     });
 
-    expect(fetchJobSearchResults).toHaveBeenCalledWith(
+    expect(fetchJobSearchResultsBundle).toHaveBeenCalledWith(
       expect.objectContaining({
-        platform: "jobindex",
+        platforms: expect.arrayContaining(["jobindex", "thehub"]),
         serpApiKey: null,
         braveSearchApiKey: null,
       }),

@@ -2,17 +2,19 @@ import { useState, useEffect, useCallback } from "react";
 import {
   getKeywordStats,
   getLocationSuggestions,
-  fetchJobSearchResults,
+  fetchJobSearchResultsBundle,
   buildSearchUrl,
   openUrlInBrowser,
   type KeywordStat,
   type JobSearchResult,
+  type JobSearchFallbackHint,
 } from "../../lib/tauriApi";
 import { useJobTracker } from "../../context/JobTrackerContext";
 
 export type { KeywordStat, JobSearchResult };
 
-export type Platform = "jobindex" | "indeed" | "linkedin";
+export type Platform = "jobindex" | "indeed" | "linkedin" | "thehub";
+export type SearchViewMode = "global" | "perPlatform";
 
 export const INDEED_REGIONS: { code: string; label: string }[] = [
   { code: "dk", label: "Denmark (dk.indeed.com)" },
@@ -23,12 +25,32 @@ export const INDEED_REGIONS: { code: string; label: string }[] = [
   { code: "com", label: "International (indeed.com)" },
 ];
 
-const ALL_PLATFORMS: Platform[] = ["jobindex", "indeed", "linkedin"];
+const ALL_PLATFORMS: Platform[] = ["jobindex", "indeed", "linkedin", "thehub"];
 
 type PlatformRecord<T> = Record<Platform, T>;
 
 function makePlatformRecord<T>(value: T): PlatformRecord<T> {
-  return { jobindex: value, indeed: value, linkedin: value } as PlatformRecord<T>;
+  return {
+    jobindex: value,
+    indeed: value,
+    linkedin: value,
+    thehub: value,
+  } as PlatformRecord<T>;
+}
+
+function getSelectedPlatforms(activePlatforms: Set<Platform>): Platform[] {
+  return ALL_PLATFORMS.filter((platform) => activePlatforms.has(platform));
+}
+
+function mapPlatformRecord<T>(
+  source: Partial<Record<string, T>>,
+  fallback: PlatformRecord<T>[Platform],
+): PlatformRecord<T> {
+  const next = makePlatformRecord(fallback);
+  for (const platform of ALL_PLATFORMS) {
+    next[platform] = source[platform] ?? fallback;
+  }
+  return next;
 }
 
 export function useJobSearch() {
@@ -57,7 +79,11 @@ export function useJobSearch() {
   );
   const [errors, setErrors] = useState<PlatformRecord<string>>(makePlatformRecord(""));
   const [hasSearched, setHasSearched] = useState(false);
-  const [linkedinOpened, setLinkedinOpened] = useState(false);
+  const [globalTop5, setGlobalTop5] = useState<JobSearchResult[]>([]);
+  const [viewMode, setViewMode] = useState<SearchViewMode>("global");
+  const [fallbackHints, setFallbackHints] = useState<PlatformRecord<JobSearchFallbackHint | null>>(
+    makePlatformRecord(null),
+  );
 
   // ── Load on mount ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -149,62 +175,55 @@ export function useJobSearch() {
     if (keywords.length === 0) return;
 
     setHasSearched(true);
-    setLinkedinOpened(false);
+    const selectedPlatforms = getSelectedPlatforms(activePlatforms);
+    setLoading((prev) => {
+      const next = { ...prev };
+      for (const p of selectedPlatforms) {
+        next[p] = true;
+      }
+      return next;
+    });
+    setErrors(makePlatformRecord(""));
+    setFallbackHints(makePlatformRecord(null));
 
-    // API-backed platforms
-    const apiPlats = (["jobindex", "indeed"] as Platform[]).filter((p) =>
-      activePlatforms.has(p),
-    );
-
-    if (apiPlats.length > 0) {
-      setLoading((prev) => {
-        const next = { ...prev };
-        for (const platform of apiPlats) next[platform] = true;
-        return next;
+    try {
+      const bundle = await fetchJobSearchResultsBundle({
+        keywords,
+        location: location || null,
+        region: indeedRegion,
+        platforms: selectedPlatforms,
+        serpApiKey: serpApiKey || null,
+        braveSearchApiKey: braveSearchApiKey || null,
       });
+
+      setGlobalTop5(bundle.global_top5);
+      setResults(mapPlatformRecord<JobSearchResult[]>(bundle.top5_per_platform, []));
+      setFallbackHints(
+        mapPlatformRecord<JobSearchFallbackHint | null>(bundle.fallback_hints, null),
+      );
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
       setErrors((prev) => {
         const next = { ...prev };
-        for (const platform of apiPlats) next[platform] = "";
+        for (const p of selectedPlatforms) {
+          next[p] = err;
+        }
+        return next;
+      });
+    } finally {
+      setLoading((prev) => {
+        const next = { ...prev };
+        for (const p of selectedPlatforms) {
+          next[p] = false;
+        }
         return next;
       });
     }
-
-    // Fire all API searches in parallel
-    const fetches = apiPlats.map(async (platform) => {
-      try {
-        const data = await fetchJobSearchResults({
-          platform,
-          keywords,
-          location: location || null,
-          region: platform === "indeed" ? indeedRegion : null,
-          serpApiKey: serpApiKey || null,
-          braveSearchApiKey: braveSearchApiKey || null,
-        });
-        setResults((prev) => ({ ...prev, [platform]: data }));
-      } catch (e) {
-        setErrors((prev) => ({
-          ...prev,
-          [platform]: e instanceof Error ? e.message : String(e),
-        }));
-      } finally {
-        setLoading((prev) => ({ ...prev, [platform]: false }));
-      }
-    });
-
-    // LinkedIn: open browser immediately
-    if (activePlatforms.has("linkedin")) {
-      fetches.push(
-        openInBrowser("linkedin").then(() => setLinkedinOpened(true)),
-      );
-    }
-
-    await Promise.allSettled(fetches);
   }, [
     selectedKeywords,
     activePlatforms,
     location,
     indeedRegion,
-    openInBrowser,
     serpApiKey,
     braveSearchApiKey,
   ]);
@@ -229,10 +248,13 @@ export function useJobSearch() {
     togglePlatform,
     // Results
     results,
+    globalTop5,
+    viewMode,
+    setViewMode,
+    fallbackHints,
     loading,
     errors,
     hasSearched,
-    linkedinOpened,
     // Actions
     search,
     openInBrowser,
