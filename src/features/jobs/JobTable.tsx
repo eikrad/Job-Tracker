@@ -5,6 +5,13 @@ import { en } from "../../i18n/en";
 
 type Props = { jobs: Job[]; onSelect: (job: Job) => void };
 
+function handleRowKeyDown(e: React.KeyboardEvent, callback: () => void) {
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    callback();
+  }
+}
+
 export const JobTable = memo(function JobTable({ jobs, onSelect }: Props) {
   return (
     <section className="card">
@@ -31,7 +38,14 @@ export const JobTable = memo(function JobTable({ jobs, onSelect }: Props) {
             </thead>
             <tbody>
               {jobs.map((job) => (
-                <tr key={job.id} onClick={() => onSelect(job)}>
+                <tr
+                  key={job.id}
+                  tabIndex={0}
+                  role="button"
+                  onClick={() => onSelect(job)}
+                  onKeyDown={(e) => handleRowKeyDown(e, () => onSelect(job))}
+                  aria-label={`View details for ${job.company} - ${job.title ?? "Untitled"}`}
+                >
                   <td>{job.company}</td>
                   <td>{job.title ?? en.common.dash}</td>
                   <td>{job.status}</td>

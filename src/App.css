@@ -82,10 +82,10 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #9a3412;
-  background: #ffedd5;
+  color: var(--color-badge-text);
+  background: var(--color-badge-bg);
   border-radius: 999px;
-  border: 1px solid #fdba74;
+  border: 1px solid var(--color-badge-border);
 }
 
 .appHeaderActions {
@@ -384,6 +384,22 @@ textarea {
   flex: 0 0 auto;
 }
 
+.rowInline {
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+}
+
+.formGridCompact {
+  margin-top: var(--space-sm);
+}
+
+.btnIcon {
+  padding: var(--space-xs);
+  min-width: 2rem;
+  min-height: 2rem;
+  justify-content: center;
+}
+
 /* ——— Status pipeline editor ——— */
 .statusRow {
   display: flex;
@@ -571,13 +587,20 @@ td {
   vertical-align: middle;
 }
 
-tbody tr {
+tbody tr[role="button"] {
   cursor: pointer;
   transition: background 0.12s ease;
 }
 
-tbody tr:hover {
+tbody tr[role="button"]:hover,
+tbody tr[role="button"]:focus {
   background: #f8fafc;
+  outline: none;
+}
+
+tbody tr[role="button"]:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
 tbody tr:last-child td {

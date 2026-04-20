@@ -166,33 +166,52 @@ export const JobForm = memo(function JobForm({
     <section className="card">
       {!hideTitle && <h2>{en.jobForm.sectionTitle}</h2>}
       <div className="grid">
-        <input
-          placeholder={en.jobForm.companyPh}
-          value={form.company}
-          onChange={(e) => update({ company: e.target.value })}
-        />
-        <input
-          placeholder={en.jobForm.titlePh}
-          value={form.title ?? ""}
-          onChange={(e) => update({ title: e.target.value })}
-        />
-        <select value={form.status} onChange={(e) => update({ status: e.target.value })}>
-          {lanes.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <input
-          placeholder={en.jobForm.jobUrl}
-          value={form.url ?? ""}
-          onChange={(e) => update({ url: e.target.value })}
-        />
-        <input
-          placeholder={en.jobForm.tagsPh}
-          value={form.tags ?? ""}
-          onChange={(e) => update({ tags: e.target.value })}
-        />
+        <label className="fieldLabelStack" htmlFor="job-company">
+          <span className="fieldLabelText">Company</span>
+          <input
+            id="job-company"
+            placeholder={en.jobForm.companyPh}
+            value={form.company}
+            onChange={(e) => update({ company: e.target.value })}
+          />
+        </label>
+        <label className="fieldLabelStack" htmlFor="job-title">
+          <span className="fieldLabelText">Title</span>
+          <input
+            id="job-title"
+            placeholder={en.jobForm.titlePh}
+            value={form.title ?? ""}
+            onChange={(e) => update({ title: e.target.value })}
+          />
+        </label>
+        <label className="fieldLabelStack" htmlFor="job-status">
+          <span className="fieldLabelText">Status</span>
+          <select id="job-status" value={form.status} onChange={(e) => update({ status: e.target.value })}>
+            {lanes.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="fieldLabelStack" htmlFor="job-url">
+          <span className="fieldLabelText">URL</span>
+          <input
+            id="job-url"
+            placeholder={en.jobForm.jobUrl}
+            value={form.url ?? ""}
+            onChange={(e) => update({ url: e.target.value })}
+          />
+        </label>
+        <label className="fieldLabelStack" htmlFor="job-tags">
+          <span className="fieldLabelText">Tags</span>
+          <input
+            id="job-tags"
+            placeholder={en.jobForm.tagsPh}
+            value={form.tags ?? ""}
+            onChange={(e) => update({ tags: e.target.value })}
+          />
+        </label>
       </div>
       <div className="fieldFull">
         <p className="muted formHint">{en.jobForm.dateFieldsLegend}</p>
@@ -223,22 +242,29 @@ export const JobForm = memo(function JobForm({
           </label>
         </div>
       </div>
-      <div className="fieldFull">
-        <p className="muted formHint">{en.jobForm.extractHelp}</p>
-        <textarea
-          rows={5}
-          placeholder={en.jobForm.pasteAd}
-          value={form.raw_text ?? ""}
-          onChange={(e) => update({ raw_text: e.target.value })}
-        />
+<div className="fieldFull">
+        <label className="fieldLabelStack" htmlFor="job-raw-text">
+          <span className="fieldLabelText">{en.jobForm.extractHelp}</span>
+          <textarea
+            id="job-raw-text"
+            rows={5}
+            placeholder={en.jobForm.pasteAd}
+            value={form.raw_text ?? ""}
+            onChange={(e) => update({ raw_text: e.target.value })}
+          />
+        </label>
       </div>
       <div className="fieldFull">
-        <textarea
-          rows={3}
-          placeholder={en.jobForm.notesPh}
-          value={form.notes ?? ""}
-          onChange={(e) => update({ notes: e.target.value })}
-        />
+        <label className="fieldLabelStack" htmlFor="job-notes">
+          <span className="fieldLabelText">Notes</span>
+          <textarea
+            id="job-notes"
+            rows={3}
+            placeholder={en.jobForm.notesPh}
+            value={form.notes ?? ""}
+            onChange={(e) => update({ notes: e.target.value })}
+          />
+        </label>
       </div>
       <div className="fieldFull">
         <button
@@ -249,13 +275,37 @@ export const JobForm = memo(function JobForm({
           {contactOpen ? "▾" : "▸"} {en.jobForm.contactSectionTitle}
         </button>
         {contactOpen && (
-          <div className="grid" style={{ marginTop: "0.5rem" }}>
-            <input placeholder={en.jobForm.contactNamePh} value={form.contact_name ?? ""} onChange={(e) => update({ contact_name: e.target.value })} />
-            <input placeholder={en.jobForm.contactEmailPh} value={form.contact_email ?? ""} onChange={(e) => update({ contact_email: e.target.value })} />
-            <input placeholder={en.jobForm.contactPhonePh} value={form.contact_phone ?? ""} onChange={(e) => update({ contact_phone: e.target.value })} />
-            <input placeholder={en.jobForm.workplaceStreetPh} value={form.workplace_street ?? ""} onChange={(e) => update({ workplace_street: e.target.value })} />
-            <input placeholder={en.jobForm.workplaceCityPh} value={form.workplace_city ?? ""} onChange={(e) => update({ workplace_city: e.target.value })} />
-            <input placeholder={en.jobForm.workplacePostalCodePh} value={form.workplace_postal_code ?? ""} onChange={(e) => update({ workplace_postal_code: e.target.value })} />
+          <div className="grid formGridCompact">
+            <input
+              placeholder={en.jobForm.contactNamePh}
+              value={form.contact_name ?? ""}
+              onChange={(e) => update({ contact_name: e.target.value })}
+            />
+            <input
+              placeholder={en.jobForm.contactEmailPh}
+              value={form.contact_email ?? ""}
+              onChange={(e) => update({ contact_email: e.target.value })}
+            />
+            <input
+              placeholder={en.jobForm.contactPhonePh}
+              value={form.contact_phone ?? ""}
+              onChange={(e) => update({ contact_phone: e.target.value })}
+            />
+            <input
+              placeholder={en.jobForm.workplaceStreetPh}
+              value={form.workplace_street ?? ""}
+              onChange={(e) => update({ workplace_street: e.target.value })}
+            />
+            <input
+              placeholder={en.jobForm.workplaceCityPh}
+              value={form.workplace_city ?? ""}
+              onChange={(e) => update({ workplace_city: e.target.value })}
+            />
+            <input
+              placeholder={en.jobForm.workplacePostalCodePh}
+              value={form.workplace_postal_code ?? ""}
+              onChange={(e) => update({ workplace_postal_code: e.target.value })}
+            />
           </div>
         )}
       </div>
@@ -268,34 +318,51 @@ export const JobForm = memo(function JobForm({
           {jobDetailsOpen ? "▾" : "▸"} {en.jobForm.jobDetailsSectionTitle}
         </button>
         {jobDetailsOpen && (
-          <div className="grid" style={{ marginTop: "0.5rem" }}>
-            <select value={form.work_mode ?? ""} onChange={(e) => update({ work_mode: e.target.value || undefined })}>
+          <div className="grid formGridCompact">
+            <select
+              value={form.work_mode ?? ""}
+              onChange={(e) => update({ work_mode: e.target.value || undefined })}
+            >
               <option value="">{en.jobForm.workModeUnknown}</option>
               <option value="Remote">{en.jobForm.workModeRemote}</option>
               <option value="Hybrid">{en.jobForm.workModeHybrid}</option>
               <option value="On-site">{en.jobForm.workModeOnSite}</option>
             </select>
-            <select value={form.contract_type ?? ""} onChange={(e) => update({ contract_type: e.target.value || undefined })}>
+            <select
+              value={form.contract_type ?? ""}
+              onChange={(e) => update({ contract_type: e.target.value || undefined })}
+            >
               <option value="">{en.jobForm.contractTypeUnknown}</option>
               <option value="Permanent">{en.jobForm.contractTypePermanent}</option>
               <option value="Fixed-term">{en.jobForm.contractTypeFixedTerm}</option>
               <option value="Freelance">{en.jobForm.contractTypeFreelance}</option>
               <option value="Internship">{en.jobForm.contractTypeInternship}</option>
             </select>
-            <input placeholder={en.jobForm.salaryRangePh} value={form.salary_range ?? ""} onChange={(e) => update({ salary_range: e.target.value })} />
-            <input placeholder={en.jobForm.referenceNumberPh} value={form.reference_number ?? ""} onChange={(e) => update({ reference_number: e.target.value })} />
-            <input placeholder={en.jobForm.sourcePh} value={form.source ?? ""} onChange={(e) => update({ source: e.target.value })} />
+            <input
+              placeholder={en.jobForm.salaryRangePh}
+              value={form.salary_range ?? ""}
+              onChange={(e) => update({ salary_range: e.target.value })}
+            />
+            <input
+              placeholder={en.jobForm.referenceNumberPh}
+              value={form.reference_number ?? ""}
+              onChange={(e) => update({ reference_number: e.target.value })}
+            />
+            <input
+              placeholder={en.jobForm.sourcePh}
+              value={form.source ?? ""}
+              onChange={(e) => update({ source: e.target.value })}
+            />
             <div>
               <span className="fieldLabelText">{en.jobForm.priorityLabel}</span>
-              <div className="row" style={{ gap: "0.25rem", marginTop: "0.25rem" }}>
+              <div className="row rowInline">
                 {[1, 2, 3].map((n) => (
                   <button
                     key={n}
                     type="button"
-                    className="btn btnGhost btnSm"
+                    className="btn btnGhost btnSm btnIcon"
                     onClick={() => update({ priority: form.priority === n ? undefined : n })}
                     aria-pressed={form.priority === n}
-                    style={{ padding: "0.2rem" }}
                   >
                     <Star
                       size={16}

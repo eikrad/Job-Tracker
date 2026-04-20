@@ -16,6 +16,9 @@
   --color-primary-muted: #eef2ff;
   --color-accent: #0d9488;
   --color-danger: #b91c1c;
+  --color-badge-text: #9a3412;
+  --color-badge-bg: #ffedd5;
+  --color-badge-border: #fdba74;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
@@ -64,4 +67,14 @@ body {
 
 button:focus:not(:focus-visible) {
   outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
