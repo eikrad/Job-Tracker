@@ -14,6 +14,7 @@
     "preview": "vite preview",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "desktop:shortcut": "./scripts/install-desktop-shortcut.sh",
     "py:format": "uv run isort tests && uv run black tests",
     "py:lint": "uv run ruff check tests && uv run black --check tests && uv run isort --check-only tests",
     "py:test": "uv run pytest -q",
