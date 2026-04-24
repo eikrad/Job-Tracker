@@ -17,6 +17,7 @@ type Props = {
 
 export function CaptureInboxPanel({ statuses, onExtract, onSubmit }: Props) {
   const [items, setItems] = useState<CaptureInboxItem[]>(() => listCaptureInboxItems());
+  const [view, setView] = useState<"active" | "history">("active");
   const defaultStatus = useMemo(() => statuses[0] ?? "Interesting", [statuses]);
 
   function refresh() {
@@ -58,16 +59,43 @@ export function CaptureInboxPanel({ statuses, onExtract, onSubmit }: Props) {
     refresh();
   }
 
-  const activeItems = items.filter((item) => item.status === "pending" || item.status === "ready" || item.status === "failed");
+  const activeItems = items.filter(
+    (item) => item.status === "pending" || item.status === "ready" || item.status === "failed",
+  );
+  const historyItems = items.filter((item) => item.status === "accepted" || item.status === "dismissed");
+  const visibleItems = view === "active" ? activeItems : historyItems;
 
   return (
     <section className="card captureInboxPanel">
       <h3>{en.capture.inboxTitle}</h3>
       <p className="muted">{en.capture.inboxSubtitle}</p>
-      {activeItems.length === 0 && <p className="muted">{en.capture.inboxEmpty}</p>}
-      {activeItems.map((item) => (
+      <div className="tabList captureInboxTabs" role="tablist" aria-label={en.capture.inboxFilterAriaLabel}>
+        <button
+          type="button"
+          role="tab"
+          className="btnTab"
+          aria-selected={view === "active"}
+          onClick={() => setView("active")}
+        >
+          {en.capture.inboxFilterActive}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className="btnTab"
+          aria-selected={view === "history"}
+          onClick={() => setView("history")}
+        >
+          {en.capture.inboxFilterHistory}
+        </button>
+      </div>
+      {visibleItems.length === 0 && (
+        <p className="muted">{view === "active" ? en.capture.inboxEmpty : en.capture.inboxHistoryEmpty}</p>
+      )}
+      {visibleItems.map((item) => (
         <article key={item.id} className="captureInboxItem">
           <p className="captureInboxUrl">{item.url}</p>
+          <p className="muted captureInboxStatus">{en.capture.inboxStatusLabel}: {item.status}</p>
           {!item.draft && (
             <div className="row">
               <button type="button" className="btn btnGhost btnSm" onClick={() => void prepareItem(item)}>
@@ -102,9 +130,11 @@ export function CaptureInboxPanel({ statuses, onExtract, onSubmit }: Props) {
                 >
                   {en.capture.accept}
                 </button>
-                <button type="button" className="btn btnGhost btnSm" onClick={() => dismissItem(item)}>
-                  {en.capture.dismiss}
-                </button>
+                {view === "active" && (
+                  <button type="button" className="btn btnGhost btnSm" onClick={() => dismissItem(item)}>
+                    {en.capture.dismiss}
+                  </button>
+                )}
               </div>
             </>
           )}
