@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { UrlCaptureCard } from "../features/capture/UrlCaptureCard";
+import { CaptureInboxPanel } from "../features/capture/CaptureInboxPanel";
 import { useJobTracker } from "../context/JobTrackerContext";
 import { en } from "../i18n/en";
 
@@ -43,6 +44,7 @@ export function QuickCaptureDrawer({ open, onClose }: Props) {
           </button>
         </div>
         <UrlCaptureCard statuses={statuses} onExtract={onExtract} onSubmit={onSubmit} autoFocusInput />
+        <CaptureInboxPanel statuses={statuses} onExtract={onExtract} onSubmit={onSubmit} />
       </section>
     </div>
   );

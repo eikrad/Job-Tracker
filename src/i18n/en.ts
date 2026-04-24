@@ -108,6 +108,12 @@ export const en = {
     openDrawer: "Quick capture",
     drawerTitle: "Quick capture drawer",
     closeDrawer: "Close",
+    inboxTitle: "Capture inbox",
+    inboxSubtitle: "Browser-origin captures are queued here for review and acceptance.",
+    inboxEmpty: "No pending inbox captures.",
+    prepare: "Prepare draft",
+    accept: "Accept",
+    dismiss: "Dismiss",
   },
   alerts: {
     duplicateConfirm: "Possible duplicate found. Save anyway?",

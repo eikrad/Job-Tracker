@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
-import { fetchJobSearchResultPageText } from "../../lib/tauriApi";
 import type { NewJob } from "../../lib/types";
 import type { ExtractJobInfoResult } from "../extraction/extractJobInfo";
 import { en } from "../../i18n/en";
-import { createBaseCaptureDraft, normalizeCaptureUrl } from "./urlCapture";
+import { normalizeCaptureUrl } from "./urlCapture";
+import { buildCaptureDraft } from "./capturePipeline";
 
 type CaptureState = "idle" | "fetching" | "extracted" | "failed" | "saved";
 
@@ -13,16 +13,6 @@ type Props = {
   onSubmit: (payload: NewJob) => Promise<boolean>;
   autoFocusInput?: boolean;
 };
-
-function mergeDraft(base: NewJob, partial: Partial<NewJob>): NewJob {
-  const next = { ...base };
-  for (const [key, value] of Object.entries(partial)) {
-    if (value == null) continue;
-    if (typeof value === "string" && !value.trim()) continue;
-    (next as Record<string, unknown>)[key] = value;
-  }
-  return next;
-}
 
 export function UrlCaptureCard({ statuses, onExtract, onSubmit, autoFocusInput = false }: Props) {
   const defaultStatus = useMemo(() => statuses[0] ?? "Interesting", [statuses]);
@@ -44,23 +34,17 @@ export function UrlCaptureCard({ statuses, onExtract, onSubmit, autoFocusInput =
     }
 
     setState("fetching");
-    let rawText: string | undefined;
-    try {
-      const fetched = await fetchJobSearchResultPageText(normalizedUrl);
-      if (fetched.trim()) rawText = fetched.trim();
-    } catch {
-      setFetchWarning(en.capture.fetchFallbackHint);
-    }
-
-    let nextDraft = createBaseCaptureDraft(normalizedUrl, defaultStatus);
-    if (rawText) {
-      nextDraft = { ...nextDraft, raw_text: rawText };
-      const extracted = await onExtract(rawText);
-      if (extracted.ok) {
-        nextDraft = mergeDraft(nextDraft, extracted.partial);
-      } else {
-        setFetchWarning((prev) => prev || extracted.error || en.capture.extractFallbackHint);
-      }
+    const { draft: nextDraft, warning } = await buildCaptureDraft({
+      url: normalizedUrl,
+      defaultStatus,
+      onExtract,
+    });
+    if (warning) {
+      const fallback =
+        warning.includes("fetch") || warning.includes("page text")
+          ? en.capture.fetchFallbackHint
+          : en.capture.extractFallbackHint;
+      setFetchWarning(fallback);
     }
 
     setDraft(nextDraft);
