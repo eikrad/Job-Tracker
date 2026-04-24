@@ -42,12 +42,12 @@ export function DashboardPage() {
         )}
       </div>
       <aside className="appAside">
-        <ReminderCenter jobs={jobs} />
         <JobDetailTimeline
           selected={selected}
           onDeleteJob={onDeleteJob}
           onViewDetails={(id) => navigate(`/job/${id}`)}
         />
+        <ReminderCenter jobs={jobs} />
       </aside>
     </div>
   );
