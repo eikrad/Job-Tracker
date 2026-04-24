@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { JobForm } from "../features/jobs/JobForm";
+import { UrlCaptureCard } from "../features/capture/UrlCaptureCard";
 import { useJobTracker } from "../context/JobTrackerContext";
 import { en } from "../i18n/en";
 
@@ -22,6 +23,7 @@ export function AddJobPage() {
         </Link>
         <h1 className="addJobPageTitle">{en.addJobPage.title}</h1>
       </div>
+      <UrlCaptureCard statuses={statuses} onExtract={onExtract} onSubmit={onSubmit} />
       <JobForm
         statuses={statuses}
         onSubmit={onSubmit}

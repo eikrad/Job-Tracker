@@ -920,6 +920,18 @@ pre {
   letter-spacing: -0.03em;
 }
 
+.captureCard {
+  margin-bottom: var(--space-lg);
+}
+
+.captureInputRow {
+  margin: var(--space-sm) 0 var(--space-md);
+}
+
+.captureInputRow input {
+  flex: 1;
+}
+
 .extractError {
   margin-top: var(--space-md);
   line-height: 1.45;
