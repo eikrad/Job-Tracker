@@ -11,6 +11,7 @@ type Props = {
   statuses: string[];
   onExtract: (rawText: string) => Promise<ExtractJobInfoResult>;
   onSubmit: (payload: NewJob) => Promise<boolean>;
+  autoFocusInput?: boolean;
 };
 
 function mergeDraft(base: NewJob, partial: Partial<NewJob>): NewJob {
@@ -23,7 +24,7 @@ function mergeDraft(base: NewJob, partial: Partial<NewJob>): NewJob {
   return next;
 }
 
-export function UrlCaptureCard({ statuses, onExtract, onSubmit }: Props) {
+export function UrlCaptureCard({ statuses, onExtract, onSubmit, autoFocusInput = false }: Props) {
   const defaultStatus = useMemo(() => statuses[0] ?? "Interesting", [statuses]);
   const [urlInput, setUrlInput] = useState("");
   const [state, setState] = useState<CaptureState>("idle");
@@ -95,6 +96,7 @@ export function UrlCaptureCard({ statuses, onExtract, onSubmit }: Props) {
           onChange={(e) => setUrlInput(e.target.value)}
           placeholder={en.capture.urlPlaceholder}
           aria-label={en.capture.urlAriaLabel}
+          autoFocus={autoFocusInput}
         />
         <button
           type="button"

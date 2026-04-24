@@ -2,6 +2,7 @@ import { useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import "./App.css";
 import { AppHeader } from "./components/AppHeader";
+import { QuickCaptureDrawer } from "./components/QuickCaptureDrawer";
 import { SettingsModal } from "./components/SettingsModal";
 import { JobTrackerProvider } from "./context/JobTrackerContext";
 import { useJobTrackerState } from "./hooks/useJobTrackerState";
@@ -12,6 +13,7 @@ import { JobSearchPage } from "./pages/JobSearchPage";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
   const state = useJobTrackerState({
     openSettings: () => setSettingsOpen(true),
   });
@@ -19,7 +21,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <JobTrackerProvider value={state}>
-        <AppHeader onOpenSettings={() => setSettingsOpen(true)} />
+        <AppHeader
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenQuickCapture={() => setQuickCaptureOpen(true)}
+        />
+        <QuickCaptureDrawer open={quickCaptureOpen} onClose={() => setQuickCaptureOpen(false)} />
         <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
         <main className="app">
           <Routes>

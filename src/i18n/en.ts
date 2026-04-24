@@ -105,6 +105,9 @@ export const en = {
     companyRequired: "Company is required before saving.",
     urlRequired: "URL is required before saving.",
     saved: "Captured and saved.",
+    openDrawer: "Quick capture",
+    drawerTitle: "Quick capture drawer",
+    closeDrawer: "Close",
   },
   alerts: {
     duplicateConfirm: "Possible duplicate found. Save anyway?",

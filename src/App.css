@@ -932,6 +932,46 @@ pre {
   flex: 1;
 }
 
+.captureDrawer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.captureDrawerBackdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  background: rgba(15, 23, 42, 0.45);
+  cursor: pointer;
+}
+
+.captureDrawerPanel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(680px, 100vw);
+  background: var(--color-bg);
+  border-left: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+  overflow-y: auto;
+  padding: var(--space-lg);
+}
+
+.captureDrawerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.captureDrawerHeader h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
 .extractError {
   margin-top: var(--space-md);
   line-height: 1.45;

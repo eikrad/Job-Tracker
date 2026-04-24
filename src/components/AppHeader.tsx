@@ -4,9 +4,10 @@ import { en } from "../i18n/en";
 
 type Props = {
   onOpenSettings: () => void;
+  onOpenQuickCapture: () => void;
 };
 
-export function AppHeader({ onOpenSettings }: Props) {
+export function AppHeader({ onOpenSettings, onOpenQuickCapture }: Props) {
   const { view, setView } = useJobTracker();
   const location = useLocation();
   const isDashboard = location.pathname === "/";
@@ -71,6 +72,14 @@ export function AppHeader({ onOpenSettings }: Props) {
             >
               {en.nav.addJob}
             </NavLink>
+            <button
+              type="button"
+              className="btn btnGhost"
+              onClick={onOpenQuickCapture}
+              aria-label={en.capture.openDrawer}
+            >
+              {en.capture.openDrawer}
+            </button>
             <button
               type="button"
               className="btn btnGhost"
