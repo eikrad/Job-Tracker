@@ -119,6 +119,12 @@ export const en = {
     prepare: "Prepare draft",
     accept: "Accept",
     dismiss: "Dismiss",
+    handoffTitle: "Browser handoff link",
+    handoffSubtitle: "Paste a listing URL and copy a ready-to-share app link with capture_url prefilled.",
+    handoffInputAriaLabel: "Browser handoff source URL",
+    copyHandoffLink: "Copy handoff link",
+    handoffCopied: "Handoff link copied.",
+    handoffCopyFailed: "Could not copy link. Copy it manually from your browser address bar.",
   },
   alerts: {
     duplicateConfirm: "Possible duplicate found. Save anyway?",

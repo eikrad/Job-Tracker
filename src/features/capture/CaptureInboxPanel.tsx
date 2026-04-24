@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { NewJob } from "../../lib/types";
 import type { ExtractJobInfoResult } from "../extraction/extractJobInfo";
 import { en } from "../../i18n/en";
-import { buildCaptureDraft } from "./capturePipeline";
+import { buildCaptureDraft, captureWarningMessage } from "./capturePipeline";
 import {
   listCaptureInboxItems,
   updateCaptureInboxItem,
@@ -27,15 +27,15 @@ export function CaptureInboxPanel({ statuses, onExtract, onSubmit }: Props) {
   async function prepareItem(item: CaptureInboxItem) {
     updateCaptureInboxItem(item.id, { status: "pending", warning: undefined });
     refresh();
-    const { draft, warning } = await buildCaptureDraft({
+    const { draft, reason } = await buildCaptureDraft({
       url: item.url,
       defaultStatus,
       onExtract,
     });
     updateCaptureInboxItem(item.id, {
       draft,
-      warning,
-      status: warning ? "failed" : "ready",
+      warning: reason ? captureWarningMessage(reason) : undefined,
+      status: reason ? "failed" : "ready",
     });
     refresh();
   }
@@ -59,11 +59,11 @@ export function CaptureInboxPanel({ statuses, onExtract, onSubmit }: Props) {
     refresh();
   }
 
-  const activeItems = items.filter(
-    (item) => item.status === "pending" || item.status === "ready" || item.status === "failed",
-  );
-  const historyItems = items.filter((item) => item.status === "accepted" || item.status === "dismissed");
-  const visibleItems = view === "active" ? activeItems : historyItems;
+  const visibleItems = useMemo(() => {
+    const isHistory = (item: CaptureInboxItem) =>
+      item.status === "accepted" || item.status === "dismissed";
+    return items.filter((item) => (view === "history" ? isHistory(item) : !isHistory(item)));
+  }, [items, view]);
 
   return (
     <section className="card captureInboxPanel">

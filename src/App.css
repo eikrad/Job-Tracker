@@ -976,6 +976,10 @@ pre {
   margin-top: var(--space-md);
 }
 
+.captureHandoffCard {
+  margin-top: var(--space-md);
+}
+
 .captureInboxTabs {
   margin-bottom: var(--space-sm);
 }

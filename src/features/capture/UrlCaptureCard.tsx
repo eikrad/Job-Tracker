@@ -3,9 +3,9 @@ import type { NewJob } from "../../lib/types";
 import type { ExtractJobInfoResult } from "../extraction/extractJobInfo";
 import { en } from "../../i18n/en";
 import { normalizeCaptureUrl } from "./urlCapture";
-import { buildCaptureDraft } from "./capturePipeline";
+import { buildCaptureDraft, captureWarningMessage } from "./capturePipeline";
 
-type CaptureState = "idle" | "fetching" | "extracted" | "failed" | "saved";
+type CaptureState = "idle" | "fetching" | "saved";
 
 type Props = {
   statuses: string[];
@@ -22,33 +22,30 @@ export function UrlCaptureCard({ statuses, onExtract, onSubmit, autoFocusInput =
   const [fetchWarning, setFetchWarning] = useState("");
   const [draft, setDraft] = useState<NewJob | null>(null);
 
+  function updateDraft(patch: Partial<NewJob>) {
+    setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+  }
+
   async function handleCapture() {
     setError("");
     setFetchWarning("");
     const normalizedUrl = normalizeCaptureUrl(urlInput);
     if (!normalizedUrl) {
-      setState("failed");
+      setState("idle");
       setDraft(null);
       setError(en.capture.invalidUrl);
       return;
     }
 
     setState("fetching");
-    const { draft: nextDraft, warning } = await buildCaptureDraft({
+    const { draft: nextDraft, reason } = await buildCaptureDraft({
       url: normalizedUrl,
       defaultStatus,
       onExtract,
     });
-    if (warning) {
-      const fallback =
-        warning.includes("fetch") || warning.includes("page text")
-          ? en.capture.fetchFallbackHint
-          : en.capture.extractFallbackHint;
-      setFetchWarning(fallback);
-    }
-
+    if (reason) setFetchWarning(captureWarningMessage(reason));
     setDraft(nextDraft);
-    setState("extracted");
+    setState("idle");
   }
 
   async function handleSave() {
@@ -102,31 +99,22 @@ export function UrlCaptureCard({ statuses, onExtract, onSubmit, autoFocusInput =
           <div className="grid">
             <label className="fieldLabelStack">
               <span className="fieldLabelText">{en.capture.companyLabel}</span>
-              <input
-                value={draft.company}
-                onChange={(e) => setDraft((prev) => (prev ? { ...prev, company: e.target.value } : prev))}
-              />
+              <input value={draft.company} onChange={(e) => updateDraft({ company: e.target.value })} />
             </label>
             <label className="fieldLabelStack">
               <span className="fieldLabelText">{en.capture.titleLabel}</span>
-              <input
-                value={draft.title ?? ""}
-                onChange={(e) => setDraft((prev) => (prev ? { ...prev, title: e.target.value } : prev))}
-              />
+              <input value={draft.title ?? ""} onChange={(e) => updateDraft({ title: e.target.value })} />
             </label>
             <label className="fieldLabelStack">
               <span className="fieldLabelText">{en.capture.locationLabel}</span>
               <input
                 value={draft.workplace_city ?? ""}
-                onChange={(e) => setDraft((prev) => (prev ? { ...prev, workplace_city: e.target.value } : prev))}
+                onChange={(e) => updateDraft({ workplace_city: e.target.value })}
               />
             </label>
             <label className="fieldLabelStack">
               <span className="fieldLabelText">{en.capture.sourceLabel}</span>
-              <input
-                value={draft.source ?? ""}
-                onChange={(e) => setDraft((prev) => (prev ? { ...prev, source: e.target.value } : prev))}
-              />
+              <input value={draft.source ?? ""} onChange={(e) => updateDraft({ source: e.target.value })} />
             </label>
           </div>
           <div className="row">
