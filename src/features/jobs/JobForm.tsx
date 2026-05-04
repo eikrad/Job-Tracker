@@ -6,6 +6,8 @@ import { DEFAULT_STATUSES } from "../../lib/types";
 import type { ExtractJobInfoResult } from "../extraction/extractJobInfo";
 import { en } from "../../i18n/en";
 
+const PRIORITY_MAX = 10;
+
 type Props = {
   statuses: string[];
   onSubmit: (payload: NewJob) => Promise<boolean>;
@@ -356,7 +358,7 @@ export const JobForm = memo(function JobForm({
             <div>
               <span className="fieldLabelText">{en.jobForm.priorityLabel}</span>
               <div className="row rowInline">
-                {[1, 2, 3].map((n) => (
+                {Array.from({ length: PRIORITY_MAX }, (_, i) => i + 1).map((n) => (
                   <button
                     key={n}
                     type="button"

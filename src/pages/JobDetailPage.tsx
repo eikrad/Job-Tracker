@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, Building2, Calendar, ExternalLink, FileText,
@@ -12,6 +12,8 @@ import {
 import { JobForm } from "../features/jobs/JobForm";
 import { en } from "../i18n/en";
 import type { DocType, JobDocument } from "../lib/types";
+
+const PRIORITY_MAX = 10;
 
 const DOC_TYPES: { value: DocType; label: string }[] = [
   { value: "cv", label: en.detail.docTypeCv },
@@ -88,6 +90,13 @@ export function JobDetailPage() {
         <span>{String(value)}</span>
       </div>
     ) : null;
+  const rowNode = (label: string, node: ReactNode, show = true) =>
+    show ? (
+      <div className="detailRow" style={{ alignItems: "flex-start" }}>
+        <span className="detailRowLabel">{label}</span>
+        <span>{node}</span>
+      </div>
+    ) : null;
 
   return (
     <div className="jobDetailPage">
@@ -130,12 +139,14 @@ export function JobDetailPage() {
         <section className="card">
           <p className="cardTitle">{en.jobDetailPage.sectionOverview}</p>
           <div className="detailRowList">
+            {row(en.jobDetailPage.company, job.company)}
+            {row(en.jobDetailPage.title, job.title)}
             {row(en.jobDetailPage.status, job.status)}
             {job.priority != null && (
               <div className="detailRow">
                 <span className="detailRowLabel">{en.jobDetailPage.priority}</span>
                 <span>
-                  {[1, 2, 3].map((n) => (
+                  {Array.from({ length: PRIORITY_MAX }, (_, i) => i + 1).map((n) => (
                     <Star key={n} size={14} fill={job.priority! >= n ? "currentColor" : "none"} style={{ display: "inline" }} />
                   ))}
                 </span>
@@ -166,10 +177,34 @@ export function JobDetailPage() {
             {row(en.jobDetailPage.referenceNumber, job.reference_number)}
             {row(en.jobDetailPage.source, job.source)}
             {row(en.jobDetailPage.language, job.detected_language)}
+            {row(en.jobDetailPage.createdAt, new Date(job.created_at).toLocaleString())}
+            {row(en.jobDetailPage.updatedAt, new Date(job.updated_at).toLocaleString())}
           </div>
         </section>
 
-        {/* Column 2 — Contact & Location */}
+        {/* Column 2 — Listing & Notes */}
+        <section className="card">
+          <p className="cardTitle">{en.jobDetailPage.sectionListing}</p>
+          <div className="detailRowList">
+            {rowNode(
+              en.jobDetailPage.url,
+              <a href={job.url ?? ""} target="_blank" rel="noreferrer">{job.url}</a>,
+              !!job.url,
+            )}
+            {rowNode(
+              en.jobDetailPage.notes,
+              <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{job.notes}</span>,
+              !!job.notes,
+            )}
+            {rowNode(
+              en.jobDetailPage.rawText,
+              <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{job.raw_text}</span>,
+              !!job.raw_text,
+            )}
+          </div>
+        </section>
+
+        {/* Column 3 — Contact & Location */}
         <section className="card">
           <p className="cardTitle">{en.jobDetailPage.sectionContact}</p>
           <div className="detailRowList">
@@ -203,7 +238,7 @@ export function JobDetailPage() {
           </div>
         </section>
 
-        {/* Column 3 — Documents + History */}
+        {/* Column 4 — Documents + History */}
         <section className="card">
           <p className="cardTitle">{en.jobDetailPage.sectionDocuments}</p>
           {documents.length === 0 ? (

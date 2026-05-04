@@ -3,6 +3,8 @@ import { Star, Calendar, Monitor, Tag, ArrowRight, Trash2 } from "lucide-react";
 import { en } from "../../i18n/en";
 import type { Job } from "../../lib/types";
 
+const PRIORITY_MAX = 10;
+
 type Props = {
   selected?: Job;
   onDeleteJob: (jobId: number) => Promise<void>;
@@ -45,7 +47,7 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
           {en.detail.status} <span>{selected.status}</span>
           {selected.priority != null && (
             <span style={{ marginLeft: "0.5rem" }}>
-              {[1, 2, 3].map((n) => (
+              {Array.from({ length: PRIORITY_MAX }, (_, i) => i + 1).map((n) => (
                 <Star key={n} size={13} fill={selected.priority! >= n ? "currentColor" : "none"} style={{ display: "inline" }} />
               ))}
             </span>
@@ -70,6 +72,7 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
             {selected.tags}
           </p>
         )}
+        {selected.notes && <p className="detailMeta">{en.detail.notes}: {selected.notes}</p>}
         <div className="detailActions row" style={{ marginTop: "0.75rem" }}>
           <button type="button" className="btn btnPrimary btnSm" onClick={() => onViewDetails(selected.id)}>
             {en.detail.viewFullDetails} <ArrowRight size={13} style={{ display: "inline", marginLeft: 3 }} />
