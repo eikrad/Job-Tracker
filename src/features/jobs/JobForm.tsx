@@ -4,6 +4,8 @@ import { effectiveStatuses } from "../../lib/statusUtils";
 import type { Job, NewJob } from "../../lib/types";
 import { DEFAULT_STATUSES } from "../../lib/types";
 import type { ExtractJobInfoResult } from "../extraction/extractJobInfo";
+import { fetchListingTextFromUrl } from "../capture/capturePipeline";
+import { normalizeCaptureUrl } from "../capture/urlCapture";
 import { en } from "../../i18n/en";
 
 const PRIORITY_MAX = 10;
@@ -109,6 +111,7 @@ export const JobForm = memo(function JobForm({
   const [jobDetailsOpen, setJobDetailsOpen] = useState(false);
   const [extractError, setExtractError] = useState("");
   const [extractApplied, setExtractApplied] = useState(false);
+  const [extractFetching, setExtractFetching] = useState(false);
 
   useEffect(() => {
     if (!editingJob) return;
@@ -149,7 +152,29 @@ export const JobForm = memo(function JobForm({
   async function extract() {
     setExtractError("");
     setExtractApplied(false);
-    const result = await onExtract(form.raw_text ?? "");
+
+    let rawText = (form.raw_text ?? "").trim();
+    if (!rawText) {
+      const listingUrl = normalizeCaptureUrl(form.url ?? "");
+      if (!listingUrl) {
+        setExtractError(en.jobForm.extractNeedsTextOrUrl);
+        return;
+      }
+      setExtractFetching(true);
+      try {
+        const fetched = await fetchListingTextFromUrl(listingUrl);
+        if (!fetched) {
+          setExtractError(en.capture.fetchFallbackHint);
+          return;
+        }
+        rawText = fetched;
+        setForm((v) => ({ ...v, raw_text: fetched }));
+      } finally {
+        setExtractFetching(false);
+      }
+    }
+
+    const result = await onExtract(rawText);
     if (!result.ok) {
       setExtractError(result.error);
       return;
@@ -390,8 +415,13 @@ export const JobForm = memo(function JobForm({
             {en.jobForm.cancelEdit}
           </button>
         )}
-        <button type="button" className="btn btnGhost" onClick={() => void extract()}>
-          {en.jobForm.extractWithAi}
+        <button
+          type="button"
+          className="btn btnGhost"
+          disabled={extractFetching}
+          onClick={() => void extract()}
+        >
+          {extractFetching ? en.jobForm.extractFetching : en.jobForm.extractWithAi}
         </button>
         <button type="button" className="btn btnPrimary" onClick={() => void submit()}>
           {isEdit ? en.jobForm.saveChanges : en.jobForm.save}

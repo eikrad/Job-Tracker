@@ -31,7 +31,7 @@ function sortJobs(jobs: Job[], sortKey: SortKey, sortDirection: SortDirection) {
       case "priority": {
         const aPriority = a.priority ?? -1;
         const bPriority = b.priority ?? -1;
-        result = bPriority - aPriority;
+        result = aPriority - bPriority;
         break;
       }
       case "deadline":

@@ -7,7 +7,7 @@ import {
 import { useJobTracker } from "../context/JobTrackerContext";
 import {
   deleteJobDocument, listJobDocuments, listStatusHistory,
-  openDocument, saveJobDocument,
+  openDocument, openUrlInBrowser, saveJobDocument,
 } from "../lib/tauriApi";
 import { JobForm } from "../features/jobs/JobForm";
 import { en } from "../i18n/en";
@@ -188,7 +188,18 @@ export function JobDetailPage() {
           <div className="detailRowList">
             {rowNode(
               en.jobDetailPage.url,
-              <a href={job.url ?? ""} target="_blank" rel="noreferrer">{job.url}</a>,
+              <a
+                href={job.url ?? "#"}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!job.url?.trim()) return;
+                  void openUrlInBrowser(job.url.trim()).catch(console.error);
+                }}
+              >
+                {job.url}
+              </a>,
               !!job.url,
             )}
             {rowNode(
@@ -217,13 +228,29 @@ export function JobDetailPage() {
             {job.contact_email && (
               <div className="detailRow">
                 <span className="detailRowLabel">{en.jobDetailPage.contactEmail}</span>
-                <a href={`mailto:${job.contact_email}`}>{job.contact_email}</a>
+                <a
+                  href={`mailto:${job.contact_email}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    void openUrlInBrowser(`mailto:${job.contact_email}`).catch(console.error);
+                  }}
+                >
+                  {job.contact_email}
+                </a>
               </div>
             )}
             {job.contact_phone && (
               <div className="detailRow">
                 <span className="detailRowLabel">{en.jobDetailPage.contactPhone}</span>
-                <a href={`tel:${job.contact_phone}`}>{job.contact_phone}</a>
+                <a
+                  href={`tel:${job.contact_phone}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    void openUrlInBrowser(`tel:${job.contact_phone}`).catch(console.error);
+                  }}
+                >
+                  {job.contact_phone}
+                </a>
               </div>
             )}
             {(job.workplace_street || job.workplace_city || job.workplace_postal_code) && (

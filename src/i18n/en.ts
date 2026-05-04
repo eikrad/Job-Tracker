@@ -141,10 +141,13 @@ export const en = {
     titlePh: "Title",
     jobUrl: "Job URL",
     tagsPh: "Tags (comma)",
-    pasteAd: "Paste job ad text here",
-    /** Shown under the job-ad textarea — we only send text to the model, no URL fetching. */
+    pasteAd: "Paste job ad text here (optional if URL is set — see below)",
+    /** Shown under the job-ad textarea */
     extractHelp:
-      "Paste the job description text from the listing page (select all → copy). This app does not open URLs for you—add the link in “Job URL” if you want it saved.",
+      "Paste the job description from the listing, or leave this empty and set Job URL — “Extract with AI” will try to download the page text first (same as Quick capture), then run extraction.",
+    extractNeedsTextOrUrl:
+      "Paste job ad text above, or enter a valid http(s) URL in Job URL before extracting.",
+    extractFetching: "Fetching page…",
     notesPh: "Notes",
     extractWithAi: "Extract with AI",
     save: "Save",

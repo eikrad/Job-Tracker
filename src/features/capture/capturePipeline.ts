@@ -46,6 +46,11 @@ async function safeFetchListingText(url: string): Promise<string | null> {
   }
 }
 
+/** Same HTTP fetch as Quick capture (`fetch_job_search_result_page_text`). Desktop app only; returns null if fetch fails. */
+export async function fetchListingTextFromUrl(url: string): Promise<string | null> {
+  return safeFetchListingText(url);
+}
+
 export async function buildCaptureDraft({
   url,
   defaultStatus,
