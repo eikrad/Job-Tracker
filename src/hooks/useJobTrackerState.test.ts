@@ -33,4 +33,21 @@ describe("useJobTrackerState", () => {
     const { result } = renderHook(() => useJobTrackerState());
     expect(result.current.view).toBe("table");
   });
+
+  it("migrates saved statuses from v1 to v2 on init", () => {
+    const storage = {
+      getItem: vi.fn((key: string) =>
+        key === "statuses"
+          ? JSON.stringify(["Interesting", "Application Sent", "Feedback", "Done"])
+          : null,
+      ),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    };
+    vi.stubGlobal("localStorage", storage);
+    const { result } = renderHook(() => useJobTrackerState());
+    expect(result.current.statuses).toContain("Plan to Apply");
+    expect(result.current.statuses.indexOf("Plan to Apply")).toBe(1);
+  });
 });

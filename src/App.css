@@ -241,6 +241,19 @@
   background: #b91c1c;
 }
 
+.btnNextStatus {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.btnNextStatus:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
 .btnSm {
   min-height: 1.85rem;
   padding: 0.25rem 0.55rem;
