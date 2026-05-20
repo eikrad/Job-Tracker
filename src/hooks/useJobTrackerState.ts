@@ -19,6 +19,7 @@ import { extractJobInfo, type LlmProvider } from "../features/extraction/extract
 import { parseJobsImportCsv, parseJobsImportJson } from "../lib/export/exportBundle";
 import { findDuplicateJob } from "../lib/jobs/duplicateCheck";
 import { DEFAULT_STATUSES } from "../lib/types";
+import { migrateStatusesV2 } from "../lib/statusUtils";
 import { en } from "../i18n/en";
 
 type BoardView = "kanban" | "table" | "calendar";
@@ -48,9 +49,14 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
     localStorage.getItem("googleAccessToken") ?? "",
   );
   const [googleOauthConnected, setGoogleOauthConnected] = useState(false);
-  const [statuses, setStatuses] = useState<string[]>(
-    JSON.parse(localStorage.getItem("statuses") ?? JSON.stringify(DEFAULT_STATUSES)),
-  );
+  const [statuses, setStatuses] = useState<string[]>(() => {
+    const saved = JSON.parse(
+      localStorage.getItem("statuses") ?? JSON.stringify(DEFAULT_STATUSES),
+    ) as string[];
+    const migrated = migrateStatusesV2(saved);
+    if (migrated !== saved) localStorage.setItem("statuses", JSON.stringify(migrated));
+    return migrated;
+  });
   const [backupFolder, setBackupFolder] = useState(
     localStorage.getItem("backupFolder") ?? "~/Jottacloud",
   );

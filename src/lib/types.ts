@@ -1,4 +1,4 @@
-export type JobStatus = "Interesting" | "Application Sent" | "Feedback" | "Done";
+export type JobStatus = "Interesting" | "Plan to Apply" | "Application Sent" | "Feedback" | "Done";
 
 export type Job = {
   id: number;
@@ -71,6 +71,7 @@ export type NewJob = {
 
 export const DEFAULT_STATUSES: JobStatus[] = [
   "Interesting",
+  "Plan to Apply",
   "Application Sent",
   "Feedback",
   "Done",

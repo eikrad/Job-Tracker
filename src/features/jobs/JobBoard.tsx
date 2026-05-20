@@ -10,7 +10,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { groupJobsByStatus } from "../../lib/jobs/groupJobsByStatus";
-import { effectiveStatuses } from "../../lib/statusUtils";
+import { effectiveStatuses, isNextStatus } from "../../lib/statusUtils";
 import type { Job } from "../../lib/types";
 import { WorkspaceEmpty } from "../../components/WorkspaceEmpty";
 import { en } from "../../i18n/en";
@@ -102,7 +102,7 @@ function JobCard({
             <button
               key={target}
               type="button"
-              className="btn btnSm btnGhost"
+              className={`btn btnSm ${isNextStatus(lanes, job.status, target) ? "btnNextStatus" : "btnGhost"}`}
               onClick={(e) => {
                 e.stopPropagation();
                 void onMove(job.id, target);
