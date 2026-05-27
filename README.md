@@ -25,7 +25,7 @@ sudo pacman -S --needed base-devel curl wget openssl gtk3 libappindicator-gtk3 l
 
 1. Install **Node.js 20+** (e.g. from [nodejs.org](https://nodejs.org/) or `winget install OpenJS.NodeJS.LTS`).
 2. Install **Rust** via [rustup](https://rustup.rs/) (use the `x86_64-pc-windows-msvc` toolchain).
-3. Install **Microsoft C++ Build Tools** for the Tauri/Rust native build: open [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and select the **“Desktop development with C++”** workload (or follow the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)).
+3. Install **Microsoft C++ Build Tools** for the Tauri/Rust native build: open [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and select the **"Desktop development with C++"** workload (or follow the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)).
 4. **WebView2** is bundled on current Windows 10/11; if the app fails to show a window, install the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
 
 From **PowerShell** or **cmd**, use the same commands as below (`git clone`, `npm ci`, `npm run tauri:dev`, etc.) in the project folder.
@@ -69,7 +69,7 @@ Installable artifacts appear under `src-tauri/target/release/` (platform-depende
 | **Windows** | NSIS + MSI | `…/bundle/nsis/`, `…/msi/` |
 | **macOS** | `.app` + `.dmg` | `…/bundle/macos/`, `…/dmg/` |
 
-**AppImage is not in the default list.** Tauri’s AppImage step invokes [**linuxdeploy**](https://github.com/linuxdeploy/linuxdeploy); if it is missing or not executable, the build fails with **`failed to run linuxdeploy`**. That is a common pain on fresh machines, so we only request formats that do not need it unless you opt in.
+**AppImage is not in the default list.** Tauri's AppImage step invokes [**linuxdeploy**](https://github.com/linuxdeploy/linuxdeploy); if it is missing or not executable, the build fails with **`failed to run linuxdeploy`**. That is a common pain on fresh machines, so we only request formats that do not need it unless you opt in.
 
 **To build an AppImage locally:** follow [Tauri: AppImage](https://v2.tauri.app/distribute/appimage/) (linuxdeploy + AppImage plugin on `PATH`), then add `"appimage"` to `bundle.targets` in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json). Maintainer-oriented details: [CONTRIBUTING.md — Tauri release bundles](CONTRIBUTING.md#tauri-release-bundles-linux-appimage).
 
@@ -125,7 +125,7 @@ This creates `~/.local/share/applications/job-tracker.desktop` from the Tauri te
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
 5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
 
@@ -167,6 +167,8 @@ GitHub Actions runs three independent workflows (each with its own status badge 
 | **Rust** | `cargo clippy` → `cargo test` |
 | **Python** | `ruff check` → `black --check` → `isort --check-only` → `pytest` |
 
+> **2026-05-27**: Removed a duplicate `frontend` job from `ci.yml` — it ran identical steps to `frontend.yml`, causing frontend checks to run twice on every push to `main`. The three dedicated workflow files now handle all checks across all branches. Action versions updated to `checkout@v6`, `setup-node@v6`, `setup-python@v6`.
+
 ### Frontend (Vitest)
 
 ```bash
@@ -201,3 +203,22 @@ Tool config: [`pyproject.toml`](pyproject.toml).
 - React + TypeScript + Vite
 - Tauri 2
 - SQLite (rusqlite) in the Rust backend
+
+---
+
+## Maintenance notes
+
+**2026-05-27 — Weekly maintenance**
+
+### Fixes applied
+
+- **CI**: Removed duplicate `frontend` job from `ci.yml`. It ran the same lint/test/build steps as `frontend.yml` on pushes to `main`, causing checks to run twice. The three dedicated workflow files (`frontend.yml`, `rust.yml`, `python.yml`) now cover all checks across all branches.
+- **CI**: Action versions updated to current stable — `checkout@v6`, `setup-node@v6`, `setup-python@v6`.
+
+### Major upgrades available (not auto-applied — require testing)
+
+| Package | In use | Latest | Notes |
+|---|---|---|---|
+| `eslint` / `@eslint/js` | `^9.x` | `10.x` | Flat-config updates; review eslint v10 migration guide |
+| `typescript` | `~5.9.x` | `6.x` | New type-system features; some breaking changes |
+| `rand` (Rust) | `0.8` | `0.9` | API changes in rand crate — review the rand 0.9 migration guide |
