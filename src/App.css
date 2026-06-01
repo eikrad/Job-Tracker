@@ -579,6 +579,155 @@ table {
   font-size: 0.875rem;
 }
 
+.jobTableCard h2 {
+  margin-bottom: var(--space-sm);
+}
+
+.jobTableColumnPicker {
+  border: none;
+  margin: 0 0 var(--space-md);
+  padding: 0;
+}
+
+.jobTableColumnPicker legend {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-xs);
+  padding: 0;
+}
+
+.jobTableColumnChecks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-md);
+}
+
+.jobTableColumnCheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.jobTableColumnCheck input {
+  margin: 0;
+  accent-color: var(--color-primary);
+}
+
+.jobTableColumnCheck input:disabled {
+  cursor: not-allowed;
+}
+
+.jobTableSortBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-md) var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+
+.jobTableSortField {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.jobTableSortField select {
+  min-width: 8.5rem;
+  font-size: 0.8125rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: #fff;
+}
+
+.jobTableWrap {
+  margin: 0;
+}
+
+.jobTable {
+  table-layout: fixed;
+  font-size: 0.8125rem;
+}
+
+.jobTable .jobTableColCompany {
+  width: 14%;
+}
+
+.jobTable .jobTableColTitle {
+  width: 20%;
+}
+
+.jobTable .jobTableColStatus {
+  width: 12%;
+}
+
+.jobTable .jobTableColRating {
+  width: 5%;
+}
+
+.jobTable .jobTableColAdded {
+  width: 9%;
+}
+
+.jobTable .jobTableColDate {
+  width: 9%;
+}
+
+.jobTable .jobTableColLang {
+  width: 7%;
+}
+
+.jobTable th {
+  padding: 0.35rem 0.4rem;
+  vertical-align: bottom;
+}
+
+.jobTable td {
+  padding: 0.4rem 0.45rem;
+}
+
+.jobTableSortBtn {
+  padding: 0.15rem 0.2rem;
+  font-size: 0.65rem;
+  line-height: 1.2;
+  white-space: normal;
+  text-align: left;
+  max-width: 100%;
+}
+
+.jobTableSecondaryMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0.15rem;
+  min-width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 999px;
+  font-size: 0.55rem;
+  font-weight: 800;
+  background: var(--color-primary);
+  color: #fff;
+  vertical-align: super;
+}
+
+.jobTableCellTruncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jobTableCellDate {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 thead {
   background: #f1f5f9;
 }

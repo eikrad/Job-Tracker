@@ -28,7 +28,9 @@ export function DashboardPage() {
         {view === "kanban" && (
           <JobBoard statuses={statuses} jobs={jobs} onMove={onMove} onSelect={setSelected} />
         )}
-        {view === "table" && <JobTable jobs={jobs} onSelect={setSelected} />}
+        {view === "table" && (
+          <JobTable jobs={jobs} statuses={statuses} onSelect={setSelected} />
+        )}
         {view === "calendar" && (
           <DeadlinesView
             jobs={jobs}

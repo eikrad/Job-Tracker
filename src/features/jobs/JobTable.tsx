@@ -1,64 +1,59 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import type { Job } from "../../lib/types";
+import {
+  buildJobTableColumns,
+  loadVisibleJobTableColumns,
+  saveVisibleJobTableColumns,
+  toggleVisibleColumn,
+  type JobTableColumnId,
+} from "../../lib/jobs/jobTableColumns";
+import {
+  sortJobs,
+  type JobSortKey,
+  type SortDirection,
+} from "../../lib/jobs/sortJobs";
 import { WorkspaceEmpty } from "../../components/WorkspaceEmpty";
 import { en } from "../../i18n/en";
 
-type Props = { jobs: Job[]; onSelect: (job: Job) => void };
-type SortDirection = "desc" | "asc";
-type SortKey = "company" | "title" | "status" | "priority" | "deadline" | "interview_date" | "start_date" | "detected_language";
+type Props = {
+  jobs: Job[];
+  statuses: string[];
+  onSelect: (job: Job) => void;
+};
 
-function compareNullableStrings(a: string | null | undefined, b: string | null | undefined) {
-  const left = (a ?? "").trim().toLocaleLowerCase();
-  const right = (b ?? "").trim().toLocaleLowerCase();
-  if (!left && !right) return 0;
-  if (!left) return 1;
-  if (!right) return -1;
-  return left.localeCompare(right);
-}
+const COLUMN_LABELS: Record<JobTableColumnId, string> = {
+  company: en.jobTable.company,
+  title: en.jobTable.titleCol,
+  status: en.jobTable.status,
+  priority: en.jobTable.rating,
+  created_at: en.jobTable.added,
+  deadline: en.jobTable.deadline,
+  interview_date: en.jobTable.interview,
+  start_date: en.jobTable.start,
+  detected_language: en.jobTable.language,
+};
 
-function compareNullableDates(a: string | null | undefined, b: string | null | undefined) {
-  if (!a && !b) return 0;
-  if (!a) return 1;
-  if (!b) return -1;
-  return a.localeCompare(b);
-}
+const SORT_ARIA: Record<JobTableColumnId, string> = {
+  company: en.jobTable.sortByCompany,
+  title: en.jobTable.sortByTitle,
+  status: en.jobTable.sortByStatus,
+  priority: en.jobTable.sortByRating,
+  created_at: en.jobTable.sortByAdded,
+  deadline: en.jobTable.sortByDeadline,
+  interview_date: en.jobTable.sortByInterview,
+  start_date: en.jobTable.sortByStart,
+  detected_language: en.jobTable.sortByLanguage,
+};
 
-function sortJobs(jobs: Job[], sortKey: SortKey, sortDirection: SortDirection) {
-  const copy = [...jobs];
-  copy.sort((a, b) => {
-    let result = 0;
-    switch (sortKey) {
-      case "priority": {
-        const aPriority = a.priority ?? -1;
-        const bPriority = b.priority ?? -1;
-        result = aPriority - bPriority;
-        break;
-      }
-      case "deadline":
-      case "interview_date":
-      case "start_date":
-        result = compareNullableDates(a[sortKey], b[sortKey]);
-        break;
-      case "company":
-      case "title":
-      case "status":
-      case "detected_language":
-        result = compareNullableStrings(a[sortKey], b[sortKey]);
-        break;
-      default: {
-        const _never: never = sortKey;
-        return _never;
-      }
-    }
-    if (result === 0) return b.id - a.id;
-    return sortDirection === "desc" ? -result : result;
-  });
-  return copy;
-}
+const JOB_TABLE_COLUMNS = buildJobTableColumns();
+const SORT_OPTIONS = JOB_TABLE_COLUMNS.map((col) => ({
+  value: col.id,
+  label: COLUMN_LABELS[col.id],
+}));
 
-function sortIndicator(currentKey: SortKey, key: SortKey, direction: SortDirection) {
-  if (currentKey !== key) return "";
-  return direction === "desc" ? "↓" : "↑";
+function sortIndicator(active: boolean, direction: SortDirection) {
+  if (!active) return "";
+  return direction === "desc" ? " ↓" : " ↑";
 }
 
 function handleRowKeyDown(e: React.KeyboardEvent, callback: () => void) {
@@ -68,26 +63,49 @@ function handleRowKeyDown(e: React.KeyboardEvent, callback: () => void) {
   }
 }
 
-export const JobTable = memo(function JobTable({ jobs, onSelect }: Props) {
-  const [sortKey, setSortKey] = useState<SortKey>("priority");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+export const JobTable = memo(function JobTable({ jobs, statuses, onSelect }: Props) {
+  const [primary, setPrimary] = useState<JobSortKey>("status");
+  const [primaryDirection, setPrimaryDirection] = useState<SortDirection>("asc");
+  const [secondary, setSecondary] = useState<JobSortKey | "none">("company");
+  const [secondaryDirection, setSecondaryDirection] = useState<SortDirection>("asc");
+  const [visibleColumns, setVisibleColumns] = useState(loadVisibleJobTableColumns);
 
-  function onSort(nextKey: SortKey) {
-    if (nextKey === sortKey) {
-      setSortDirection((v) => (v === "desc" ? "asc" : "desc"));
+  useEffect(() => {
+    saveVisibleJobTableColumns(visibleColumns);
+  }, [visibleColumns]);
+
+  const activeColumns = useMemo(
+    () => JOB_TABLE_COLUMNS.filter((col) => visibleColumns.includes(col.id)),
+    [visibleColumns],
+  );
+
+  function onHeaderSort(nextKey: JobSortKey) {
+    if (nextKey === primary) {
+      setPrimaryDirection((v) => (v === "desc" ? "asc" : "desc"));
       return;
     }
-    setSortKey(nextKey);
-    setSortDirection("desc");
+    setPrimary(nextKey);
+    setPrimaryDirection("desc");
+  }
+
+  function onToggleColumn(columnId: JobTableColumnId) {
+    setVisibleColumns((current) => toggleVisibleColumn(current, columnId));
   }
 
   const sortedJobs = useMemo(
-    () => sortJobs(jobs, sortKey, sortDirection),
-    [jobs, sortDirection, sortKey],
+    () =>
+      sortJobs(jobs, {
+        primary,
+        primaryDirection,
+        secondary: secondary === "none" ? null : secondary,
+        secondaryDirection,
+        statusOrder: statuses,
+      }),
+    [jobs, primary, primaryDirection, secondary, secondaryDirection, statuses],
   );
 
   return (
-    <section className="card">
+    <section className="card jobTableCard">
       <h2>{en.jobTable.title}</h2>
       {jobs.length === 0 ? (
         <WorkspaceEmpty
@@ -96,115 +114,141 @@ export const JobTable = memo(function JobTable({ jobs, onSelect }: Props) {
           cta={en.empty.tableCta}
         />
       ) : (
-        <div className="tableWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>
-                  <button
-                    type="button"
-                    className="btn btnGhost btnSm"
-                    onClick={() => onSort("company")}
-                    aria-label={en.jobTable.sortByCompany}
-                  >
-                    {en.jobTable.company} {sortIndicator(sortKey, "company", sortDirection)}
-                  </button>
-                </th>
-                <th>
-                  <button
-                    type="button"
-                    className="btn btnGhost btnSm"
-                    onClick={() => onSort("title")}
-                    aria-label={en.jobTable.sortByTitle}
-                  >
-                    {en.jobTable.titleCol} {sortIndicator(sortKey, "title", sortDirection)}
-                  </button>
-                </th>
-                <th>
-                  <button
-                    type="button"
-                    className="btn btnGhost btnSm"
-                    onClick={() => onSort("status")}
-                    aria-label={en.jobTable.sortByStatus}
-                  >
-                    {en.jobTable.status} {sortIndicator(sortKey, "status", sortDirection)}
-                  </button>
-                </th>
-                <th>
-                  <button
-                    type="button"
-                    className="btn btnGhost btnSm"
-                    onClick={() => onSort("priority")}
-                    aria-label={en.jobTable.sortByRating}
-                  >
-                    {en.jobTable.rating} {sortIndicator(sortKey, "priority", sortDirection)}
-                  </button>
-                </th>
-                <th>
-                  <button
-                    type="button"
-                    className="btn btnGhost btnSm"
-                    onClick={() => onSort("deadline")}
-                    aria-label={en.jobTable.sortByDeadline}
-                  >
-                    {en.jobTable.deadline} {sortIndicator(sortKey, "deadline", sortDirection)}
-                  </button>
-                </th>
-                <th>
-                  <button
-                    type="button"
-                    className="btn btnGhost btnSm"
-                    onClick={() => onSort("interview_date")}
-                    aria-label={en.jobTable.sortByInterview}
-                  >
-                    {en.jobTable.interview} {sortIndicator(sortKey, "interview_date", sortDirection)}
-                  </button>
-                </th>
-                <th>
-                  <button
-                    type="button"
-                    className="btn btnGhost btnSm"
-                    onClick={() => onSort("start_date")}
-                    aria-label={en.jobTable.sortByStart}
-                  >
-                    {en.jobTable.start} {sortIndicator(sortKey, "start_date", sortDirection)}
-                  </button>
-                </th>
-                <th>
-                  <button
-                    type="button"
-                    className="btn btnGhost btnSm"
-                    onClick={() => onSort("detected_language")}
-                    aria-label={en.jobTable.sortByLanguage}
-                  >
-                    {en.jobTable.language} {sortIndicator(sortKey, "detected_language", sortDirection)}
-                  </button>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedJobs.map((job) => (
-                <tr
-                  key={job.id}
-                  tabIndex={0}
-                  role="button"
-                  onClick={() => onSelect(job)}
-                  onKeyDown={(e) => handleRowKeyDown(e, () => onSelect(job))}
-                  aria-label={`View details for ${job.company} - ${job.title ?? "Untitled"}`}
-                >
-                  <td>{job.company}</td>
-                  <td>{job.title ?? en.common.dash}</td>
-                  <td>{job.status}</td>
-                  <td>{job.priority ?? en.common.dash}</td>
-                  <td>{job.deadline ?? en.common.dash}</td>
-                  <td>{job.interview_date ?? en.common.dash}</td>
-                  <td>{job.start_date ?? en.common.dash}</td>
-                  <td>{job.detected_language ?? en.common.dash}</td>
+        <>
+          <fieldset className="jobTableColumnPicker">
+            <legend>{en.jobTable.columnsLegend}</legend>
+            <div className="jobTableColumnChecks">
+              {JOB_TABLE_COLUMNS.map((col) => {
+                const checked = visibleColumns.includes(col.id);
+                const isLastVisible = checked && visibleColumns.length === 1;
+                return (
+                  <label key={col.id} className="jobTableColumnCheck">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={isLastVisible}
+                      onChange={() => onToggleColumn(col.id)}
+                    />
+                    <span>{COLUMN_LABELS[col.id]}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+          <div className="jobTableSortBar" role="group" aria-label={en.jobTable.sortControls}>
+            <label className="jobTableSortField">
+              <span>{en.jobTable.sortPrimary}</span>
+              <select
+                value={primary}
+                onChange={(e) => setPrimary(e.target.value as JobSortKey)}
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn btnGhost btnSm"
+                onClick={() => setPrimaryDirection((v) => (v === "desc" ? "asc" : "desc"))}
+                aria-label={en.jobTable.togglePrimaryDirection}
+              >
+                {primaryDirection === "desc" ? "↓" : "↑"}
+              </button>
+            </label>
+            <label className="jobTableSortField">
+              <span>{en.jobTable.sortSecondary}</span>
+              <select
+                value={secondary}
+                onChange={(e) => setSecondary(e.target.value as JobSortKey | "none")}
+              >
+                <option value="none">{en.jobTable.sortNone}</option>
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn btnGhost btnSm"
+                disabled={secondary === "none"}
+                onClick={() => setSecondaryDirection((v) => (v === "desc" ? "asc" : "desc"))}
+                aria-label={en.jobTable.toggleSecondaryDirection}
+              >
+                {secondaryDirection === "desc" ? "↓" : "↑"}
+              </button>
+            </label>
+          </div>
+          <div className="tableWrap jobTableWrap">
+            <table className="jobTable">
+              <colgroup>
+                {activeColumns.map((col) => (
+                  <col key={col.id} className={col.colClass} />
+                ))}
+              </colgroup>
+              <thead>
+                <tr>
+                  {activeColumns.map((col) => (
+                    <th key={col.id}>
+                      <button
+                        type="button"
+                        className="btn btnGhost btnSm jobTableSortBtn"
+                        onClick={() => onHeaderSort(col.id)}
+                        aria-label={SORT_ARIA[col.id]}
+                      >
+                        {COLUMN_LABELS[col.id]}
+                        {sortIndicator(primary === col.id, primaryDirection)}
+                        {secondary === col.id ? (
+                          <span
+                            className="jobTableSecondaryMark"
+                            title={en.jobTable.secondarySortMark}
+                          >
+                            2
+                          </span>
+                        ) : null}
+                      </button>
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {sortedJobs.map((job) => (
+                  <tr
+                    key={job.id}
+                    tabIndex={0}
+                    role="button"
+                    onClick={() => onSelect(job)}
+                    onKeyDown={(e) => handleRowKeyDown(e, () => onSelect(job))}
+                    aria-label={`View details for ${job.company} - ${job.title ?? "Untitled"}`}
+                  >
+                    {activeColumns.map((col) => {
+                      const content = col.render(job, { dash: en.common.dash });
+                      const title =
+                        col.id === "company"
+                          ? job.company
+                          : col.id === "title"
+                            ? (job.title ?? undefined)
+                            : col.id === "status"
+                              ? job.status
+                              : undefined;
+                      return (
+                        <td
+                          key={col.id}
+                          className={col.cellClass}
+                          title={title}
+                        >
+                          {content}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </section>
   );
