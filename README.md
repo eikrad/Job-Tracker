@@ -125,7 +125,7 @@ This creates `~/.local/share/applications/job-tracker.desktop` from the Tauri te
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
 5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
 
