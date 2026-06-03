@@ -125,7 +125,7 @@ This creates `~/.local/share/applications/job-tracker.desktop` from the Tauri te
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
 5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
 
@@ -167,8 +167,6 @@ GitHub Actions runs three independent workflows (each with its own status badge 
 | **Rust** | `cargo clippy` → `cargo test` |
 | **Python** | `ruff check` → `black --check` → `isort --check-only` → `pytest` |
 
-> **2026-05-27**: Removed a duplicate `frontend` job from `ci.yml` — it ran identical steps to `frontend.yml`, causing frontend checks to run twice on every push to `main`. The three dedicated workflow files now handle all checks across all branches. Action versions updated to `checkout@v6`, `setup-node@v6`, `setup-python@v6`.
-
 ### Frontend (Vitest)
 
 ```bash
@@ -208,12 +206,29 @@ Tool config: [`pyproject.toml`](pyproject.toml).
 
 ## Maintenance notes
 
+**2026-06-03 — Weekly maintenance**
+
+### Fixes applied
+
+- **Tauri config version sync** — `src-tauri/tauri.conf.json` declared version `"0.1.0"` while `package.json` and `Cargo.toml` both show `0.2.1`. Updated to `0.2.1` so bundle metadata (installer filenames, update manifests) matches the declared app version.
+- **CI**: Deleted duplicate `ci.yml` — it ran `rust-check` and `pytest` jobs identical to `rust.yml` and `python.yml`, causing Rust and Python checks to run twice on every push/PR targeting `main`. The three dedicated workflow files (`frontend.yml`, `rust.yml`, `python.yml`) already run on all branches, so `ci.yml` is no longer needed.
+- **npm**: Bumped `@tauri-apps/api` `^2.10.1` → `^2.11.0` and `@tauri-apps/cli` `^2.10.1` → `^2.11.2` (aligning with bandsearch-app); bumped `typescript-eslint` `^8.57.0` → `^8.60.0` (patch release).
+
+### Major upgrades still pending (not auto-applied — require testing)
+
+| Package | In use | Latest | Notes |
+|---|---|---|---|
+| `eslint` / `@eslint/js` | `^9.x` | `10.x` | Flat-config updates; review eslint v10 migration guide |
+| `typescript` | `~5.9.x` | `6.x` | New type-system features; some breaking changes |
+| `rand` (Rust) | `0.8` | `0.9` | API changes in rand crate — review the rand 0.9 migration guide |
+
+---
+
 **2026-05-27 — Weekly maintenance**
 
 ### Fixes applied
 
-- **CI**: Removed duplicate `frontend` job from `ci.yml`. It ran the same lint/test/build steps as `frontend.yml` on pushes to `main`, causing checks to run twice. The three dedicated workflow files (`frontend.yml`, `rust.yml`, `python.yml`) now cover all checks across all branches.
-- **CI**: Action versions updated to current stable — `checkout@v6`, `setup-node@v6`, `setup-python@v6`.
+- **CI**: Removed duplicate `frontend` job from `ci.yml`. It ran the same lint/test/build steps as `frontend.yml` on pushes to `main`, causing frontend checks to run twice. The three dedicated workflow files (`frontend.yml`, `rust.yml`, `python.yml`) now handle all checks across all branches. Action versions updated to `checkout@v6`, `setup-node@v6`, `setup-python@v6`.
 
 ### Major upgrades available (not auto-applied — require testing)
 
