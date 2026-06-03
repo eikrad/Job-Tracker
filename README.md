@@ -167,8 +167,6 @@ GitHub Actions runs three independent workflows (each with its own status badge 
 | **Rust** | `cargo clippy` → `cargo test` |
 | **Python** | `ruff check` → `black --check` → `isort --check-only` → `pytest` |
 
-> **2026-05-27**: Removed a duplicate `frontend` job from `ci.yml` — it ran identical steps to `frontend.yml`, causing frontend checks to run twice on every push to `main`. The three dedicated workflow files now handle all checks across all branches. Action versions updated to `checkout@v6`, `setup-node@v6`, `setup-python@v6`.
-
 ### Frontend (Vitest)
 
 ```bash
@@ -203,22 +201,3 @@ Tool config: [`pyproject.toml`](pyproject.toml).
 - React + TypeScript + Vite
 - Tauri 2
 - SQLite (rusqlite) in the Rust backend
-
----
-
-## Maintenance notes
-
-**2026-05-27 — Weekly maintenance**
-
-### Fixes applied
-
-- **CI**: Removed duplicate `frontend` job from `ci.yml`. It ran the same lint/test/build steps as `frontend.yml` on pushes to `main`, causing checks to run twice. The three dedicated workflow files (`frontend.yml`, `rust.yml`, `python.yml`) now cover all checks across all branches.
-- **CI**: Action versions updated to current stable — `checkout@v6`, `setup-node@v6`, `setup-python@v6`.
-
-### Major upgrades available (not auto-applied — require testing)
-
-| Package | In use | Latest | Notes |
-|---|---|---|---|
-| `eslint` / `@eslint/js` | `^9.x` | `10.x` | Flat-config updates; review eslint v10 migration guide |
-| `typescript` | `~5.9.x` | `6.x` | New type-system features; some breaking changes |
-| `rand` (Rust) | `0.8` | `0.9` | API changes in rand crate — review the rand 0.9 migration guide |
