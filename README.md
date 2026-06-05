@@ -59,6 +59,8 @@ npm ci
 npm run tauri:build
 ```
 
+On **Linux**, `tauri:build` also installs a **start menu / app launcher** entry at `~/.local/share/applications/JobTracker.desktop` (same as `npm run desktop:shortcut`).
+
 Installable artifacts appear under `src-tauri/target/release/` (platform-dependent; on Windows e.g. `.exe` / installer under that tree). Packaged installers also land under `src-tauri/target/release/bundle/` when bundling runs (see below).
 
 ### Tauri release bundles (Linux, AppImage)
@@ -77,15 +79,17 @@ Installable artifacts appear under `src-tauri/target/release/` (platform-depende
 
 ### Linux desktop shortcut
 
-If you want a launcher entry in your desktop app menu (and optionally pinned as a desktop shortcut/favorite), run:
+`npm run tauri:build` installs this automatically on Linux. To refresh the launcher without a full rebuild:
 
 ```bash
 npm run desktop:shortcut
 ```
 
-This creates `~/.local/share/applications/job-tracker.desktop` from the Tauri template and points it to:
-- the release binary (`src-tauri/target/release/job-tracker`) when available, or
+This creates `~/.local/share/applications/JobTracker.desktop` and copies app icons into `~/.local/share/icons/hicolor/`. It points to:
+- the release binary (`src-tauri/target/release/app`) when available, or
 - `npm run tauri:dev` as a fallback for local development.
+
+Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:generate`.
 
 ## Configuration
 

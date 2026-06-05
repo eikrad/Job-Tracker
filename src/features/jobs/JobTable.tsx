@@ -136,10 +136,13 @@ export const JobTable = memo(function JobTable({ jobs, statuses, onSelect }: Pro
             </div>
           </fieldset>
           <div className="jobTableSortBar" role="group" aria-label={en.jobTable.sortControls}>
-            <label className="jobTableSortField">
-              <span>{en.jobTable.sortPrimary}</span>
+            <div className="jobTableSortField">
+              <span className="jobTableSortLabel" id="job-table-sort-primary-label">
+                {en.jobTable.sortPrimary}
+              </span>
               <select
                 value={primary}
+                aria-labelledby="job-table-sort-primary-label"
                 onChange={(e) => setPrimary(e.target.value as JobSortKey)}
               >
                 {SORT_OPTIONS.map((opt) => (
@@ -150,17 +153,20 @@ export const JobTable = memo(function JobTable({ jobs, statuses, onSelect }: Pro
               </select>
               <button
                 type="button"
-                className="btn btnGhost btnSm"
+                className="btn btnGhost btnSm jobTableSortDirBtn"
                 onClick={() => setPrimaryDirection((v) => (v === "desc" ? "asc" : "desc"))}
                 aria-label={en.jobTable.togglePrimaryDirection}
               >
                 {primaryDirection === "desc" ? "↓" : "↑"}
               </button>
-            </label>
-            <label className="jobTableSortField">
-              <span>{en.jobTable.sortSecondary}</span>
+            </div>
+            <div className="jobTableSortField">
+              <span className="jobTableSortLabel" id="job-table-sort-secondary-label">
+                {en.jobTable.sortSecondary}
+              </span>
               <select
                 value={secondary}
+                aria-labelledby="job-table-sort-secondary-label"
                 onChange={(e) => setSecondary(e.target.value as JobSortKey | "none")}
               >
                 <option value="none">{en.jobTable.sortNone}</option>
@@ -172,14 +178,14 @@ export const JobTable = memo(function JobTable({ jobs, statuses, onSelect }: Pro
               </select>
               <button
                 type="button"
-                className="btn btnGhost btnSm"
+                className="btn btnGhost btnSm jobTableSortDirBtn"
                 disabled={secondary === "none"}
                 onClick={() => setSecondaryDirection((v) => (v === "desc" ? "asc" : "desc"))}
                 aria-label={en.jobTable.toggleSecondaryDirection}
               >
                 {secondaryDirection === "desc" ? "↓" : "↑"}
               </button>
-            </label>
+            </div>
           </div>
           <div className="tableWrap jobTableWrap">
             <table className="jobTable">
