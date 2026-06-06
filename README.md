@@ -7,6 +7,18 @@
 
 Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, optional **AI-assisted extraction** (Google **Gemini** or **Mistral**), and web-based job discovery.
 
+```mermaid
+graph TD
+    UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC commands| RUST[Rust backend<br>Tauri v2]
+    RUST -->|rusqlite| DB[(SQLite<br>jobs · deadlines · notes · PDFs)]
+    RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
+    UI -->|HTTPS| AI[AI text extraction<br>Gemini / Mistral]
+    UI -->|HTTPS| SEARCH[Job search<br>SerpAPI + Brave fallback]
+    UI -->|OAuth 2 PKCE| GCAL[Google Calendar API<br>create events]
+```
+
+See [docs/architecture.md](docs/architecture.md) for a deeper breakdown of components, feature modules, and data flow.
+
 Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
 ## Prerequisites
