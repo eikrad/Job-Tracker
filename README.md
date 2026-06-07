@@ -9,6 +9,22 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 
 Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
+## Architecture at a glance
+
+```mermaid
+graph TD
+    UI[React + TypeScript\nVite frontend] --> TAURI[Tauri 2\nRust shell]
+    TAURI --> DB[(SQLite\nrusqlite)]
+    TAURI --> FILES[PDF files\nOS app data dir]
+    UI -->|optional AI extraction| AI[Gemini / Mistral]
+    UI -->|job search| SEARCH[SerpAPI + Brave Search]
+    UI -->|calendar events| GCAL[Google Calendar API]
+```
+
+All data lives locally — SQLite for jobs and the OS app data directory for uploaded PDFs. The React frontend talks to the Rust backend through Tauri commands; there is no separate HTTP server. External APIs (AI extraction, job search, Google Calendar) are all optional and configured in Settings.
+
+See [docs/architecture.md](docs/architecture.md) for a detailed breakdown.
+
 ## Prerequisites
 
 - **Node.js** 20+ and npm
@@ -66,7 +82,7 @@ Installable artifacts appear under `src-tauri/target/release/` (platform-depende
 ### Tauri release bundles (Linux, AppImage)
 
 | Platform | Default bundles in this repo | Where to look |
-|----------|------------------------------|---------------|
+|----------|------------------------------|--------------|
 | **Linux** | `.deb`, `.rpm` | `src-tauri/target/release/bundle/deb/`, `…/rpm/` |
 | **Windows** | NSIS + MSI | `…/bundle/nsis/`, `…/msi/` |
 | **macOS** | `.app` + `.dmg` | `…/bundle/macos/`, `…/dmg/` |
@@ -129,7 +145,7 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
 5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
 
@@ -205,3 +221,11 @@ Tool config: [`pyproject.toml`](pyproject.toml).
 - React + TypeScript + Vite
 - Tauri 2
 - SQLite (rusqlite) in the Rust backend
+
+## Further reading
+
+| File | Contents |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | System architecture — layers, data flow, job search, storage |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Build setup, PR checklist, commit conventions |
+| [docs/maintenance.md](docs/maintenance.md) | Dependency upgrade log and pending major upgrades |
