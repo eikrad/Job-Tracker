@@ -9,6 +9,34 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 
 Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
+## How it works
+
+```mermaid
+graph TD
+    USER([You]) --> APP
+
+    subgraph APP [Tauri Desktop App]
+        direction TB
+        UI[React UI\nKanban · Table · Calendar]
+        RUST[Rust Backend\nSQLite + file I/O]
+        UI <-->|Tauri IPC| RUST
+    end
+
+    RUST --> DB[(SQLite\nlocal storage)]
+    RUST --> FS[File System\nuploaded PDFs]
+
+    UI -.->|opt-in| AI{AI Extraction}
+    AI -->|Gemini or Mistral| FORM[auto-filled form]
+
+    UI -.->|opt-in| SEARCH{Job Search}
+    SEARCH -->|primary| SERP[SerpAPI]
+    SEARCH -->|fallback| BRAVE[Brave Search]
+
+    UI -.->|opt-in| GCAL[Google Calendar API]
+```
+
+All data lives locally — SQLite for jobs and history, files for uploaded PDFs. API keys for AI extraction, job search, and Google Calendar are stored in your browser's local storage and sent only to their respective services.
+
 ## Prerequisites
 
 - **Node.js** 20+ and npm
@@ -129,7 +157,7 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
 5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
 
