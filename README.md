@@ -9,6 +9,22 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 
 Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
+## How it works
+
+All data lives on your machine. The React UI sends Tauri IPC commands to the Rust backend, which reads and writes a local SQLite database. The only outbound network calls are optional: AI extraction (Gemini or Mistral) and job search (SerpAPI / Brave).
+
+```mermaid
+graph LR
+    UI[React UI] <-->|Tauri IPC| RUST[Rust Backend\nTauri + rusqlite]
+    RUST <--> DB[(SQLite\nlocal)]
+    RUST <--> FS[PDFs\nlocal]
+    UI -->|HTTPS| AI[AI Extraction\nGemini / Mistral]
+    UI -->|HTTPS| SEARCH[Job Search\nSerpAPI + Brave]
+    UI -->|OAuth PKCE| GCAL[Google Calendar]
+```
+
+See [docs/architecture.md](docs/architecture.md) for detailed data-flow diagrams.
+
 ## Prerequisites
 
 - **Node.js** 20+ and npm
@@ -129,7 +145,7 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
 5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
 
@@ -200,8 +216,24 @@ Tool config: [`pyproject.toml`](pyproject.toml).
 
 > **Forks:** Update the badge URLs if your repo is not `eikrad/Job-Tracker`.
 
+## Documentation
+
+| File | Contents |
+|------|----------|
+| [docs/architecture.md](docs/architecture.md) | Architecture overview with data-flow diagrams |
+| [docs/maintenance.md](docs/maintenance.md) | Maintenance log — recent fixes and pending upgrades |
+| [docs/refactor-sync-roadmap.md](docs/refactor-sync-roadmap.md) | Planned refactors, Android app roadmap, cross-device sync design |
+
 ## Tech stack
 
-- React + TypeScript + Vite
-- Tauri 2
-- SQLite (rusqlite) in the Rust backend
+| Layer | Technology |
+|-------|------------|
+| UI framework | React 19 + TypeScript |
+| Build tool | Vite 8 |
+| Routing | React Router v7 |
+| Desktop shell | Tauri 2 (Rust) |
+| Database | SQLite via rusqlite |
+| Testing — frontend | Vitest + Testing Library |
+| Testing — Rust | cargo test |
+| Linting | ESLint 9 · Ruff · Black · isort |
+| CI | GitHub Actions (3 workflows) |
