@@ -7,6 +7,16 @@
 
 Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, optional **AI-assisted extraction** (Google **Gemini** or **Mistral**), and web-based job discovery.
 
+```mermaid
+graph LR
+    USER([You]) --> APP[Job Tracker]
+    APP --> BOARD[Track applications\nKanban · Table · Calendar]
+    APP --> SEARCH[Search for jobs\nJobindex · Indeed · LinkedIn]
+    APP --> AI[AI text extraction\nGemini · Mistral]
+    APP --> GCAL[Google Calendar\noptional sync]
+    APP --> DB[(SQLite\nfully local — no cloud)]
+```
+
 Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
 ## Prerequisites
@@ -129,7 +139,7 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
 5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
 
@@ -199,6 +209,10 @@ npm run py:test    # pytest
 Tool config: [`pyproject.toml`](pyproject.toml).
 
 > **Forks:** Update the badge URLs if your repo is not `eikrad/Job-Tracker`.
+
+## Architecture
+
+See [docs/architecture.md](docs/architecture.md) for a full breakdown of the system layers, job lifecycle state machine, AI extraction flow, and job search integration.
 
 ## Tech stack
 
