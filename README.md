@@ -5,7 +5,27 @@
 [![Python](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml)
 [![Alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/eikrad/Job-Tracker)
 
-Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, optional **AI-assisted extraction** (Google **Gemini** or **Mistral**), and web-based job discovery.
+Desktop app (**Tauri 2** + **React** + local **SQLite**) for tracking job applications — with deadlines, PDF attachments, AI-assisted field extraction, in-app job search, and Google Calendar integration.
+
+## What you can do
+
+- **Dashboard** — view all applications in Kanban, table, or calendar layout with configurable status columns
+- **Job search** — search Jobindex and Indeed in-app (SerpAPI + Brave Search fallback) and open LinkedIn in your browser; one-click save to the tracker
+- **AI extraction** — paste a job posting or upload a PDF; Google Gemini or Mistral pre-fills title, company, deadline, and other fields automatically
+- **Calendar integration** — create Google Calendar events for apply-by dates, interviews, and start dates directly from the app
+- **Import / export** — JSON and CSV for backup and migration across machines
+
+```mermaid
+graph LR
+    SEARCH[Job Search\nJobindex · Indeed] -->|one-click| DB[(SQLite · local)]
+    PASTE[Paste text / PDF] -->|AI extraction| DB
+    MANUAL[Add manually] --> DB
+    DB --> BOARD[Dashboard\nKanban / Table / Calendar]
+    DB -.->|optional| GCAL[Google Calendar]
+    DB --> FILES[Export\nJSON / CSV]
+```
+
+See [docs/architecture.md](docs/architecture.md) for a full breakdown of the Tauri shell, Rust backend modules, and data flows.
 
 Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
@@ -30,7 +50,7 @@ sudo pacman -S --needed base-devel curl wget openssl gtk3 libappindicator-gtk3 l
 
 From **PowerShell** or **cmd**, use the same commands as below (`git clone`, `npm ci`, `npm run tauri:dev`, etc.) in the project folder.
 
-## Quick start (how to run)
+## Quick start
 
 ```bash
 git clone https://github.com/eikrad/Job-Tracker.git
@@ -66,7 +86,7 @@ Installable artifacts appear under `src-tauri/target/release/` (platform-depende
 ### Tauri release bundles (Linux, AppImage)
 
 | Platform | Default bundles in this repo | Where to look |
-|----------|------------------------------|---------------|
+|----------|------------------------------|--------------|
 | **Linux** | `.deb`, `.rpm` | `src-tauri/target/release/bundle/deb/`, `…/rpm/` |
 | **Windows** | NSIS + MSI | `…/bundle/nsis/`, `…/msi/` |
 | **macOS** | `.app` + `.dmg` | `…/bundle/macos/`, `…/dmg/` |
@@ -100,11 +120,11 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 3. **Job Search providers**: in **Settings**, add one or both:
    - **SerpAPI key** (primary provider)
    - **Brave Search API key** (fallback provider)
-   
+
    Provider order is:
    1. SerpAPI
    2. Brave Search (if SerpAPI returns no usable results)
-   
+
    If both are empty, Job Search will return a configuration error and still allow manual **Open in browser**.
 
 ## Job Search
@@ -121,7 +141,7 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 ### Calendar tab (in the app)
 
-- **Month view** shows dates from your jobs: **apply-by**, **interview**, and **role start** (from SQLite only—no Google account required to view).
+- **Month view** shows dates from your jobs: **apply-by**, **interview**, and **role start** (from SQLite only — no Google account required to view).
 - **Template**: opens Google Calendar in the browser with a prefilled all-day event (no sign-in in the app).
 - **Create in Google**: creates the event in your **primary** Google calendar via the Calendar API. Use **Settings → Connect with Google** (recommended) or paste a short-lived **access token** under **Advanced** (expert / OAuth Playground).
 
@@ -129,7 +149,7 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
 5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
 
