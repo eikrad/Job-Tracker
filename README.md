@@ -5,7 +5,33 @@
 [![Python](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml)
 [![Alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/eikrad/Job-Tracker)
 
-Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, optional **AI-assisted extraction** (Google **Gemini** or **Mistral**), and web-based job discovery.
+Desktop app for tracking job applications end-to-end — from discovery to offer. Built with Tauri 2 (Rust + React) and local SQLite, so your data stays on your machine.
+
+## Features
+
+- **Kanban / Table / Calendar dashboard** — view all applications in the format that works for you
+- **In-app job search** — search Jobindex and Indeed without leaving the app (SerpAPI + Brave Search fallback), with one-click save
+- **AI-assisted extraction** — paste a job listing and let Gemini or Mistral fill in the fields automatically
+- **Application PDFs** — attach and manage documents per application
+- **Deadline tracking** — apply-by, interview, and role-start dates shown on a calendar month view
+- **Google Calendar integration** — push events to your primary Google Calendar via OAuth PKCE (no Client Secret required)
+- **Import / export** — JSON and CSV for backups or migrating between machines
+- **Local-first** — all data in SQLite in the OS app data directory; no cloud account required
+
+## Architecture
+
+```mermaid
+graph LR
+    USER([You]) --> UI[React UI\nTypeScript + Vite]
+    UI <-->|Tauri IPC| RUST[Rust Backend\nTauri 2]
+    RUST <-->|rusqlite| DB[(SQLite\nOS app data dir)]
+    UI -.->|AI extraction| AI[Gemini\nor Mistral]
+    RUST -.->|Job search| SEARCH[SerpAPI\nor Brave Search]
+    RUST -.->|Calendar events| GCAL[Google Calendar API]
+    RUST -.->|OAuth PKCE| GAUTH[Google OAuth 2.0]
+```
+
+See [docs/architecture.md](docs/architecture.md) for a deeper look at the Rust command layer, SQLite data model, and feature modules.
 
 Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
@@ -129,7 +155,7 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
 5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
 
