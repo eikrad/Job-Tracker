@@ -9,6 +9,32 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 
 Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
+## How it works
+
+```mermaid
+graph TD
+    User([You]) --> App[Job Tracker\nTauri Desktop]
+
+    subgraph UI [React UI — TypeScript]
+        Dashboard[Dashboard\nKanban · Table · Calendar]
+        Detail[Job Detail]
+        Search[Job Search]
+        Settings[Settings]
+    end
+
+    App --> UI
+
+    UI -->|Tauri commands| Rust[Rust Backend]
+    Rust --> DB[(SQLite\nJob data + PDFs)]
+    Rust --> Creds[OS Credential Store\nGoogle OAuth token]
+
+    UI -->|direct fetch| AI[AI Provider\nGemini · Mistral]
+    UI -->|Calendar API| GCal[Google Calendar]
+    Search -->|search APIs| SearchAPI[SerpAPI · Brave Search]
+```
+
+All job data lives locally in SQLite — no account or server required. AI extraction and Google Calendar are optional and only need API keys you configure in Settings. See [`docs/architecture.md`](docs/architecture.md) for a full technical breakdown.
+
 ## Prerequisites
 
 - **Node.js** 20+ and npm
@@ -129,7 +155,7 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
 5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
 
@@ -202,6 +228,6 @@ Tool config: [`pyproject.toml`](pyproject.toml).
 
 ## Tech stack
 
-- React + TypeScript + Vite
+- React 19 + TypeScript + Vite 8
 - Tauri 2
 - SQLite (rusqlite) in the Rust backend
