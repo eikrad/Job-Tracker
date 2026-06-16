@@ -1,5 +1,8 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
+import { Monitor, Moon, Sun } from "lucide-react";
 import { useJobTracker } from "../context/JobTrackerContext";
+import { useTheme } from "../hooks/useTheme";
+import type { ThemePreference } from "../lib/theme";
 import { en } from "../i18n/en";
 
 type Props = {
@@ -7,10 +10,29 @@ type Props = {
   onOpenQuickCapture: () => void;
 };
 
+const THEME_CYCLE: ThemePreference[] = ["system", "light", "dark"];
+
+const THEME_META: Record<
+  ThemePreference,
+  { icon: typeof Monitor; label: string }
+> = {
+  system: { icon: Monitor, label: en.app.themeSystem },
+  light: { icon: Sun, label: en.app.themeLight },
+  dark: { icon: Moon, label: en.app.themeDark },
+};
+
 export function AppHeader({ onOpenSettings, onOpenQuickCapture }: Props) {
   const { view, setView } = useJobTracker();
+  const { preference, setPreference } = useTheme();
   const location = useLocation();
   const isDashboard = location.pathname === "/";
+
+  const themeMeta = THEME_META[preference];
+  const ThemeIcon = themeMeta.icon;
+  const cycleTheme = () => {
+    const next = THEME_CYCLE[(THEME_CYCLE.indexOf(preference) + 1) % THEME_CYCLE.length];
+    setPreference(next);
+  };
 
   return (
     <header className="appHeader">
@@ -79,6 +101,15 @@ export function AppHeader({ onOpenSettings, onOpenQuickCapture }: Props) {
               aria-label={en.capture.openDrawer}
             >
               {en.capture.openDrawer}
+            </button>
+            <button
+              type="button"
+              className="btn btnGhost btnIcon"
+              onClick={cycleTheme}
+              aria-label={en.app.themeToggleAria(themeMeta.label)}
+              title={en.app.themeToggleAria(themeMeta.label)}
+            >
+              <ThemeIcon size={16} />
             </button>
             <button
               type="button"

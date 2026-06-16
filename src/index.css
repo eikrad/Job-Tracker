@@ -3,28 +3,11 @@
 }
 
 :root {
+  /* Theme-independent design tokens */
   --font-sans: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --color-bg: #f0f2f6;
-  --color-bg-elevated: #ffffff;
-  --color-border: #e2e8f0;
-  --color-border-strong: #cbd5e1;
-  --color-text: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-muted: #64748b;
-  --color-primary: #4338ca;
-  --color-primary-hover: #3730a3;
-  --color-primary-muted: #eef2ff;
-  --color-accent: #0d9488;
-  --color-danger: #b91c1c;
-  --color-badge-text: #9a3412;
-  --color-badge-bg: #ffedd5;
-  --color-badge-border: #fdba74;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 4px 14px rgba(15, 23, 42, 0.07);
-  --shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.1);
   --space-xs: 0.35rem;
   --space-sm: 0.55rem;
   --space-md: 0.85rem;
@@ -32,6 +15,111 @@
   --space-xl: 2rem;
   --space-2xl: 2.75rem;
   --header-sticky-offset: 1rem;
+
+  /* ——— Breath Light (KDE / Manjaro Plasma) ——— */
+  color-scheme: light;
+  --color-bg: #eff0f1;
+  --color-bg-elevated: #ffffff;
+  --color-surface-hover: #f4f5f6;
+  --color-surface-sunken: #e7e9eb;
+  --color-border: #d4d7da;
+  --color-border-strong: #b6babd;
+  --color-text: #232629;
+  --color-text-secondary: #4d5054;
+  --color-text-muted: #74787b;
+  --color-primary: #0c8f73;
+  --color-primary-hover: #0a7560;
+  --color-primary-muted: #e3f4ef;
+  --color-primary-border: #b6e2d6;
+  --color-accent: #00897b;
+  --color-selection: #35bfa4;
+  --color-on-accent: #ffffff;
+  --color-danger: #b91c1c;
+  --color-badge-text: #9a3412;
+  --color-badge-bg: #ffedd5;
+  --color-badge-border: #fdba74;
+  --color-overlay: rgba(15, 23, 42, 0.48);
+  --color-code-bg: #e7e9eb;
+  --color-pre-bg: #232629;
+  --color-pre-fg: #e2e8f0;
+
+  /* Status / semantic tones */
+  --color-on-status: #ffffff;
+  --status-danger-fg: #991b1b;
+  --status-danger-bg: #fef2f2;
+  --status-danger-border: #fecaca;
+  --status-danger-solid: #dc2626;
+  --status-warning-fg: #92400e;
+  --status-warning-bg: #fffbeb;
+  --status-warning-border: #fde68a;
+  --status-warning-solid: #f59e0b;
+  --status-info-fg: #1e40af;
+  --status-info-bg: #eff6ff;
+  --status-info-border: #bfdbfe;
+  --status-info-solid: #3b82f6;
+  --status-success-fg: #065f46;
+  --status-success-bg: #ecfdf5;
+  --status-success-border: #a7f3d0;
+  --status-success-solid: #10b981;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 14px rgba(15, 23, 42, 0.07);
+  --shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.1);
+}
+
+/* ——— Breath Dark (KDE / Manjaro Plasma) ——— */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #1b1e21;
+  --color-bg-elevated: #282e33;
+  --color-surface-hover: #31373d;
+  --color-surface-sunken: #15181b;
+  --color-border: #3a4045;
+  --color-border-strong: #4d545a;
+  --color-text: #e6e6e6;
+  --color-text-secondary: #b4b7ba;
+  --color-text-muted: #888c90;
+  --color-primary: #14a88c;
+  --color-primary-hover: #1abf9f;
+  --color-primary-muted: #16302b;
+  --color-primary-border: #1f6b5c;
+  --color-accent: #2bbf9f;
+  --color-selection: #35bfa4;
+  --color-on-accent: #0b1a16;
+  --color-danger: #f08a8a;
+  --color-badge-text: #f0b58a;
+  --color-badge-bg: #3a2417;
+  --color-badge-border: #6b4327;
+  --color-overlay: rgba(0, 0, 0, 0.6);
+  --color-code-bg: #15181b;
+  --color-pre-bg: #0b0d0f;
+  --color-pre-fg: #e2e8f0;
+
+  --color-on-status: #ffffff;
+  --status-danger-fg: #f4b4b4;
+  --status-danger-bg: #2a1818;
+  --status-danger-border: #5e2b2b;
+  --status-danger-solid: #e04444;
+  --status-warning-fg: #f3d39a;
+  --status-warning-bg: #2a2316;
+  --status-warning-border: #5e4a23;
+  --status-warning-solid: #e0992e;
+  --status-info-fg: #aac6f5;
+  --status-info-bg: #16203a;
+  --status-info-border: #2b4170;
+  --status-info-solid: #3b82f6;
+  --status-success-fg: #8fe0c4;
+  --status-success-bg: #14241f;
+  --status-success-border: #1f5e4d;
+  --status-success-solid: #10b981;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-selection) 35%, transparent);
 }
 
 body {
@@ -42,6 +130,9 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   -webkit-font-smoothing: antialiased;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
 }
 
 #root {
