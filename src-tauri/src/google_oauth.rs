@@ -70,9 +70,9 @@ pub fn delete_refresh_token() -> Result<(), String> {
 
 fn gen_code_verifier() -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     (0..64)
-        .map(|_| CHARSET[rng.gen_range(0..CHARSET.len())] as char)
+        .map(|_| CHARSET[rng.random_range(0..CHARSET.len())] as char)
         .collect()
 }
 
@@ -82,9 +82,9 @@ fn pkce_challenge(verifier: &str) -> String {
 }
 
 fn random_state() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     (0..32)
-        .map(|_| format!("{:02x}", rng.gen::<u8>()))
+        .map(|_| format!("{:02x}", rng.random::<u8>()))
         .collect()
 }
 

@@ -49,7 +49,7 @@ export function compareJobsByKey(
   direction: SortDirection,
   statusOrder: string[],
 ): number {
-  let result = 0;
+  let result: number;
   switch (key) {
     case "priority": {
       const aPriority = a.priority ?? -1;
