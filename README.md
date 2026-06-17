@@ -32,6 +32,20 @@ graph TD
 
 See [docs/architecture.md](docs/architecture.md) for a deeper breakdown of components, feature modules, and data flow.
 
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| UI framework | React 19 + TypeScript + Vite |
+| Routing | React Router v7 |
+| Desktop shell | Tauri v2 (Rust) |
+| Database | SQLite via rusqlite |
+| Drag-and-drop | dnd-kit |
+| AI extraction | Google Gemini / Mistral (user-supplied key) |
+| Job search | SerpAPI (primary) + Brave Search API (fallback) |
+| Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
+| Testing | Vitest (frontend), cargo test (Rust), pytest (Python scripts) |
+
 Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
 ## Prerequisites
@@ -110,9 +124,7 @@ Installable artifacts appear under `src-tauri/target/release/` (platform-depende
 npm run desktop:shortcut
 ```
 
-This creates `~/.local/share/applications/JobTracker.desktop` and copies app icons into `~/.local/share/icons/hicolor/`. It points to:
-- the release binary (`src-tauri/target/release/app`) when available, or
-- `npm run tauri:dev` as a fallback for local development.
+This creates `~/.local/share/applications/JobTracker.desktop` and copies app icons into `~/.local/share/icons/hicolor/`.
 
 Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:generate`.
 
@@ -135,7 +147,7 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 ## Job Search
 
 - Platforms in-app: **Jobindex**, **Indeed**, **LinkedIn**.
-- **Jobindex** and **Indeed** now use provider-based web search (SerpAPI + Brave fallback), not RSS.
+- **Jobindex** and **Indeed** use provider-based web search (SerpAPI + Brave fallback).
 - **LinkedIn** remains browser-only and opens directly in your default browser.
 - Search result cards support:
   - **Add as Interesting** (one-click save with status `Interesting`)
@@ -146,34 +158,29 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 ### Calendar tab (in the app)
 
-- **Month view** shows dates from your jobs: **apply-by**, **interview**, and **role start** (from SQLite only—no Google account required to view).
+- **Month view** shows dates from your jobs: **apply-by**, **interview**, and **role start** (from SQLite only — no Google account required to view).
 - **Template**: opens Google Calendar in the browser with a prefilled all-day event (no sign-in in the app).
-- **Create in Google**: creates the event in your **primary** Google calendar via the Calendar API. Use **Settings → Connect with Google** (recommended) or paste a short-lived **access token** under **Advanced** (expert / OAuth Playground).
+- **Create in Google**: creates the event in your **primary** Google calendar via the Calendar API. Use **Settings → Connect with Google** (recommended) or paste a short-lived **access token** under **Advanced**.
 
 ### One-time Google Cloud setup
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
-5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
+5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store. No Client Secret is required for this desktop PKCE flow.
 
 Scope used: `https://www.googleapis.com/auth/calendar.events`.
 
-If **Create in Google** fails after a long time, use **Disconnect** and **Connect with Google** again. The **Advanced** token field remains available for power users who prefer [OAuth Playground](https://developers.google.com/oauthplayground/) or their own tooling.
+If **Create in Google** fails after a long time, use **Disconnect** and **Connect with Google** again.
 
 ### Smoke test checklist (local, after Google Cloud setup)
 
-Use this to confirm OAuth and the month calendar end-to-end on your machine:
-
 1. Start the app: `npm run tauri:dev`.
-2. **Settings → Google Calendar**: paste your **Desktop** OAuth **Client ID** → **Save Client ID** → **Connect with Google**. Finish consent in the browser; Settings should show connected (or equivalent status).
-3. Open the **Calendar** tab: confirm the **month grid** lists jobs that have **apply-by**, **interview**, or **start** dates.
-4. For one job with each kind of date (or the same job with all three), use **Create in Google** and confirm events appear in your **primary** Google Calendar.
-5. (Optional) **Disconnect**, then under **Advanced** paste a short-lived access token and confirm **Create in Google** still works.
-6. **Disconnect** again when finished testing if you do not want the refresh token left on this machine.
-
-**Automated checks** (no Google account): `npm run verify:frontend` and `cargo test --manifest-path src-tauri/Cargo.toml` (also run in CI-friendly workflows).
+2. **Settings → Google Calendar**: paste your **Desktop** OAuth **Client ID** → **Save Client ID** → **Connect with Google**. Finish consent in the browser.
+3. Open the **Calendar** tab: confirm the month grid lists jobs that have **apply-by**, **interview**, or **start** dates.
+4. For one job with each kind of date, use **Create in Google** and confirm events appear in your **primary** Google Calendar.
+5. **Disconnect** when finished testing if you do not want the refresh token left on this machine.
 
 ## Data storage
 
@@ -210,9 +217,7 @@ npm run test:watch  # during development
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-### Python ([Ruff](https://docs.astral.sh/ruff/), [Black](https://black.readthedocs.io/), [isort](https://pycqa.github.io/isort/), [pytest](https://pytest.org/))
-
-[Ruff](https://docs.astral.sh/ruff/) is the primary **linter** (fast, replaces much of Flake8 + plugins). **Black** formats code; **isort** sorts imports with the `black` profile so they agree.
+### Python
 
 ```bash
 pip install -r requirements-dev.txt
@@ -224,9 +229,3 @@ npm run py:test    # pytest
 Tool config: [`pyproject.toml`](pyproject.toml).
 
 > **Forks:** Update the badge URLs if your repo is not `eikrad/Job-Tracker`.
-
-## Tech stack
-
-- React + TypeScript + Vite
-- Tauri 2
-- SQLite (rusqlite) in the Rust backend
