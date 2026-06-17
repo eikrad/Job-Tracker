@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Job Tracker">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4338ca"/>
-      <stop offset="100%" stop-color="#312e81"/>
+      <stop offset="0%" stop-color="#35bfa4"/>
+      <stop offset="100%" stop-color="#0a7560"/>
     </linearGradient>
   </defs>
   <rect width="64" height="64" rx="14" fill="url(#bg)"/>
   <path fill="#fff" d="M20 26v-3.5C20 18.01 23.01 15 26.5 15h11C40.99 15 44 18.01 44 22.5V26h2.5c1.38 0 2.5 1.12 2.5 2.5v17c0 1.38-1.12 2.5-2.5 2.5h-31C13.12 48 12 46.88 12 45.5v-17c0-1.38 1.12-2.5 2.5-2.5H20zm4 0h16v-3.5c0-2.49-2.01-4.5-4.5-4.5h-7c-2.49 0-4.5 2.01-4.5 4.5V26z"/>
-  <circle cx="46" cy="22" r="10" fill="#0d9488"/>
+  <circle cx="46" cy="22" r="10" fill="#0b3d35"/>
   <path fill="#fff" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M41.5 22l3 3 6.5-7"/>
 </svg>

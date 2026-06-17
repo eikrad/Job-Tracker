@@ -1,9 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { useJobTracker } from "../context/JobTrackerContext";
+import { useTheme } from "../hooks/useTheme";
+import type { ThemePreference } from "../lib/theme";
 import { exportJobsAsCsv, exportJobsAsJson } from "../lib/export/exportBundle";
 import { googleOauthGetClientId, googleOauthSetClientId } from "../lib/tauriApi";
 import { en } from "../i18n/en";
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: "system", label: en.app.themeSystem },
+  { value: "light", label: en.app.themeLight },
+  { value: "dark", label: en.app.themeDark },
+];
 
 type Props = {
   open: boolean;
@@ -38,6 +46,7 @@ export function SettingsModal({ open, onClose }: Props) {
     setBackupFolder,
   } = useJobTracker();
 
+  const { preference: themePreference, setPreference: setThemePreference } = useTheme();
   const [googleClientId, setGoogleClientId] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
@@ -125,6 +134,27 @@ export function SettingsModal({ open, onClose }: Props) {
         </div>
 
         <div className="settingsDialogBody">
+          <section className="settingsSection">
+            <h3 className="cardTitle">{en.app.settingsSectionAppearance}</h3>
+            <p className="muted settingsHint">{en.app.appearanceHint}</p>
+            <div className="themeOptions" role="radiogroup" aria-label={en.app.themeLabel}>
+              {THEME_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={themePreference === option.value}
+                  className={`btn btnSm ${
+                    themePreference === option.value ? "btnPrimary" : "btnGhost"
+                  }`}
+                  onClick={() => setThemePreference(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
           <section className="settingsSection">
             <h3 className="cardTitle">{en.app.settingsSectionIntegrations}</h3>
             <label>
