@@ -7,6 +7,19 @@
 
 Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, optional **AI-assisted extraction** (Google **Gemini** or **Mistral**), and web-based job discovery.
 
+## Features
+
+- **Kanban / Table / Calendar dashboard** — view all applications in the format that works for you
+- **In-app job search** — search Jobindex and Indeed without leaving the app (SerpAPI + Brave Search fallback), with one-click save
+- **AI-assisted extraction** — paste a job listing and let Gemini or Mistral fill in the fields automatically
+- **Application PDFs** — attach and manage documents per application
+- **Deadline tracking** — apply-by, interview, and role-start dates shown on a calendar month view
+- **Google Calendar integration** — push events to your primary Google Calendar via OAuth PKCE (no Client Secret required)
+- **Import / export** — JSON and CSV for backups or migrating between machines
+- **Local-first** — all data in SQLite in the OS app data directory; no cloud account required
+
+## Architecture
+
 ```mermaid
 graph TD
     UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC commands| RUST[Rust backend<br>Tauri v2]
