@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import {
   applyTheme,
   getStoredPreference,
-  resolveTheme,
   storePreference,
   subscribeToSystemTheme,
+  systemTheme,
   type ResolvedTheme,
   type ThemePreference,
 } from "../lib/theme";
@@ -18,22 +18,19 @@ export function useTheme() {
   const [preference, setPreferenceState] = useState<ThemePreference>(() =>
     getStoredPreference(),
   );
-  const [resolved, setResolved] = useState<ResolvedTheme>(() =>
-    resolveTheme(getStoredPreference()),
-  );
+  // Tracks the OS-resolved theme; updated by the media-query subscription.
+  // Only influences the output when preference === "system".
+  const [osTheme, setOsTheme] = useState<ResolvedTheme>(() => systemTheme());
 
-  // Re-apply whenever the preference changes.
+  // DOM side effect: re-apply theme class whenever preference or OS theme changes.
   useEffect(() => {
-    setResolved(applyTheme(preference));
-  }, [preference]);
+    applyTheme(preference);
+  }, [preference, osTheme]);
 
   // When following the system, react to OS light/dark switches live.
   useEffect(() => {
     if (preference !== "system") return;
-    return subscribeToSystemTheme((next) => {
-      setResolved(next);
-      applyTheme("system");
-    });
+    return subscribeToSystemTheme(setOsTheme);
   }, [preference]);
 
   const setPreference = useCallback((pref: ThemePreference) => {
@@ -41,5 +38,6 @@ export function useTheme() {
     setPreferenceState(pref);
   }, []);
 
+  const resolved: ResolvedTheme = preference === "system" ? osTheme : preference;
   return { preference, resolved, setPreference };
 }

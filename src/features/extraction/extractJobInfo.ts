@@ -156,7 +156,7 @@ function extractionFromModelText(modelText: string): ExtractJobInfoResult {
 
 async function readHttpErrorMessage(res: Response): Promise<string> {
   const prefix = `HTTP ${res.status}`;
-  let raw = "";
+  let raw: string;
   try {
     raw = await res.text();
   } catch {
