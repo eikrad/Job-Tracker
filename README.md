@@ -154,7 +154,7 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
 5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
 
@@ -227,6 +227,16 @@ Tool config: [`pyproject.toml`](pyproject.toml).
 
 ## Tech stack
 
-- React + TypeScript + Vite
-- Tauri 2
-- SQLite (rusqlite) in the Rust backend
+| Layer | Technology |
+|---|---|
+| UI | React 19 + TypeScript + Vite |
+| Routing | React Router v7 |
+| Desktop shell | Tauri v2 (Rust) |
+| Database | SQLite via rusqlite |
+| Drag-and-drop | dnd-kit |
+| AI extraction | Google Gemini / Mistral (user-supplied key) |
+| Job search | SerpAPI (primary) + Brave Search API (fallback) |
+| Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
+| Frontend tests | Vitest + Testing Library |
+| Rust tests | cargo test + cargo clippy |
+| Python scripts | Ruff, Black, isort, pytest |
