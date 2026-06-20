@@ -18,6 +18,23 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 - **Import / export** — JSON and CSV for backups or migrating between machines
 - **Local-first** — all data in SQLite in the OS app data directory; no cloud account required
 
+## How it works
+
+```mermaid
+flowchart TD
+    DISCOVER([Find a job]) --> SOURCE
+    SOURCE{How?} -->|in-app search| SEARCH[Job search\nJobindex · Indeed\nSerpAPI + Brave fallback]
+    SOURCE -->|paste listing| EXTRACT[AI extraction\nGemini / Mistral\nfills fields automatically]
+    SOURCE -->|manual entry| FORM[Add job form]
+    SEARCH --> SAVE[Save to board]
+    EXTRACT --> SAVE
+    FORM --> SAVE
+    SAVE --> BOARD[Dashboard\nKanban · Table · Calendar]
+    BOARD -->|drag & drop or edit| STATUS[Update status\nInteresting → Applied → Interview → Offer]
+    STATUS --> DATES[Track deadlines\napply-by · interview · role start]
+    DATES -->|optional| GCAL[Push to Google Calendar\nOAuth PKCE]
+```
+
 ## Architecture
 
 ```mermaid
@@ -154,7 +171,7 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
 5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
 
@@ -224,6 +241,14 @@ npm run py:test    # pytest
 Tool config: [`pyproject.toml`](pyproject.toml).
 
 > **Forks:** Update the badge URLs if your repo is not `eikrad/Job-Tracker`.
+
+## Documentation
+
+| File | What it covers |
+|------|----------------|
+| [docs/architecture.md](docs/architecture.md) | Component breakdown, key data flows, CI setup — with Mermaid diagrams |
+| [docs/maintenance.md](docs/maintenance.md) | Dependency versions and upgrade notes |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Build setup, pre-commit hooks, platform prerequisites, PR checklist |
 
 ## Tech stack
 
