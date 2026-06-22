@@ -17,3 +17,7 @@ Documentation for Job Tracker.
 - **Maintaining dependencies or CI?** See [maintenance.md](maintenance.md) for the latest upgrade notes and known pending upgrades.
 - **Planning future work?** See [refactor-sync-roadmap.md](refactor-sync-roadmap.md) for upcoming refactoring, Android support, and cross-device sync plans.
 - **Looking for the big picture?** The [README.md](../README.md) in the repo root has the quick-start guide, feature overview, and full setup instructions.
+
+## Historical planning docs
+
+The `superpowers/` folder contains implementation plans and design specs from earlier development phases. These are reference material, not actively maintained.
