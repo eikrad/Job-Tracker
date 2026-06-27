@@ -34,6 +34,15 @@ See [docs/architecture.md](docs/architecture.md) for a deeper breakdown of compo
 
 Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
+## Documentation
+
+| File | What it covers |
+|------|----------------|
+| [docs/architecture.md](docs/architecture.md) | App structure, tech stack, and detailed data flow diagrams for all key features |
+| [docs/maintenance.md](docs/maintenance.md) | Dependency versions, upgrade notes, and periodic maintenance tasks |
+| [docs/refactor-sync-roadmap.md](docs/refactor-sync-roadmap.md) | Planned performance refactors and future cross-device sync roadmap |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Build setup, pre-commit hooks, platform prerequisites, and PR checklist |
+
 ## Prerequisites
 
 - **Node.js** 20+ and npm
@@ -154,7 +163,7 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
 2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
 5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
 
