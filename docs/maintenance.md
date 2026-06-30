@@ -103,6 +103,32 @@ The following upgrades listed as pending in 2026-06-10 are now reflected in the 
 
 ---
 
+## 2026-06-30
+
+### Checks performed
+- Re-checked the three "pending manual review" upgrades from the 2026-06-10 entry against the current `package.json`, `src-tauri/Cargo.toml`, and `pyproject.toml`
+- Compared `pyproject.toml` against `requirements-dev.txt` (the two parallel Python dependency manifests used by `uv run pytest` and `pip install -r requirements-dev.txt` respectively)
+
+### Findings
+
+The upgrades flagged as pending on 2026-06-10 already landed in commit `2766401` ("chore: upgrade TypeScript 6, ESLint 10, rand 0.9, pytest 9", 2026-06-17) — the 2026-06-10 dependency table below is now out of date on these rows:
+
+| Package | Then | Now |
+|---|---|---|
+| `typescript` | `~5.9.3` (outdated) | `~6.0.0` — Current |
+| `eslint` / `@eslint/js` | `^9.39.4` (outdated) | `^10.0.0` / `^10.0.1` — Current |
+| `rand` (Rust) | `0.8` (outdated) | `0.9` — Current |
+| `pytest` (`pyproject.toml`) | `>=8.0,<9` (pinned) | `>=9.0,<10` — Current |
+
+### New finding: `requirements-dev.txt` lags `pyproject.toml`
+
+`pyproject.toml` already requires `pytest>=9.0,<10`, but `requirements-dev.txt` — the manifest used by `pip install -r requirements-dev.txt` in CI (`.github/workflows/python.yml`) and in the README/CONTRIBUTING.md manual setup steps — still pins `pytest>=8.0,<9`. The `uv run pytest` path and the `pip install` path can now resolve different pytest majors. Needs a follow-up commit bumping `requirements-dev.txt` to `pytest>=9.0,<10` to match.
+
+### Fixes applied
+None this cycle — this entry corrects the record only. The `requirements-dev.txt` mismatch above is flagged for a follow-up code change.
+
+---
+
 ## 2026-06-10
 
 ### Checks performed

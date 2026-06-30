@@ -40,7 +40,7 @@ flowchart TD
 ```mermaid
 graph TD
     UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC commands| RUST[Rust backend<br>Tauri v2]
-    RUST -->|rusqlite| DB[(SQLite<br>jobs · deadlines · notes · PDFs)]
+    RUST -->|rusqlite| DB[(SQLite<br>jobs · status history · documents)]
     RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
     UI -->|HTTPS| AI[AI text extraction<br>Gemini / Mistral]
     UI -->|HTTPS| SEARCH[Job search<br>SerpAPI + Brave fallback]
