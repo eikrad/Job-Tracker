@@ -11,7 +11,7 @@ Job Tracker is a desktop application built with **Tauri v2** (Rust native shell)
 ```mermaid
 graph TD
     UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC commands| RUST[Rust backend<br>Tauri v2]
-    RUST -->|rusqlite| DB[(SQLite<br>jobs · deadlines · notes · PDFs)]
+    RUST -->|rusqlite| DB[(SQLite<br>jobs · status history · documents)]
     RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
     UI -->|HTTPS| AI[AI text extraction<br>Gemini / Mistral]
     UI -->|HTTPS| SEARCH[Job search<br>SerpAPI + Brave fallback]
@@ -135,6 +135,14 @@ All data lives in the OS app data directory — nothing is stored in the repo.
 | Google OAuth refresh token | OS credential store | Tauri / OS keychain |
 | Board column names | SQLite | Rust |
 
+### SQLite tables
+
+| Table | Purpose |
+|---|---|
+| `jobs` | One row per application — company, title, dates, contact, salary, status, etc. |
+| `status_history` | Audit trail of `from_status` → `to_status` changes, written automatically on every status update |
+| `job_documents` | One row per attached PDF (CV, cover letter, other), linked to a job |
+
 ---
 
 ## Dashboard Views
@@ -146,6 +154,14 @@ The **Dashboard** is the home screen and supports three view modes:
 | Kanban | Drag-and-drop columns by application status |
 | Table | Sortable / filterable list of all jobs |
 | Calendar | Month grid showing apply-by, interview, and start dates |
+
+### Status workflow
+
+Kanban/Table status values default to:
+
+`Interesting → Plan to Apply → Application Sent → Feedback → Done`
+
+Column names are stored per-installation in SQLite and can be renamed or reordered from **Settings** — the list above is the out-of-the-box default, not a fixed enum.
 
 ---
 
