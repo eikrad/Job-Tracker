@@ -2,6 +2,27 @@
 
 ---
 
+## 2026-07-01
+
+### Checks performed
+- Reviewed `package.json`, `src-tauri/Cargo.toml`, `requirements-dev.txt`, and `pyproject.toml` against the "Major upgrades pending" table from 2026-06-10 (below).
+
+### Fixes applied
+- **`requirements-dev.txt` pytest pin** — was still `pytest>=8.0,<9`, out of sync with `pyproject.toml`'s `pytest>=9.0,<10`. Since CI (`.github/workflows/python.yml`) installs from `requirements-dev.txt`, this meant CI was pinned to pytest 8.x even though the 2026-06-10 log below and commit `2766401` ("chore: upgrade TypeScript 6, ESLint 10, rand 0.9, pytest 9") intended pytest 9. Bumped to `pytest>=9.0,<10` to match.
+
+### Dependency status — all four previously-pending upgrades are now done
+
+| Package | Was | Now | Status |
+|---|---|---|---|
+| `typescript` | `~5.9.3` | `~6.0.0` | ✓ Done |
+| `eslint` / `@eslint/js` | `^9.39.4` | `^10.0.0` / `^10.0.1` | ✓ Done |
+| `rand` (Rust) | `0.8` | `0.9` | ✓ Done |
+| `pytest` | `>=8.0,<9` | `>=9.0,<10` | ✓ Done (see fix above) |
+
+No major upgrades pending this cycle.
+
+---
+
 ## 2026-06-10
 
 ### Checks performed
@@ -16,6 +37,8 @@
 No automated fixes this cycle — all previously flagged major upgrades remain pending manual review (see table below).
 
 ### Dependency status
+
+*(Superseded by the 2026-07-01 entry above — the four "Outdated" rows below were upgraded in commit `2766401`, kept here for history.)*
 
 **Frontend (`package.json` — dependencies):**
 
