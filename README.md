@@ -10,12 +10,15 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 ## Features
 
 - **Kanban / Table / Calendar dashboard** — view all applications in the format that works for you
+- **Quick capture** — paste a job listing URL and Job Tracker fetches the page and pre-fills a draft for you to review and save
 - **In-app job search** — search Jobindex and Indeed without leaving the app (SerpAPI + Brave Search fallback), with one-click save
 - **AI-assisted extraction** — paste a job listing and let Gemini or Mistral fill in the fields automatically
+- **Job detail page** — a dedicated view per application with status timeline, contact/workplace details, salary, and attached documents
 - **Application PDFs** — attach and manage documents per application
 - **Deadline tracking** — apply-by, interview, and role-start dates shown on a calendar month view
 - **Google Calendar integration** — push events to your primary Google Calendar via OAuth PKCE (no Client Secret required)
 - **Import / export** — JSON and CSV for backups or migrating between machines
+- **Light / dark theme** — the "Breath" theme follows your system preference or can be set manually
 - **Local-first** — all data in SQLite in the OS app data directory; no cloud account required
 
 ## Architecture
