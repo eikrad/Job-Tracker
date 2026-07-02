@@ -11,7 +11,7 @@ Job Tracker is a desktop application built with **Tauri v2** (Rust native shell)
 ```mermaid
 graph TD
     UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC commands| RUST[Rust backend<br>Tauri v2]
-    RUST -->|rusqlite| DB[(SQLite<br>jobs · deadlines · notes · PDFs)]
+    RUST -->|rusqlite| DB[(SQLite<br>jobs · status_history · job_documents)]
     RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
     UI -->|HTTPS| AI[AI text extraction<br>Gemini / Mistral]
     UI -->|HTTPS| SEARCH[Job search<br>SerpAPI + Brave fallback]
@@ -32,6 +32,7 @@ graph TD
 | AI extraction | Google Gemini / Mistral (user-supplied key) |
 | Job search | SerpAPI (primary) + Brave Search API (fallback) |
 | Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
+| Theme | "Breath" light/dark palette (KDE/Manjaro), OS-aware via `prefers-color-scheme`, togglable in the header |
 | Testing | Vitest (frontend), cargo test (Rust), pytest (Python scripts) |
 | Linting | ESLint, TypeScript, cargo clippy, Ruff, Black, isort |
 
@@ -42,12 +43,12 @@ graph TD
 ```
 src/                    — React + TypeScript UI
   features/             — Feature-scoped modules
-    capture/            — Quick-add job capture
+    capture/            — Paste-URL capture: fetch listing text, AI-extract, and triage in a Capture Inbox (+ browser handoff link)
     deadlines/          — Deadline tracking logic
     extraction/         — AI text extraction (Gemini / Mistral)
     jobSearch/          — Job search providers (SerpAPI, Brave)
-    jobs/               — Core job CRUD and state
-    reminders/          — Reminder support
+    jobs/                — Core job CRUD and state
+    reminders/           — Reminder support
   components/           — Shared UI components
   context/              — React context providers (global app state)
   hooks/                — Shared custom hooks
@@ -77,6 +78,22 @@ flowchart TD
     D --> E[Returns new job ID]
     E --> F[UI updates job list / Kanban]
 ```
+
+### Quick capture (paste a job URL)
+
+```mermaid
+flowchart TD
+    A([User opens Capture drawer, pastes a job URL]) --> B[Rust fetches the listing page text]
+    B -->|fetch ok| C[Text sent to AI provider for extraction]
+    B -->|fetch fails| G[Draft pre-filled with just the URL]
+    C -->|extract ok| D[Draft merged with extracted fields]
+    C -->|extract fails| G
+    D --> E[User reviews / edits draft in the Capture Inbox]
+    G --> E
+    E --> F([User accepts: job saved, or dismisses])
+```
+
+A URL can also be queued from outside the app via a copyable handoff link (`?capture_url=<url>`, e.g. from a browser bookmarklet); the app enqueues it into the same Capture Inbox on next load.
 
 ### AI-assisted extraction
 
@@ -129,9 +146,12 @@ All data lives in the OS app data directory — nothing is stored in the repo.
 
 | What | Where | Managed by |
 |---|---|---|
-| Jobs, deadlines, notes | SQLite database | Rust via rusqlite |
+| Jobs (incl. deadline, interview/start dates, notes, contact & workplace fields) | SQLite `jobs` table | Rust via rusqlite |
+| Status change history | SQLite `status_history` table | Rust via rusqlite |
+| Per-job document metadata (CV, cover letter, other) | SQLite `job_documents` table | Rust via rusqlite |
 | Uploaded PDFs | OS file system | Rust file commands |
 | API keys (AI, search) | Browser local storage | React UI |
+| Theme preference | Browser local storage | React UI |
 | Google OAuth refresh token | OS credential store | Tauri / OS keychain |
 | Board column names | SQLite | Rust |
 
@@ -147,6 +167,20 @@ The **Dashboard** is the home screen and supports three view modes:
 | Table | Sortable / filterable list of all jobs |
 | Calendar | Month grid showing apply-by, interview, and start dates |
 
+### Status workflow
+
+The default board pipeline (`DEFAULT_STATUSES` in `src/lib/types.ts`) is:
+
+```
+Interesting → Plan to Apply → Application Sent → Feedback → Done
+```
+
+This is a configurable default, not a fixed enum — column names can be renamed in Settings. Every status change is recorded in `status_history` with a timestamp and shown as a timeline on the job detail page.
+
+### Job detail page
+
+Each job has a dedicated page at `/job/:id` (`src/pages/JobDetailPage.tsx`) with the full edit form, per-job document upload/management, and the status-change timeline described above.
+
 ---
 
 ## CI
@@ -159,4 +193,4 @@ Three independent GitHub Actions workflows run on every push and pull request:
 | **Rust** | `cargo clippy` → `cargo test` |
 | **Python** | `ruff check` → `black --check` → `isort --check-only` → `pytest` |
 
-A pre-commit hook (installed by `npm ci`) runs `npm run verify` locally before every commit so CI failures are caught early.
+A pre-commit hook (installed by `npm ci`) runs `npm run verify` locally before every commit so CI failures are caught early. Locally this uses **uv** to manage the Python environment (`pyproject.toml` / `uv.lock`); CI's `python.yml` instead installs from `requirements-dev.txt` via pip.
