@@ -1,1 +1,240 @@
-IyBKb2IgVHJhY2tlcg==
+# Job Tracker
+
+[![Frontend](https://github.com/eikrad/Job-Tracker/actions/workflows/frontend.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/frontend.yml)
+[![Rust](https://github.com/eikrad/Job-Tracker/actions/workflows/rust.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/rust.yml)
+[![Python](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml)
+[![Alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/eikrad/Job-Tracker)
+
+Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, optional **AI-assisted extraction** (Google **Gemini** or **Mistral**), and web-based job discovery.
+
+## Features
+
+- **Kanban / Table / Calendar dashboard** — view all applications in the format that works for you
+- **Job detail page** — a dedicated `/job/:id` page per application with a full edit form, document uploads, and a status-change history timeline
+- **Configurable status workflow** — the default board pipeline is `Interesting → Plan to Apply → Application Sent → Feedback → Done`; column names are editable in Settings
+- **Quick capture** — paste a job URL into the header's Capture drawer to auto-fetch and AI-extract it into a draft; unresolved captures land in a Capture Inbox for later triage. A copyable handoff link (`?capture_url=…`) lets you queue a URL from outside the app (e.g. a bookmark); the app picks it up as a browser capture the next time it loads
+- **In-app job search** — search Jobindex and Indeed without leaving the app (SerpAPI + Brave Search fallback), with one-click save
+- **AI-assisted extraction** — paste a job listing and let Gemini or Mistral fill in the fields automatically
+- **Application PDFs** — attach and manage documents per application
+- **Deadline tracking** — apply-by, interview, and role-start dates shown on a calendar month view
+- **Google Calendar integration** — push events to your primary Google Calendar via OAuth PKCE (no Client Secret required)
+- **Light / dark theme** — "Breath" (KDE/Manjaro) palette; follows the OS color scheme by default or can be toggled system/light/dark from the header
+- **Import / export** — JSON and CSV for backups or migrating between machines
+- **Local-first** — all data in SQLite in the OS app data directory; no cloud account required
+
+## Architecture
+
+```mermaid
+graph TD
+    UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC commands| RUST[Rust backend<br>Tauri v2]
+    RUST -->|rusqlite| DB[(SQLite<br>jobs · status_history · job_documents)]
+    RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
+    UI -->|HTTPS| AI[AI text extraction<br>Gemini / Mistral]
+    UI -->|HTTPS| SEARCH[Job search<br>SerpAPI + Brave fallback]
+    UI -->|OAuth 2 PKCE| GCAL[Google Calendar API<br>create events]
+```
+
+See [docs/architecture.md](docs/architecture.md) for a deeper breakdown of components, feature modules, and data flow.
+
+Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
+
+## Prerequisites
+
+- **Node.js** 20+ and npm
+- **Rust** stable (`rustup`, `cargo`)
+- **[uv](https://docs.astral.sh/uv/)** — manages the Python dev environment (`pyproject.toml` / `uv.lock`) used by the `npm run py:*` scripts and the pre-commit `verify` hook
+- **OS packages for Tauri** (WebKit + GTK on Linux). See the [official Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+
+**Arch Linux** (example):
+
+```bash
+sudo pacman -S --needed base-devel curl wget openssl gtk3 libappindicator-gtk3 librsvg webkit2gtk-4.1 patchelf
+```
+
+**Windows**
+
+1. Install **Node.js 20+** (e.g. from [nodejs.org](https://nodejs.org/) or `winget install OpenJS.NodeJS.LTS`).
+2. Install **Rust** via [rustup](https://rustup.rs/) (use the `x86_64-pc-windows-msvc` toolchain).
+3. Install **Microsoft C++ Build Tools** for the Tauri/Rust native build: open [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and select the **"Desktop development with C++"** workload (or follow the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)).
+4. **WebView2** is bundled on current Windows 10/11; if the app fails to show a window, install the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
+
+From **PowerShell** or **cmd**, use the same commands as below (`git clone`, `npm ci`, `npm run tauri:dev`, etc.) in the project folder.
+
+## Quick start (how to run)
+
+```bash
+git clone https://github.com/eikrad/Job-Tracker.git
+cd Job-Tracker
+npm ci
+npm run tauri:dev
+```
+
+This starts the Vite dev server and opens the **desktop window** (full app: SQLite, file storage, Tauri commands). On Windows, run these commands in **PowerShell** or **Command Prompt** from the cloned directory.
+
+In the app: **Dashboard** (Kanban / Table / Calendar) is the home route; **Add job** opens a dedicated page; clicking a job opens its **Job detail** page (`/job/:id`) for editing, documents, and status history; the **Capture** button opens a drawer to paste a job URL for auto-fetch + AI extraction (unresolved items land in the Capture Inbox); **Settings** (gear) holds API keys, board column names, and import/export.
+
+**Browser-only UI** (no database / no native features):
+
+```bash
+npm ci
+npm run dev
+```
+
+Then open the URL Vite prints (e.g. `http://localhost:5173`). Use this only for quick UI tweaks.
+
+**Production-style desktop build:**
+
+```bash
+npm ci
+npm run tauri:build
+```
+
+On **Linux**, `tauri:build` also installs a **start menu / app launcher** entry at `~/.local/share/applications/JobTracker.desktop` (same as `npm run desktop:shortcut`).
+
+Installable artifacts appear under `src-tauri/target/release/` (platform-dependent; on Windows e.g. `.exe` / installer under that tree). Packaged installers also land under `src-tauri/target/release/bundle/` when bundling runs (see below).
+
+### Tauri release bundles (Linux, AppImage)
+
+| Platform | Default bundles in this repo | Where to look |
+|----------|------------------------------|---------------|
+| **Linux** | `.deb`, `.rpm` | `src-tauri/target/release/bundle/deb/`, `…/rpm/` |
+| **Windows** | NSIS + MSI | `…/bundle/nsis/`, `…/msi/` |
+| **macOS** | `.app` + `.dmg` | `…/bundle/macos/`, `…/dmg/` |
+
+**AppImage is not in the default list.** Tauri's AppImage step invokes [**linuxdeploy**](https://github.com/linuxdeploy/linuxdeploy); if it is missing or not executable, the build fails with **`failed to run linuxdeploy`**. That is a common pain on fresh machines, so we only request formats that do not need it unless you opt in.
+
+**To build an AppImage locally:** follow [Tauri: AppImage](https://v2.tauri.app/distribute/appimage/) (linuxdeploy + AppImage plugin on `PATH`), then add `"appimage"` to `bundle.targets` in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json). Maintainer-oriented details: [CONTRIBUTING.md — Tauri release bundles](CONTRIBUTING.md#tauri-release-bundles-linux-appimage).
+
+**Arch / Manjaro:** there is no AUR package generated by these defaults; you can run the binary at `src-tauri/target/release/<app-name>` or install from `.deb`/`.rpm` if your distro supports it.
+
+### Linux desktop shortcut
+
+`npm run tauri:build` installs this automatically on Linux. To refresh the launcher without a full rebuild:
+
+```bash
+npm run desktop:shortcut
+```
+
+This creates `~/.local/share/applications/JobTracker.desktop` and copies app icons into `~/.local/share/icons/hicolor/`. It points to:
+- the release binary (`src-tauri/target/release/app`) when available, or
+- `npm run tauri:dev` as a fallback for local development.
+
+Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:generate`.
+
+## Configuration
+
+1. Copy [`fake.env`](fake.env) to `.env` if you want file-based config (optional).
+2. **AI extraction**: choose **Gemini** or **Mistral** in the app and paste the matching API key (stored in local storage for that build). Keys in `.env` are optional for file-based tooling; the desktop UI does not read `.env` for these calls.
+   - **Mistral**: sign up at [La Plateforme](https://console.mistral.ai/); the free **Experiment** tier is typically enough for occasional job-text extraction (high monthly token allowance; rate limits apply — see [Mistral help center](https://help.mistral.ai/)). Limits can change; check their current docs.
+   - **Gemini**: Google AI Studio API key as before.
+3. **Job Search providers**: in **Settings**, add one or both:
+   - **SerpAPI key** (primary provider)
+   - **Brave Search API key** (fallback provider)
+   
+   Provider order is:
+   1. SerpAPI
+   2. Brave Search (if SerpAPI returns no usable results)
+   
+   If both are empty, Job Search will return a configuration error and still allow manual **Open in browser**.
+
+## Job Search
+
+- Platforms in-app: **Jobindex**, **Indeed**, **LinkedIn**.
+- **Jobindex** and **Indeed** now use provider-based web search (SerpAPI + Brave fallback), not RSS.
+- **LinkedIn** remains browser-only and opens directly in your default browser.
+- Search result cards support:
+  - **Add as Interesting** (one-click save with status `Interesting`)
+  - auto-tags from source platform/location
+  - **Open form** if you want to edit details before saving
+
+## Google Calendar
+
+### Calendar tab (in the app)
+
+- **Month view** shows dates from your jobs: **apply-by**, **interview**, and **role start** (from SQLite only—no Google account required to view).
+- **Template**: opens Google Calendar in the browser with a prefilled all-day event (no sign-in in the app).
+- **Create in Google**: creates the event in your **primary** Google calendar via the Calendar API. Use **Settings → Connect with Google** (recommended) or paste a short-lived **access token** under **Advanced** (expert / OAuth Playground).
+
+### One-time Google Cloud setup
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
+2. Enable **Google Calendar API** (APIs & Services → Library).
+3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in “Testing”).
+4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
+5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store (e.g. Secret Service on Linux). No Client Secret is required for this desktop PKCE flow.
+
+Scope used: `https://www.googleapis.com/auth/calendar.events`.
+
+If **Create in Google** fails after a long time, use **Disconnect** and **Connect with Google** again. The **Advanced** token field remains available for power users who prefer [OAuth Playground](https://developers.google.com/oauthplayground/) or their own tooling.
+
+### Smoke test checklist (local, after Google Cloud setup)
+
+Use this to confirm OAuth and the month calendar end-to-end on your machine:
+
+1. Start the app: `npm run tauri:dev`.
+2. **Settings → Google Calendar**: paste your **Desktop** OAuth **Client ID** → **Save Client ID** → **Connect with Google**. Finish consent in the browser; Settings should show connected (or equivalent status).
+3. Open the **Calendar** tab: confirm the **month grid** lists jobs that have **apply-by**, **interview**, or **start** dates.
+4. For one job with each kind of date (or the same job with all three), use **Create in Google** and confirm events appear in your **primary** Google Calendar.
+5. (Optional) **Disconnect**, then under **Advanced** paste a short-lived access token and confirm **Create in Google** still works.
+6. **Disconnect** again when finished testing if you do not want the refresh token left on this machine.
+
+**Automated checks** (no Google account): `npm run verify:frontend` and `cargo test --manifest-path src-tauri/Cargo.toml` (also run in CI-friendly workflows).
+
+## Data storage
+
+- **SQLite and uploaded PDFs** live in the OS app data directory for the Tauri app (not in this repo).
+- The repo `storage/` folder is for optional manual files; see `.gitignore`.
+- User-entered API keys in Settings are stored in local storage for this app profile.
+
+## Import / export
+
+- **Export**: JSON or CSV from the app header.
+- **Import**: JSON array (same shape as export) or CSV from export; creates **new** rows (IDs are not preserved).
+
+## CI & tests
+
+GitHub Actions runs three independent workflows (each with its own status badge above):
+
+| Workflow | What it checks |
+|---|---|
+| **Frontend** | `npm run lint` → `npm run test` (Vitest) → `npm run build` |
+| **Rust** | `cargo clippy` → `cargo test` |
+| **Python** | `ruff check` → `black --check` → `isort --check-only` → `pytest` |
+
+### Frontend (Vitest)
+
+```bash
+npm ci
+npm run test        # once
+npm run test:watch  # during development
+```
+
+### Rust
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+### Python ([Ruff](https://docs.astral.sh/ruff/), [Black](https://black.readthedocs.io/), [isort](https://pycqa.github.io/isort/), [pytest](https://pytest.org/))
+
+[Ruff](https://docs.astral.sh/ruff/) is the primary **linter** (fast, replaces much of Flake8 + plugins). **Black** formats code; **isort** sorts imports with the `black` profile so they agree.
+
+Locally, these run through [**uv**](https://docs.astral.sh/uv/), which manages the Python environment from `pyproject.toml` / `uv.lock` automatically — no manual `pip install` needed:
+
+```bash
+npm run py:lint    # uv run: ruff check + black --check + isort --check-only
+npm run py:format  # uv run: isort + black (writes files)
+npm run py:test    # uv run: pytest
+```
+
+CI (`.github/workflows/python.yml`) instead runs `pip install -r requirements-dev.txt` and calls `ruff` / `black` / `isort` / `pytest` directly — use that flow if you prefer a plain pip/venv over uv.
+
+Tool config: [`pyproject.toml`](pyproject.toml) (uv / local) and [`requirements-dev.txt`](requirements-dev.txt) (CI).
+
+> **Forks:** Update the badge URLs if your repo is not `eikrad/Job-Tracker`.
+
+## Tech stack
+
+- React + TypeScript + Vite
+- Tauri 2
+- SQLite (rusqlite) in the Rust backend
