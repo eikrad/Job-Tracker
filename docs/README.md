@@ -9,6 +9,7 @@ Documentation for Job Tracker.
 | [architecture.md](architecture.md) | App structure, tech stack, key data flows (adding a job, AI extraction, job search, Google Calendar), CI setup — with Mermaid diagrams |
 | [maintenance.md](maintenance.md) | Dependency versions, upgrade notes, and periodic maintenance tasks |
 | [refactor-sync-roadmap.md](refactor-sync-roadmap.md) | Performance refactor phases (A / B / C) and cross-device sync planning |
+| [superpowers/](superpowers/) | Historical design specs and implementation plans for shipped features (e.g. job detail enrichment, capture workflow) — dated point-in-time records, kept for reference rather than living docs |
 
 ## Where to start
 

@@ -2,6 +2,45 @@
 
 ---
 
+## 2026-07-03
+
+### Checks performed
+- Docs audit (as part of a broader `docs/` accuracy pass): cross-checked this log's dependency tables against `package.json`, `src-tauri/Cargo.toml`, `pyproject.toml`, and `requirements-dev.txt`.
+
+### Fixes applied
+- **Stale "pending upgrade" entries** — `typescript` (6.x), `eslint` / `@eslint/js` (10.x), `rand` (0.9), and `pytest` (9.x) were already upgraded in PR #22 (commit `2766401`, merged 2026-06-18, *"chore: upgrade TypeScript 6, ESLint 10, rand 0.9, pytest 9"*), but this log still listed them all as outdated/pending below. Updated the tables to reflect the shipped versions.
+- **`requirements-dev.txt` drift** — still pinned `pytest>=8.0,<9` after the pytest 9 upgrade landed in `pyproject.toml` (`pytest>=9.0,<10`). This file backs the CI `python.yml` pip-install path, so CI was resolving a different pytest floor than the local `uv`-based tooling (`npm run py:test`, `npm run verify:python`). Bumped to `pytest>=9.0,<10` to match.
+
+### Dependency status
+
+**Frontend (`package.json` — dependencies):** unchanged from 2026-06-10, still current (`react` `^19.2.4`, `react-dom` `^19.2.4`, `react-router-dom` `^7.13.1`, `@dnd-kit/core` `^6.3.1`, `lucide-react` `^1.6.0`, `dayjs` `^1.11.20`, `@tauri-apps/api` `^2.11.0`).
+
+**Frontend (`package.json` — devDependencies, changed since 2026-06-10):**
+
+| Package | Version | Status |
+|---|---|---|
+| `typescript` | `~6.0.0` | Current (was `~5.9.3`, flagged outdated) |
+| `eslint` | `^10.0.0` | Current (was `^9.39.4`, flagged outdated) |
+| `@eslint/js` | `^10.0.1` | Current (was `^9.39.4`, flagged outdated) |
+
+**Rust (`src-tauri/Cargo.toml`, changed since 2026-06-10):**
+
+| Crate | Version | Status |
+|---|---|---|
+| `rand` | `0.9` | Current (was `0.8`, flagged outdated) |
+
+**Python dev (`pyproject.toml` dev group + `requirements-dev.txt`, changed since 2026-06-10):**
+
+| Package | Constraint | Status |
+|---|---|---|
+| `pytest` | `>=9.0,<10` | Current in both `pyproject.toml` and `requirements-dev.txt` (was pinned `<9`, flagged pending) |
+
+### Major upgrades pending (require manual testing)
+
+None currently flagged.
+
+---
+
 ## 2026-06-10
 
 ### Checks performed

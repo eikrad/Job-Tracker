@@ -78,6 +78,21 @@ flowchart TD
     E --> F[UI updates job list / Kanban]
 ```
 
+### Quick capture (URL / drawer / inbox)
+
+```mermaid
+flowchart TD
+    A([User pastes a job URL]) --> B{Capture entry point}
+    B -->|Quick capture drawer / URL card| C[Fetch listing text via Tauri]
+    B -->|Handoff link opened later| D[Queued in capture inbox<br>local storage]
+    D --> C
+    C --> E[AI extraction: Gemini / Mistral]
+    E --> F[Draft job fields prefilled]
+    F --> G([User reviews and saves])
+```
+
+The **quick capture drawer** (`src/components/QuickCaptureDrawer.tsx`) also generates a shareable **handoff link** (`?capture_url=…`) — opening it later enqueues the URL into the **capture inbox** (`src/features/capture/captureInbox.ts`, browser local storage) for processing on the same pipeline via `CaptureInboxPanel`.
+
 ### AI-assisted extraction
 
 ```mermaid

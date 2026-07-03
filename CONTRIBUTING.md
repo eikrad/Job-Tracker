@@ -6,7 +6,7 @@ Thanks for helping out. This document describes how to build the project, run ch
 
 - **Node.js** 20+ and npm
 - **Rust** stable (`rustup`, `cargo`)
-- **Python** 3.12+ with **pip** (`python3 -m pip` — on Arch: `sudo pacman -S python-pip`) for contract tests and the `verify` / pre-commit hook
+- **Python** 3.12+ and **[uv](https://docs.astral.sh/uv/getting-started/installation/)** — `npm run py:lint` / `npm run py:format` / `npm run py:test` / `verify:python` all run via `uv run` (see `pyproject.toml`), and the pre-commit hook runs `npm run verify` on every commit, so `uv` must be on `PATH` before your first commit or the hook fails with `uv: command not found`.
 - **OS packages** required by [Tauri v2](https://v2.tauri.app/start/prerequisites/) (WebKit + GTK on Linux)
 
 On **Arch Linux**, for example:
@@ -87,9 +87,11 @@ Equivalent piecemeal:
 npm run lint && npm run test && npm run build
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
 cargo test --manifest-path src-tauri/Cargo.toml
-python3 -m pip install -r requirements-dev.txt
+uv sync
 npm run py:lint && npm run py:test
 ```
+
+(CI's `python.yml` workflow uses a separate, uv-free path — `pip install -r requirements-dev.txt` followed by `ruff` / `black` / `isort` / `pytest` directly — so the exact same tool versions are pinned in both `pyproject.toml` and `requirements-dev.txt`.)
 
 Fix issues or explain in the PR why something is intentionally skipped.
 

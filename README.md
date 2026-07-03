@@ -10,6 +10,7 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 ## Features
 
 - **Kanban / Table / Calendar dashboard** — view all applications in the format that works for you
+- **Quick capture** — paste a job listing URL (header button or a shareable handoff link) to fetch and AI-extract fields in one step; unresolved links queue in a capture inbox for later review
 - **In-app job search** — search Jobindex and Indeed without leaving the app (SerpAPI + Brave Search fallback), with one-click save
 - **AI-assisted extraction** — paste a job listing and let Gemini or Mistral fill in the fields automatically
 - **Application PDFs** — attach and manage documents per application
@@ -215,11 +216,12 @@ cargo test --manifest-path src-tauri/Cargo.toml
 [Ruff](https://docs.astral.sh/ruff/) is the primary **linter** (fast, replaces much of Flake8 + plugins). **Black** formats code; **isort** sorts imports with the `black` profile so they agree.
 
 ```bash
-pip install -r requirements-dev.txt
-npm run py:lint    # ruff check + black --check + isort --check-only
-npm run py:format  # isort + black (writes files)
-npm run py:test    # pytest
+npm run py:lint    # uv run: ruff check + black --check + isort --check-only
+npm run py:format  # uv run: isort + black (writes files)
+npm run py:test    # uv run: pytest
 ```
+
+These require [`uv`](https://docs.astral.sh/uv/) on `PATH` and manage their own virtual environment from `pyproject.toml` / `uv.lock` — no manual `pip install` needed. CI uses a separate, uv-free path (`pip install -r requirements-dev.txt` then the tools directly — see [`.github/workflows/python.yml`](.github/workflows/python.yml)).
 
 Tool config: [`pyproject.toml`](pyproject.toml).
 
