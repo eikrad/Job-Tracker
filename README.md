@@ -230,3 +230,11 @@ Tool config: [`pyproject.toml`](pyproject.toml).
 - React + TypeScript + Vite
 - Tauri 2
 - SQLite (rusqlite) in the Rust backend
+
+## Contributing
+
+Bug reports, feature ideas, and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for build setup, the pre-commit/`verify` workflow, and the PR checklist.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
