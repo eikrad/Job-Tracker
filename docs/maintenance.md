@@ -2,6 +2,97 @@
 
 ---
 
+## 2026-07-05
+
+### Checks performed
+- Documentation audit: compared `docs/maintenance.md`'s dependency status against the current `package.json`, `src-tauri/Cargo.toml`, and `requirements-dev.txt`.
+
+### Findings
+
+The three "pending" upgrades logged on 2026-06-10 have since been merged but were never recorded here:
+
+| Package | Logged as | Now in repo |
+|---|---|---|
+| `eslint` / `@eslint/js` | `^9.x` (outdated) | `^10.0.0` / `^10.0.1` |
+| `typescript` | `~5.9.x` (outdated) | `~6.0.0` |
+| `rand` (Rust) | `0.8` (outdated) | `0.9` |
+
+Also noted in passing: `tauri` moved from `2.10.3` to `2.11` (still a `2.x` minor bump, no action needed).
+
+### Fixes applied
+
+- No code changes — this entry only reconciles the log with dependency bumps that already landed on `main`, so the "pending" table below doesn't keep flagging resolved items.
+
+### Dependency status
+
+**Frontend (`package.json` — dependencies):**
+
+| Package | Version | Status |
+|---|---|---|
+| `react` | `^19.2.4` | Current |
+| `react-dom` | `^19.2.4` | Current |
+| `react-router-dom` | `^7.13.1` | Current |
+| `@dnd-kit/core` | `^6.3.1` | Current |
+| `lucide-react` | `^1.6.0` | Current |
+| `dayjs` | `^1.11.20` | Current |
+| `@tauri-apps/api` | `^2.11.0` | Current |
+
+**Frontend (`package.json` — devDependencies):**
+
+| Package | Version | Status |
+|---|---|---|
+| `vite` | `^8.0.1` | Current |
+| `vitest` | `^4.1.0` | Current |
+| `@vitejs/plugin-react` | `^6.0.1` | Current |
+| `typescript` | `~6.0.0` | Current (upgraded from `~5.9.x`) |
+| `eslint` | `^10.0.0` | Current (upgraded from `^9.x`) |
+| `@eslint/js` | `^10.0.1` | Current (upgraded from `^9.x`) |
+| `typescript-eslint` | `^8.60.0` | Current |
+| `husky` | `^9.1.7` | Current |
+| `@tauri-apps/cli` | `^2.11.2` | Current |
+| `happy-dom` | `^20.9.0` | Current |
+| `globals` | `^17.4.0` | Current |
+| `@testing-library/react` | `^16.3.2` | Current |
+| `@types/react` | `^19.2.14` | Current |
+| `@types/node` | `^24.12.0` | Current |
+
+**Rust (`src-tauri/Cargo.toml`):**
+
+| Crate | Version | Status |
+|---|---|---|
+| `tauri` | `2.11` | Current |
+| `tauri-build` | `2.5.6` | Current |
+| `tauri-plugin-log` | `2` | Current |
+| `rusqlite` | `0.32.1` | Current |
+| `serde` / `serde_json` | `1.0` | Current |
+| `chrono` | `0.4` | Current |
+| `reqwest` | `0.12` | Current |
+| `keyring` | `3` | Current |
+| `open` | `5.2` | Current |
+| `sha2` | `0.10` | Current |
+| `rand` | `0.9` | Current (upgraded from `0.8`) |
+| `base64` | `0.22` | Current |
+| `url` | `2.5` | Current |
+| `shellexpand` | `3` | Current |
+| `log` | `0.4` | Current |
+
+**Python dev (`requirements-dev.txt`):**
+
+| Package | Constraint | Status |
+|---|---|---|
+| `pytest` | `>=8.0,<9` | Pinned — verify 9.x before relaxing |
+| `black` | `>=24.0` | Current |
+| `ruff` | `>=0.8.0` | Current |
+| `isort` | `>=5.13` | Current |
+
+### Major upgrades pending (require manual testing)
+
+| Package | In use | Notes |
+|---|---|---|
+| `pytest` | `>=8.0,<9` | Still pinned below 9.x per prior notes; verify against the test suite before relaxing the upper bound. |
+
+---
+
 ## 2026-06-10
 
 ### Checks performed
