@@ -31,11 +31,24 @@ fn make_client() -> Result<Client, String> {
         .map_err(|e| e.to_string())
 }
 
-fn detect_status(url: &str) -> ListingStatus {
+fn detect_status(url: &str, serp_api_key: &str) -> ListingStatus {
     let client = match make_client() {
         Ok(c) => c,
         Err(_) => return ListingStatus::Unreachable,
     };
+
+    let domain = extract_domain(url).unwrap_or_default();
+
+    // Indeed blocks automated requests — skip direct fetch and go straight to SerpAPI
+    if domain.contains("indeed.com") {
+        if let Some(job_key) = extract_indeed_job_key(url) {
+            if !serp_api_key.trim().is_empty() {
+                return classify_indeed_via_serp(&job_key, serp_api_key, &client)
+                    .unwrap_or(ListingStatus::Unreachable);
+            }
+        }
+        return ListingStatus::Unreachable;
+    }
 
     let response = match client.get(url).send() {
         Ok(r) => r,
@@ -62,13 +75,14 @@ fn detect_status(url: &str) -> ListingStatus {
 }
 
 fn classify_by_domain(original_url: &str, final_url: &str, body_head: &str) -> ListingStatus {
-    let domain = extract_domain(original_url);
+    let domain = extract_domain(original_url).unwrap_or_default();
 
-    match domain.as_deref() {
-        Some(d) if d.contains("linkedin.com") => classify_linkedin(final_url, body_head),
-        Some(d) if d.contains("indeed.com") => classify_indeed(original_url, final_url, body_head),
-        Some(d) if d.contains("jobindex.dk") => classify_jobindex(final_url),
-        _ => classify_generic(final_url, body_head),
+    if domain.contains("linkedin.com") {
+        classify_linkedin(final_url, body_head)
+    } else if domain.contains("jobindex.dk") {
+        classify_jobindex(final_url)
+    } else {
+        classify_generic(final_url, body_head)
     }
 }
 
@@ -87,8 +101,50 @@ fn classify_linkedin(final_url: &str, body_head: &str) -> ListingStatus {
     ListingStatus::Active
 }
 
+fn extract_indeed_job_key(url: &str) -> Option<String> {
+    url::Url::parse(url).ok().and_then(|u| {
+        u.query_pairs()
+            .find(|(k, _)| k == "jk")
+            .map(|(_, v)| v.into_owned())
+    })
+}
+
+fn classify_indeed_via_serp(job_key: &str, serp_api_key: &str, client: &Client) -> Option<ListingStatus> {
+    let query = format!("site:indeed.com jk:{job_key}");
+    let resp = client
+        .get("https://serpapi.com/search.json")
+        .query(&[
+            ("engine", "google"),
+            ("q", query.as_str()),
+            ("num", "5"),
+            ("api_key", serp_api_key.trim()),
+        ])
+        .send()
+        .ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body = resp.text().ok()?;
+    let data: serde_json::Value = serde_json::from_str(&body).ok()?;
+    let hits = data
+        .get("organic_results")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter().any(|item| {
+                item.get("link")
+                    .and_then(|l| l.as_str())
+                    .map(|l| l.contains(job_key))
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false);
+
+    Some(if hits { ListingStatus::Active } else { ListingStatus::Closed })
+}
+
+#[cfg(test)]
 fn classify_indeed(original_url: &str, final_url: &str, body_head: &str) -> ListingStatus {
-    // Indeed redirects expired jobs to the search page or a "Job not found" page
     let original_has_job_id = original_url.contains("/viewjob") || original_url.contains("jk=");
     let redirected_away = original_has_job_id
         && !final_url.contains("/viewjob")
@@ -138,14 +194,20 @@ fn classify_generic(final_url: &str, body_head: &str) -> ListingStatus {
 }
 
 #[tauri::command]
-pub async fn check_listing_status(app: tauri::AppHandle, job_id: i64, url: String) -> Result<String, String> {
+pub async fn check_listing_status(
+    app: tauri::AppHandle,
+    job_id: i64,
+    url: String,
+    serp_api_key: Option<String>,
+) -> Result<String, String> {
     if url.trim().is_empty() {
         return Err("No URL provided".to_string());
     }
 
     // reqwest::blocking cannot run on the Tokio async runtime thread — use spawn_blocking
     let url_clone = url.clone();
-    let status = tauri::async_runtime::spawn_blocking(move || detect_status(&url_clone))
+    let serp_key = serp_api_key.unwrap_or_default();
+    let status = tauri::async_runtime::spawn_blocking(move || detect_status(&url_clone, &serp_key))
         .await
         .map_err(|e| format!("Thread error: {e}"))?;
 

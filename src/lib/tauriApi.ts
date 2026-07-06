@@ -191,8 +191,9 @@ export async function fetchJobSearchResultPageText(url: string): Promise<string>
 export async function checkListingStatus(
   jobId: number,
   url: string,
+  serpApiKey?: string | null,
 ): Promise<"active" | "closed" | "archived" | "unreachable"> {
-  return invoke("check_listing_status", { jobId, url });
+  return invoke("check_listing_status", { jobId, url, serpApiKey: serpApiKey ?? null });
 }
 
 export async function googleCalendarCreateEvent(params: {
