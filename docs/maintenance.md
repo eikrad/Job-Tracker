@@ -144,6 +144,8 @@ No automated fixes this cycle — all previously flagged major upgrades remain p
 
 ### Dependency status
 
+*(Superseded by the 2026-07-01 entry above — the four "Outdated" rows below were upgraded in commit `2766401`, kept here for history.)*
+
 **Frontend (`package.json` — dependencies):**
 
 | Package | Version | Status |

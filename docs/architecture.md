@@ -35,6 +35,7 @@ graph TD
 | Theme | "Breath" light/dark palette (KDE/Manjaro), OS-aware via `prefers-color-scheme`, togglable in the header |
 | Testing | Vitest (frontend), cargo test (Rust), pytest (Python scripts) |
 | Linting | ESLint, TypeScript, cargo clippy, Ruff, Black, isort |
+| Theming | "Breath" light/dark theme (`src/lib/theme.ts`, `src/hooks/useTheme.ts`) |
 
 ---
 
@@ -51,10 +52,10 @@ src/                    — React + TypeScript UI
     reminders/           — Reminder support
   components/           — Shared UI components
   context/              — React context providers (global app state)
-  hooks/                — Shared custom hooks
+  hooks/                — Shared custom hooks (incl. useTheme — Breath light/dark theme)
   i18n/                 — Internationalisation strings
-  lib/                  — Utility functions
-  pages/                — Route-level page components
+  lib/                  — Utility functions (incl. theme.ts)
+  pages/                — Route-level page components: Dashboard, Add Job, Job Detail (`/job/:id`), Job Search
 src-tauri/              — Rust / Tauri backend
   src/                  — Tauri commands, SQLite access, file handling
   capabilities/         — Tauri permission declarations
@@ -67,6 +68,41 @@ storage/                — Optional manual file storage (gitignored)
 ---
 
 ## Key Data Flows
+
+### Application status flow
+
+Each job moves through a Kanban pipeline (columns are user-renameable in Settings; defaults shown). Every status change is written to a status-history table for the job's timeline view.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Interesting
+    Interesting --> PlanToApply: Plan to Apply
+    PlanToApply --> ApplicationSent: Application Sent
+    ApplicationSent --> Feedback: Feedback
+    Feedback --> Done: Done
+    Interesting --> Done
+    ApplicationSent --> Done
+    note right of Done: Every transition is recorded in SQLite via update_job_status
+```
+
+### Capture workflow (paste a URL)
+
+Lets a user paste a job listing URL and get a pre-filled draft without manual data entry. Implemented in `src/features/capture/` and the `QuickCaptureDrawer`.
+
+```mermaid
+flowchart TD
+    A([User pastes a job URL]) --> B[Tauri fetches the page text]
+    B -->|fetch fails| D[Fallback: empty draft, manual entry]
+    B -->|success| C[AI extraction of the fetched text]
+    C -->|extract fails| D
+    C -->|success| E[Merge extracted fields into draft]
+    E --> F[Capture preview: user reviews / edits]
+    D --> F
+    F --> G[User confirms]
+    G --> H[create_job Tauri command → SQLite, status = Interesting]
+```
+
+The **capture inbox** (`captureInbox.ts`) queues browser-originated URLs client-side (browser `localStorage`); there is currently no Tauri/Rust backend command for it, so queued items do not sync across devices or survive a data wipe.
 
 ### Adding a job manually
 

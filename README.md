@@ -15,11 +15,13 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 - **Quick capture** — paste a job URL into the header's Capture drawer to auto-fetch and AI-extract it into a draft; unresolved captures land in a Capture Inbox for later triage. A copyable handoff link (`?capture_url=…`) lets you queue a URL from outside the app (e.g. a bookmark); the app picks it up as a browser capture the next time it loads
 - **In-app job search** — search Jobindex and Indeed without leaving the app (SerpAPI + Brave Search fallback), with one-click save
 - **AI-assisted extraction** — paste a job listing and let Gemini or Mistral fill in the fields automatically
+- **Job detail page** — a dedicated view per application with status timeline, contact/workplace details, salary, and attached documents
 - **Application PDFs** — attach and manage documents per application
 - **Deadline tracking** — apply-by, interview, and role-start dates shown on a calendar month view
 - **Google Calendar integration** — push events to your primary Google Calendar via OAuth PKCE (no Client Secret required)
 - **Light / dark theme** — "Breath" (KDE/Manjaro) palette; follows the OS color scheme by default or can be toggled system/light/dark from the header
 - **Import / export** — JSON and CSV for backups or migrating between machines
+- **Light / dark theme** — the "Breath" theme follows your system preference or can be set manually
 - **Local-first** — all data in SQLite in the OS app data directory; no cloud account required
 
 ## How it works
