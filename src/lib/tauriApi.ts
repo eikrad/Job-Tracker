@@ -188,6 +188,13 @@ export async function fetchJobSearchResultPageText(url: string): Promise<string>
   return invoke<string>("fetch_job_search_result_page_text", { url });
 }
 
+export async function checkListingStatus(
+  jobId: number,
+  url: string,
+): Promise<"active" | "closed" | "archived" | "unreachable"> {
+  return invoke("check_listing_status", { jobId, url });
+}
+
 export async function googleCalendarCreateEvent(params: {
   jobId: number;
   dateKind: GoogleCalendarDateKind;

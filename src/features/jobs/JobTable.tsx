@@ -14,6 +14,8 @@ import {
 } from "../../lib/jobs/sortJobs";
 import { WorkspaceEmpty } from "../../components/WorkspaceEmpty";
 import { en } from "../../i18n/en";
+import { ExternalLink } from "lucide-react";
+import { ListingStatusDot } from "./ListingStatusDot";
 
 type Props = {
   jobs: Job[];
@@ -217,6 +219,7 @@ export const JobTable = memo(function JobTable({ jobs, statuses, onSelect }: Pro
                       </button>
                     </th>
                   ))}
+                  <th className="jobTableLinkCell" aria-label="Link" />
                 </tr>
               </thead>
               <tbody>
@@ -249,6 +252,22 @@ export const JobTable = memo(function JobTable({ jobs, statuses, onSelect }: Pro
                         </td>
                       );
                     })}
+                    <td className="jobTableLinkCell" onClick={(e) => e.stopPropagation()}>
+                      {job.url && (
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.25rem", justifyContent: "center" }}>
+                          <ListingStatusDot status={job.listing_status} size={7} />
+                          <a
+                            href={job.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={job.url}
+                            style={{ color: "inherit", opacity: 0.5 }}
+                          >
+                            <ExternalLink size={13} />
+                          </a>
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

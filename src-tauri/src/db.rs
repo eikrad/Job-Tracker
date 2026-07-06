@@ -32,6 +32,8 @@ pub struct Job {
     pub reference_number: Option<String>,
     pub source: Option<String>,
     pub pdf_path: Option<String>,
+    pub listing_status: Option<String>,
+    pub listing_checked_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -220,6 +222,8 @@ fn migrate_jobs_columns(conn: &Connection) -> Result<(), String> {
         ("priority", "INTEGER"),
         ("reference_number", "TEXT"),
         ("source", "TEXT"),
+        ("listing_status", "TEXT"),
+        ("listing_checked_at", "TEXT"),
     ];
     for (col, col_type) in new_cols {
         if !cols.iter().any(|c| c == col) {
@@ -306,7 +310,7 @@ pub fn list_jobs(app: tauri::AppHandle) -> Result<Vec<Job>, String> {
     let conn = connection(&app)?;
     let mut stmt = conn
     .prepare(
-      "SELECT id, company, title, url, raw_text, status, deadline, interview_date, start_date, tags, detected_language, notes, contact_name, contact_email, contact_phone, workplace_street, workplace_city, workplace_postal_code, work_mode, salary_range, contract_type, priority, reference_number, source, pdf_path, created_at, updated_at
+      "SELECT id, company, title, url, raw_text, status, deadline, interview_date, start_date, tags, detected_language, notes, contact_name, contact_email, contact_phone, workplace_street, workplace_city, workplace_postal_code, work_mode, salary_range, contract_type, priority, reference_number, source, pdf_path, listing_status, listing_checked_at, created_at, updated_at
       FROM jobs ORDER BY updated_at DESC",
     )
     .map_err(|e| e.to_string())?;
@@ -338,8 +342,10 @@ pub fn list_jobs(app: tauri::AppHandle) -> Result<Vec<Job>, String> {
                 reference_number: row.get(22)?,
                 source: row.get(23)?,
                 pdf_path: row.get(24)?,
-                created_at: row.get(25)?,
-                updated_at: row.get(26)?,
+                listing_status: row.get(25)?,
+                listing_checked_at: row.get(26)?,
+                created_at: row.get(27)?,
+                updated_at: row.get(28)?,
             })
         })
         .map_err(|e| e.to_string())?

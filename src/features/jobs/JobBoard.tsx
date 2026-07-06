@@ -14,7 +14,8 @@ import { effectiveStatuses, isNextStatus } from "../../lib/statusUtils";
 import type { Job } from "../../lib/types";
 import { WorkspaceEmpty } from "../../components/WorkspaceEmpty";
 import { en } from "../../i18n/en";
-import { GripVertical } from "lucide-react";
+import { GripVertical, ExternalLink } from "lucide-react";
+import { ListingStatusDot } from "./ListingStatusDot";
 
 type Props = {
   statuses: string[];
@@ -76,7 +77,22 @@ function JobCard({
       <div className="dragHandle" {...listeners} {...attributes} title={en.jobBoard.dragToMoveStatus}>
         <GripVertical size={14} />
       </div>
-      <strong>{job.company}</strong>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+        <strong>{job.company}</strong>
+        {job.url && (
+          <a
+            href={job.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title={job.url}
+            style={{ color: "inherit", opacity: 0.5, lineHeight: 1 }}
+          >
+            <ExternalLink size={12} />
+          </a>
+        )}
+        {job.url && <ListingStatusDot status={job.listing_status} size={7} />}
+      </div>
       <span>{job.title ?? en.common.untitled}</span>
       {(job.deadline || job.interview_date || job.start_date) && (
         <div className="muted jobCardDates">

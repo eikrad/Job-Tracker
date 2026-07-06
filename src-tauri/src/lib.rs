@@ -2,6 +2,7 @@ mod calendar;
 mod db;
 mod google_oauth;
 mod job_search;
+mod listing_check;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -44,6 +45,7 @@ pub fn run() {
             job_search::build_search_url,
             job_search::fetch_job_search_result_page_text,
             job_search::open_url_in_browser,
+            listing_check::check_listing_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

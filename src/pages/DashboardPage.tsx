@@ -17,6 +17,7 @@ export function DashboardPage() {
     googleAccessToken,
     onMove,
     onDeleteJob,
+    onListingStatusChecked,
     googleOauthConnected,
     createGoogleCalendarEvent,
     openSettings,
@@ -48,6 +49,7 @@ export function DashboardPage() {
           selected={selected}
           onDeleteJob={onDeleteJob}
           onViewDetails={(id) => navigate(`/job/${id}`)}
+          onListingStatusChecked={onListingStatusChecked}
         />
         <ReminderCenter jobs={jobs} />
       </aside>

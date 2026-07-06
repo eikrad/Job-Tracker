@@ -1,7 +1,9 @@
-import { memo } from "react";
-import { Star, Calendar, Monitor, Tag, ArrowRight, Trash2 } from "lucide-react";
+import { memo, useState } from "react";
+import { Star, Calendar, Monitor, Tag, ArrowRight, Trash2, ExternalLink, RefreshCw } from "lucide-react";
 import { en } from "../../i18n/en";
 import type { Job } from "../../lib/types";
+import { checkListingStatus } from "../../lib/tauriApi";
+import { ListingStatusDot } from "./ListingStatusDot";
 
 const PRIORITY_MAX = 10;
 
@@ -9,13 +11,17 @@ type Props = {
   selected?: Job;
   onDeleteJob: (jobId: number) => Promise<void>;
   onViewDetails: (jobId: number) => void;
+  onListingStatusChecked: (jobId: number, status: string) => void;
 };
 
 export const JobDetailTimeline = memo(function JobDetailTimeline({
   selected,
   onDeleteJob,
   onViewDetails,
+  onListingStatusChecked,
 }: Props) {
+  const [checking, setChecking] = useState(false);
+
   async function onDelete() {
     if (!selected) return;
     if (!window.confirm(en.alerts.deleteJobConfirm)) return;
@@ -23,6 +29,19 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
       await onDeleteJob(selected.id);
     } catch (e) {
       window.alert(en.alerts.deleteJobFailed(e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function onCheckListing() {
+    if (!selected?.url) return;
+    setChecking(true);
+    try {
+      const status = await checkListingStatus(selected.id, selected.url);
+      onListingStatusChecked(selected.id, status);
+    } catch {
+      // silently ignore — the dot stays in its previous state
+    } finally {
+      setChecking(false);
     }
   }
 
@@ -42,6 +61,18 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
         <p className="detailMeta">
           <strong>{selected.company}</strong>
           {selected.title ? ` — ${selected.title}` : ""}
+          {selected.url && (
+            <a
+              href={selected.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title={selected.url}
+              style={{ marginLeft: "0.5rem", verticalAlign: "middle", color: "inherit", opacity: 0.6 }}
+            >
+              <ExternalLink size={13} style={{ display: "inline" }} />
+            </a>
+          )}
         </p>
         <p className="detailMeta">
           {en.detail.status} <span>{selected.status}</span>
@@ -73,6 +104,21 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
           </p>
         )}
         {selected.notes && <p className="detailMeta">{en.detail.notes}: {selected.notes}</p>}
+        {selected.url && (
+          <div className="detailMeta listingStatusRow">
+            <ListingStatusDot status={selected.listing_status} />
+            <button
+              type="button"
+              className="btn btnGhost btnSm"
+              onClick={() => void onCheckListing()}
+              disabled={checking}
+              title="Check if listing is still active"
+            >
+              <RefreshCw size={11} style={{ display: "inline", marginRight: 3 }} />
+              {checking ? "Checking…" : "Check listing"}
+            </button>
+          </div>
+        )}
         <div className="detailActions row" style={{ marginTop: "0.75rem" }}>
           <button type="button" className="btn btnPrimary btnSm" onClick={() => onViewDetails(selected.id)}>
             {en.detail.viewFullDetails} <ArrowRight size={13} style={{ display: "inline", marginLeft: 3 }} />

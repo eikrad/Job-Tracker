@@ -701,6 +701,24 @@ table {
   width: 7%;
 }
 
+.listingStatusRow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.jobTable .jobTableLinkCell {
+  width: 2rem;
+  text-align: center;
+  padding: 0.25rem;
+}
+
+.jobTable .jobTableLinkCell a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .jobTable th {
   padding: 0.35rem 0.4rem;
   vertical-align: bottom;

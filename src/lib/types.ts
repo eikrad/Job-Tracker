@@ -28,6 +28,8 @@ export type Job = {
   reference_number?: string | null;
   source?: string | null;
   pdf_path?: string | null;
+  listing_status?: "active" | "closed" | "archived" | "unreachable" | null;
+  listing_checked_at?: string | null;
   created_at: string;
   updated_at: string;
 };
