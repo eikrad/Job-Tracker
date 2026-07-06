@@ -18,6 +18,23 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 - **Import / export** — JSON and CSV for backups or migrating between machines
 - **Local-first** — all data in SQLite in the OS app data directory; no cloud account required
 
+## How it works
+
+```mermaid
+flowchart TD
+    DISCOVER([Find a job]) --> SOURCE
+    SOURCE{How?} -->|in-app search| SEARCH[Job search\nJobindex · Indeed\nSerpAPI + Brave fallback]
+    SOURCE -->|paste listing| EXTRACT[AI extraction\nGemini / Mistral\nfills fields automatically]
+    SOURCE -->|manual entry| FORM[Add job form]
+    SEARCH --> SAVE[Save to board]
+    EXTRACT --> SAVE
+    FORM --> SAVE
+    SAVE --> BOARD[Dashboard\nKanban · Table · Calendar]
+    BOARD -->|drag & drop or edit| STATUS[Update status\nInteresting → Applied → Interview → Offer]
+    STATUS --> DATES[Track deadlines\napply-by · interview · role start]
+    DATES -->|optional| GCAL[Push to Google Calendar\nOAuth PKCE]
+```
+
 ## Architecture
 
 ```mermaid
@@ -229,6 +246,14 @@ npm run py:test    # pytest
 Tool config: [`pyproject.toml`](pyproject.toml).
 
 > **Forks:** Update the badge URLs if your repo is not `eikrad/Job-Tracker`.
+
+## Documentation
+
+| File | What it covers |
+|------|----------------|
+| [docs/architecture.md](docs/architecture.md) | Component breakdown, key data flows, CI setup — with Mermaid diagrams |
+| [docs/maintenance.md](docs/maintenance.md) | Dependency versions and upgrade notes |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Build setup, pre-commit hooks, platform prerequisites, PR checklist |
 
 ## Tech stack
 
