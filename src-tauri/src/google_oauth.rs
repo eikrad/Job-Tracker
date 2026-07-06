@@ -1,6 +1,6 @@
 //! Google OAuth 2.0 (PKCE, loopback redirect) + refresh token in OS keyring.
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use rand::{Rng, RngExt};
+use rand::RngExt;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
