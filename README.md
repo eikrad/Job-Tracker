@@ -270,3 +270,7 @@ Tool config: [`pyproject.toml`](pyproject.toml).
 | Frontend tests | Vitest + Testing Library |
 | Rust tests | cargo test + cargo clippy |
 | Python scripts | Ruff, Black, isort, pytest |
+
+## License
+
+Apache 2.0 — see [LICENSE](LICENSE).
