@@ -155,6 +155,14 @@ All data lives in the OS app data directory — nothing is stored in the repo.
 | Google OAuth refresh token | OS credential store | Tauri / OS keychain |
 | Board column names | SQLite | Rust |
 
+### SQLite tables
+
+| Table | Purpose |
+|---|---|
+| `jobs` | One row per application — company, title, dates, contact, salary, status, etc. |
+| `status_history` | Audit trail of `from_status` → `to_status` changes, written automatically on every status update |
+| `job_documents` | One row per attached PDF (CV, cover letter, other), linked to a job |
+
 ---
 
 ## Dashboard Views
