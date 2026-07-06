@@ -2,6 +2,92 @@
 
 ---
 
+## 2026-06-17
+
+### Checks performed
+- Reviewed all CI workflows — all passing (Frontend, Rust, Python — last run: 2026-06-17T07:35:49Z on main)
+- Reviewed `package.json` frontend and dev deps
+- Reviewed `src-tauri/Cargo.toml` Rust deps
+- Reviewed `requirements-dev.txt` Python dev deps
+- Cross-checked CI Node version against radiationsafety and bandsearch-app
+
+### Fixes applied
+
+- **CI Node version** — Bumped Node from `20` to `22` in `.github/workflows/frontend.yml`. Vite 8 requires Node >=20.18 or >=22; radiationsafety and bandsearch-app already applied this fix on 2026-06-10. job-tracker was the last repo still on Node 20.
+
+### Dependency status
+
+**Frontend (`package.json` — dependencies):**
+
+| Package | Version | Status |
+|---|---|---|
+| `react` | `^19.2.4` | Current |
+| `react-dom` | `^19.2.4` | Current |
+| `react-router-dom` | `^7.13.1` | Current |
+| `@dnd-kit/core` | `^6.3.1` | Current |
+| `lucide-react` | `^1.6.0` | Current |
+| `dayjs` | `^1.11.20` | Current |
+| `@tauri-apps/api` | `^2.11.0` | Current |
+
+**Frontend (`package.json` — devDependencies):**
+
+| Package | Version | Status |
+|---|---|---|
+| `vite` | `^8.0.1` | Current |
+| `vitest` | `^4.1.0` | Current |
+| `@vitejs/plugin-react` | `^6.0.1` | Current |
+| `typescript` | `~5.9.3` | **Outdated** (6.x available — breaking) |
+| `eslint` | `^9.39.4` | **Outdated** (10.x available — breaking) |
+| `@eslint/js` | `^9.39.4` | **Outdated** (10.x available — breaking) |
+| `typescript-eslint` | `^8.60.0` | Current |
+| `husky` | `^9.1.7` | Current |
+| `@tauri-apps/cli` | `^2.11.2` | Current |
+| `happy-dom` | `^20.9.0` | Current |
+| `globals` | `^17.4.0` | Current |
+| `@testing-library/react` | `^16.3.2` | Current |
+| `@types/react` | `^19.2.14` | Current |
+| `@types/node` | `^24.12.0` | Current |
+
+**Rust (`src-tauri/Cargo.toml`):**
+
+| Crate | Version | Status |
+|---|---|---|
+| `tauri` | `2.11` | Current |
+| `tauri-build` | `2.5.6` | Current |
+| `tauri-plugin-log` | `2` | Current |
+| `rusqlite` | `0.32.1` | Current |
+| `serde` / `serde_json` | `1.0` | Current |
+| `chrono` | `0.4` | Current |
+| `reqwest` | `0.12` | Current |
+| `keyring` | `3` | Current |
+| `open` | `5.2` | Current |
+| `sha2` | `0.10` | Current |
+| `rand` | `0.8` | **Outdated** (0.9 available — breaking) |
+| `base64` | `0.22` | Current |
+| `url` | `2.5` | Current |
+| `shellexpand` | `3` | Current |
+| `log` | `0.4` | Current |
+
+**Python dev (`requirements-dev.txt`):**
+
+| Package | Constraint | Status |
+|---|---|---|
+| `pytest` | `>=8.0,<9` | Pinned — 9.x available, relax upper bound once verified |
+| `black` | `>=24.0` | Current |
+| `ruff` | `>=0.8.0` | Current |
+| `isort` | `>=5.13` | Current |
+
+### Major upgrades pending (require manual testing)
+
+| Package | In use | Latest | Notes |
+|---|---|---|---|
+| `eslint` / `@eslint/js` | `^9.x` | `10.x` | Review ESLint v10 migration guide, update `eslint.config.js` |
+| `typescript` | `~5.9.x` | `6.x` | Breaking type-system changes — run `tsc --noEmit` and fix errors first |
+| `rand` (Rust) | `0.8` | `0.9` | Breaking API changes — audit every `rand::` call site in `src-tauri/src/` |
+| `pytest` | `>=8.0,<9` | `9.x` | Relax upper bound once 9.x is verified against the test suite |
+
+---
+
 ## 2026-06-10
 
 ### Checks performed
