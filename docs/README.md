@@ -2,7 +2,7 @@
 
 Documentation for Job Tracker.
 
-## Contents
+## Reference
 
 | File | What it covers |
 |------|----------------|
@@ -16,10 +16,10 @@ Documentation for Job Tracker.
 - **Maintaining dependencies or CI?** See [maintenance.md](maintenance.md) for the latest upgrade notes and known pending upgrades.
 - **Looking for the big picture?** The [README.md](../README.md) in the repo root has the quick-start guide, feature overview, and full setup instructions.
 
-## Planning docs
+## Planning
 
-The file below is a planning document for future work — not a description of the current state.
+Forward-looking design documents — not descriptions of the current codebase.
 
 | File | What it covers |
 |------|----------------|
-| [refactor-sync-roadmap.md](refactor-sync-roadmap.md) | Planned performance refactors (phases A / B / C) and future cross-device sync design |
+| [refactor-sync-roadmap.md](refactor-sync-roadmap.md) | Planned performance refactors (phases A / B / C), Android support, and cross-device sync design |
