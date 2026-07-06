@@ -70,6 +70,7 @@ function makeTrackerState(view: JobTrackerState["view"]): JobTrackerState {
     onImportFile: vi.fn(),
     onMove: vi.fn(),
     onDeleteJob: vi.fn(),
+    onListingStatusChecked: vi.fn(),
     onUpdateJob: vi.fn(),
     onExtract: vi.fn(),
     renameStatus: vi.fn(),

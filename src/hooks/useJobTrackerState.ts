@@ -161,6 +161,24 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
     [refresh, runBackup],
   );
 
+  const onListingStatusChecked = useCallback(
+    (jobId: number, status: string) => {
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.id === jobId
+            ? { ...j, listing_status: status as Job["listing_status"], listing_checked_at: new Date().toISOString() }
+            : j,
+        ),
+      );
+      setSelected((s) =>
+        s?.id === jobId
+          ? { ...s, listing_status: status as Job["listing_status"], listing_checked_at: new Date().toISOString() }
+          : s,
+      );
+    },
+    [],
+  );
+
   const onDeleteJob = useCallback(
     async (jobId: number) => {
       await deleteJob(jobId);
@@ -268,6 +286,7 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
     onSubmit,
     onImportFile,
     onMove,
+    onListingStatusChecked,
     onDeleteJob,
     onUpdateJob,
     onExtract,

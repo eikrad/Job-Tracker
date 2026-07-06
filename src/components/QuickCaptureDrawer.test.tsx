@@ -40,6 +40,7 @@ function makeTrackerState(): JobTrackerState {
     onImportFile: vi.fn(),
     onMove: vi.fn(),
     onDeleteJob: vi.fn(),
+    onListingStatusChecked: vi.fn(),
     onUpdateJob: vi.fn(),
     onExtract: vi.fn().mockResolvedValue({ ok: false, error: "fallback" }),
     renameStatus: vi.fn(),
