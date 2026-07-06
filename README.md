@@ -229,3 +229,19 @@ npm run py:test    # pytest
 Tool config: [`pyproject.toml`](pyproject.toml).
 
 > **Forks:** Update the badge URLs if your repo is not `eikrad/Job-Tracker`.
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| UI | React 19 + TypeScript + Vite |
+| Routing | React Router v7 |
+| Desktop shell | Tauri v2 (Rust) |
+| Database | SQLite via rusqlite |
+| Drag-and-drop | dnd-kit |
+| AI extraction | Google Gemini / Mistral (user-supplied key) |
+| Job search | SerpAPI (primary) + Brave Search API (fallback) |
+| Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
+| Frontend tests | Vitest + Testing Library |
+| Rust tests | cargo test + cargo clippy |
+| Python scripts | Ruff, Black, isort, pytest |
