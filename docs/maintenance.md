@@ -2,18 +2,41 @@
 
 ---
 
-## 2026-06-17
+## 2026-06-24
 
 ### Checks performed
-- Reviewed all CI workflows — all passing (Frontend, Rust, Python — last run: 2026-06-17T07:35:49Z on main)
 - Reviewed `package.json` frontend and dev deps
 - Reviewed `src-tauri/Cargo.toml` Rust deps
-- Reviewed `requirements-dev.txt` Python dev deps
-- Cross-checked CI Node version against radiationsafety and bandsearch-app
+- Reviewed `requirements-dev.txt` / `pyproject.toml` Python dev deps
+- Reviewed CI workflows in `.github/workflows/`
+- Cross-referenced current `package.json` against previous maintenance log entries
 
-### Fixes applied
+### Infrastructure added
 
-- **CI Node version** — Bumped Node from `20` to `22` in `.github/workflows/frontend.yml`. Vite 8 requires Node >=20.18 or >=22; radiationsafety and bandsearch-app already applied this fix on 2026-06-10. job-tracker was the last repo still on Node 20.
+- **Dependabot** — Added `.github/dependabot.yml` to automate weekly PR generation for:
+  - npm (root) — targets `main`
+  - Cargo (`/src-tauri`) — targets `main`; also raises security alerts via GitHub Advisory DB
+  - pip — targets `main` (covers `requirements-dev.txt` / `pyproject.toml` dev deps)
+  - GitHub Actions — targets `main`
+
+- **Weekly security audit** — Added `.github/workflows/weekly-audit.yml`. Runs every Monday
+  at 06:00 UTC and can be triggered manually via `workflow_dispatch`:
+  - Audits npm deps with `npm audit`
+  - Audits Python deps with `pip-audit` against the `uv`-exported lockfile
+  - Audits Rust deps with `cargo-audit` (binary cached between runs)
+  - Writes a full report to the workflow step summary
+  - If high- or critical-severity vulnerabilities are found, opens (or updates) a GitHub Issue
+    labelled `security-audit` + `maintenance`
+
+### Major upgrades completed (were pending last cycle)
+
+The following upgrades listed as pending in 2026-06-10 are now reflected in the repo:
+
+| Package | Was | Now | Notes |
+|---|---|---|---|
+| `typescript` | `~5.9.3` | `~6.0.0` | Applied; CI passes |
+| `eslint` / `@eslint/js` | `^9.x` | `^10.0.x` | Applied; `eslint.config.js` updated |
+| `rand` (Rust) | `0.8` | `0.9` | Applied; all call sites updated |
 
 ### Dependency status
 
@@ -21,8 +44,7 @@
 
 | Package | Version | Status |
 |---|---|---|
-| `react` | `^19.2.4` | Current |
-| `react-dom` | `^19.2.4` | Current |
+| `react` / `react-dom` | `^19.2.4` | Current |
 | `react-router-dom` | `^7.13.1` | Current |
 | `@dnd-kit/core` | `^6.3.1` | Current |
 | `lucide-react` | `^1.6.0` | Current |
@@ -36,17 +58,14 @@
 | `vite` | `^8.0.1` | Current |
 | `vitest` | `^4.1.0` | Current |
 | `@vitejs/plugin-react` | `^6.0.1` | Current |
-| `typescript` | `~5.9.3` | **Outdated** (6.x available — breaking) |
-| `eslint` | `^9.39.4` | **Outdated** (10.x available — breaking) |
-| `@eslint/js` | `^9.39.4` | **Outdated** (10.x available — breaking) |
+| `typescript` | `~6.0.0` | Current |
+| `eslint` | `^10.0.0` | Current |
+| `@eslint/js` | `^10.0.1` | Current |
 | `typescript-eslint` | `^8.60.0` | Current |
 | `husky` | `^9.1.7` | Current |
 | `@tauri-apps/cli` | `^2.11.2` | Current |
 | `happy-dom` | `^20.9.0` | Current |
-| `globals` | `^17.4.0` | Current |
 | `@testing-library/react` | `^16.3.2` | Current |
-| `@types/react` | `^19.2.14` | Current |
-| `@types/node` | `^24.12.0` | Current |
 
 **Rust (`src-tauri/Cargo.toml`):**
 
@@ -62,29 +81,25 @@
 | `keyring` | `3` | Current |
 | `open` | `5.2` | Current |
 | `sha2` | `0.10` | Current |
-| `rand` | `0.8` | **Outdated** (0.9 available — breaking) |
+| `rand` | `0.9` | Current (upgraded from 0.8) |
 | `base64` | `0.22` | Current |
 | `url` | `2.5` | Current |
 | `shellexpand` | `3` | Current |
-| `log` | `0.4` | Current |
 
 **Python dev (`requirements-dev.txt`):**
 
 | Package | Constraint | Status |
 |---|---|---|
-| `pytest` | `>=8.0,<9` | Pinned — 9.x available, relax upper bound once verified |
+| `pytest` | `>=8.0,<9` | Upper bound is conservative — relax to `>=9.0` after verifying test suite |
 | `black` | `>=24.0` | Current |
 | `ruff` | `>=0.8.0` | Current |
 | `isort` | `>=5.13` | Current |
 
-### Major upgrades pending (require manual testing)
+### Minor upgrade pending
 
-| Package | In use | Latest | Notes |
-|---|---|---|---|
-| `eslint` / `@eslint/js` | `^9.x` | `10.x` | Review ESLint v10 migration guide, update `eslint.config.js` |
-| `typescript` | `~5.9.x` | `6.x` | Breaking type-system changes — run `tsc --noEmit` and fix errors first |
-| `rand` (Rust) | `0.8` | `0.9` | Breaking API changes — audit every `rand::` call site in `src-tauri/src/` |
-| `pytest` | `>=8.0,<9` | `9.x` | Relax upper bound once 9.x is verified against the test suite |
+| Package | Notes |
+|---|---|
+| `pytest` (Python) | Upper bound `<9` is conservative. Relax to `>=9.0` once the test suite is verified on pytest 9. |
 
 ---
 
