@@ -2,51 +2,27 @@ import type { Job } from "../../lib/types";
 
 type Status = Job["listing_status"];
 
-const CONFIG: Record<
-  NonNullable<Status>,
-  { color: string; label: string }
-> = {
-  active: { color: "#22c55e", label: "Listing active" },
-  closed: { color: "#ef4444", label: "Listing closed" },
-  archived: { color: "#f97316", label: "Listing archived" },
-  unreachable: { color: "#a1a1aa", label: "Listing unreachable" },
+const STATUS_CLASS: Record<NonNullable<Status>, string> = {
+  active: "listingDot listingDotActive",
+  closed: "listingDot listingDotClosed",
+  archived: "listingDot listingDotArchived",
+  unreachable: "listingDot listingDotUnreachable",
+};
+
+const STATUS_LABEL: Record<NonNullable<Status>, string> = {
+  active: "Listing active",
+  closed: "Listing closed",
+  archived: "Listing archived",
+  unreachable: "Listing unreachable",
 };
 
 type Props = {
   status?: Status;
-  size?: number;
 };
 
-export function ListingStatusDot({ status, size = 8 }: Props) {
+export function ListingStatusDot({ status }: Props) {
   if (!status) {
-    return (
-      <span
-        title="Listing not yet checked"
-        style={{
-          display: "inline-block",
-          width: size,
-          height: size,
-          borderRadius: "50%",
-          background: "transparent",
-          border: "1.5px solid #a1a1aa",
-          flexShrink: 0,
-        }}
-      />
-    );
+    return <span className="listingDot listingDotUnchecked" title="Listing not yet checked" />;
   }
-
-  const { color, label } = CONFIG[status];
-  return (
-    <span
-      title={label}
-      style={{
-        display: "inline-block",
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        background: color,
-        flexShrink: 0,
-      }}
-    />
-  );
+  return <span className={STATUS_CLASS[status]} title={STATUS_LABEL[status]} />;
 }

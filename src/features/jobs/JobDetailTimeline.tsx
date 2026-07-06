@@ -68,7 +68,7 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
               title={selected.url}
-              style={{ marginLeft: "0.5rem", verticalAlign: "middle", color: "inherit", opacity: 0.6 }}
+              className="detailExternalLink"
             >
               <ExternalLink size={13} style={{ display: "inline" }} />
             </a>
@@ -114,7 +114,7 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
               disabled={checking}
               title="Check if listing is still active"
             >
-              <RefreshCw size={11} style={{ display: "inline", marginRight: 3 }} />
+              <RefreshCw size={11} style={{ display: "inline", marginRight: "var(--space-xs)" }} />
               {checking ? "Checking…" : "Check listing"}
             </button>
           </div>

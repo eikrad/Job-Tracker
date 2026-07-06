@@ -254,14 +254,13 @@ export const JobTable = memo(function JobTable({ jobs, statuses, onSelect }: Pro
                     })}
                     <td className="jobTableLinkCell" onClick={(e) => e.stopPropagation()}>
                       {job.url && (
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.25rem", justifyContent: "center" }}>
-                          <ListingStatusDot status={job.listing_status} size={7} />
+                        <div className="jobTableLinkInner">
+                          <ListingStatusDot status={job.listing_status} />
                           <a
                             href={job.url}
                             target="_blank"
                             rel="noopener noreferrer"
                             title={job.url}
-                            style={{ color: "inherit", opacity: 0.5 }}
                           >
                             <ExternalLink size={13} />
                           </a>

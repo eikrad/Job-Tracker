@@ -701,10 +701,56 @@ table {
   width: 7%;
 }
 
+/* ── Listing status dot ──────────────────────────────────────────────────── */
+
+.listingDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.listingDotUnchecked {
+  background: transparent;
+  border: 1.5px solid var(--color-listing-unreachable);
+}
+
+.listingDotActive     { background: var(--color-listing-active); }
+.listingDotClosed     { background: var(--color-listing-closed); }
+.listingDotArchived   { background: var(--color-listing-archived); }
+.listingDotUnreachable { background: var(--color-listing-unreachable); }
+
+/* ── Listing status row (detail panel) ──────────────────────────────────── */
+
 .listingStatusRow {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-sm);
+}
+
+/* ── Job card company + link row (kanban) ───────────────────────────────── */
+
+.jobCardCompanyRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.jobCardLink {
+  color: inherit;
+  opacity: 0.5;
+  line-height: 1;
+  display: inline-flex;
+}
+
+/* ── Detail panel external link ─────────────────────────────────────────── */
+
+.detailExternalLink {
+  margin-left: var(--space-sm);
+  vertical-align: middle;
+  color: inherit;
+  opacity: 0.6;
 }
 
 .jobTable .jobTableLinkCell {
@@ -716,6 +762,15 @@ table {
 .jobTable .jobTableLinkCell a {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  color: inherit;
+  opacity: 0.5;
+}
+
+.jobTableLinkInner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
   justify-content: center;
 }
 

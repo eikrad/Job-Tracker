@@ -77,7 +77,7 @@ function JobCard({
       <div className="dragHandle" {...listeners} {...attributes} title={en.jobBoard.dragToMoveStatus}>
         <GripVertical size={14} />
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+      <div className="jobCardCompanyRow">
         <strong>{job.company}</strong>
         {job.url && (
           <a
@@ -86,12 +86,12 @@ function JobCard({
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
             title={job.url}
-            style={{ color: "inherit", opacity: 0.5, lineHeight: 1 }}
+            className="jobCardLink"
           >
             <ExternalLink size={12} />
           </a>
         )}
-        {job.url && <ListingStatusDot status={job.listing_status} size={7} />}
+        {job.url && <ListingStatusDot status={job.listing_status} />}
       </div>
       <span>{job.title ?? en.common.untitled}</span>
       {(job.deadline || job.interview_date || job.start_date) && (

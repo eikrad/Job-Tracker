@@ -19,6 +19,10 @@
   --color-badge-text: #9a3412;
   --color-badge-bg: #ffedd5;
   --color-badge-border: #fdba74;
+  --color-listing-active: #22c55e;
+  --color-listing-closed: #ef4444;
+  --color-listing-archived: #f97316;
+  --color-listing-unreachable: #a1a1aa;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
