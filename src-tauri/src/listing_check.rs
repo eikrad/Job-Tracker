@@ -138,12 +138,17 @@ fn classify_generic(final_url: &str, body_head: &str) -> ListingStatus {
 }
 
 #[tauri::command]
-pub fn check_listing_status(app: tauri::AppHandle, job_id: i64, url: String) -> Result<String, String> {
+pub async fn check_listing_status(app: tauri::AppHandle, job_id: i64, url: String) -> Result<String, String> {
     if url.trim().is_empty() {
         return Err("No URL provided".to_string());
     }
 
-    let status = detect_status(&url);
+    // reqwest::blocking cannot run on the Tokio async runtime thread — use spawn_blocking
+    let url_clone = url.clone();
+    let status = tauri::async_runtime::spawn_blocking(move || detect_status(&url_clone))
+        .await
+        .map_err(|e| format!("Thread error: {e}"))?;
+
     let status_str = status.as_str().to_string();
     let now = Utc::now().to_rfc3339();
 
