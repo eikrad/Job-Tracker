@@ -39,8 +39,10 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
     setCheckError(null);
     try {
       const status = await checkListingStatus(selected.id, selected.url);
+      console.log("[listing-check] result:", status);
       onListingStatusChecked(selected.id, status);
     } catch (e) {
+      console.error("[listing-check] error:", e);
       setCheckError(e instanceof Error ? e.message : String(e));
     } finally {
       setChecking(false);
@@ -109,6 +111,11 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
         {selected.url && (
           <div className="detailMeta listingStatusRow">
             <ListingStatusDot status={selected.listing_status} />
+            {selected.listing_status && (
+              <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", textTransform: "capitalize" }}>
+                {selected.listing_status}
+              </span>
+            )}
             <button
               type="button"
               className="btn btnGhost btnSm"
