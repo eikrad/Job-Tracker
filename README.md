@@ -10,11 +10,15 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 ## Features
 
 - **Kanban / Table / Calendar dashboard** — view all applications in the format that works for you
+- **Job detail page** — a dedicated `/job/:id` page per application with a full edit form, document uploads, and a status-change history timeline
+- **Configurable status workflow** — the default board pipeline is `Interesting → Plan to Apply → Application Sent → Feedback → Done`; column names are editable in Settings
+- **Quick capture** — paste a job URL into the header's Capture drawer to auto-fetch and AI-extract it into a draft; unresolved captures land in a Capture Inbox for later triage. A copyable handoff link (`?capture_url=…`) lets you queue a URL from outside the app (e.g. a bookmark); the app picks it up as a browser capture the next time it loads
 - **In-app job search** — search Jobindex and Indeed without leaving the app (SerpAPI + Brave Search fallback), with one-click save
 - **AI-assisted extraction** — paste a job listing and let Gemini or Mistral fill in the fields automatically
 - **Application PDFs** — attach and manage documents per application
 - **Deadline tracking** — apply-by, interview, and role-start dates shown on a calendar month view
 - **Google Calendar integration** — push events to your primary Google Calendar via OAuth PKCE (no Client Secret required)
+- **Light / dark theme** — "Breath" (KDE/Manjaro) palette; follows the OS color scheme by default or can be toggled system/light/dark from the header
 - **Import / export** — JSON and CSV for backups or migrating between machines
 - **Local-first** — all data in SQLite in the OS app data directory; no cloud account required
 
@@ -40,7 +44,7 @@ flowchart TD
 ```mermaid
 graph TD
     UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC commands| RUST[Rust backend<br>Tauri v2]
-    RUST -->|rusqlite| DB[(SQLite<br>jobs · deadlines · notes · PDFs)]
+    RUST -->|rusqlite| DB[(SQLite<br>jobs · status_history · job_documents)]
     RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
     UI -->|HTTPS| AI[AI text extraction<br>Gemini / Mistral]
     UI -->|HTTPS| SEARCH[Job search<br>SerpAPI + Brave fallback]
@@ -78,6 +82,7 @@ Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTIN
 
 - **Node.js** 20+ and npm
 - **Rust** stable (`rustup`, `cargo`)
+- **[uv](https://docs.astral.sh/uv/)** — manages the Python dev environment (`pyproject.toml` / `uv.lock`) used by the `npm run py:*` scripts and the pre-commit `verify` hook
 - **OS packages for Tauri** (WebKit + GTK on Linux). See the [official Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 **Arch Linux** (example):
@@ -106,7 +111,7 @@ npm run tauri:dev
 
 This starts the Vite dev server and opens the **desktop window** (full app: SQLite, file storage, Tauri commands). On Windows, run these commands in **PowerShell** or **Command Prompt** from the cloned directory.
 
-In the app: **Dashboard** (Kanban / Table / Calendar) is the home route; **Add job** opens a dedicated page; **Settings** (gear) holds API keys, board column names, and import/export.
+In the app: **Dashboard** (Kanban / Table / Calendar) is the home route; **Add job** opens a dedicated page; clicking a job opens its **Job detail** page (`/job/:id`) for editing, documents, and status history; the **Capture** button opens a drawer to paste a job URL for auto-fetch + AI extraction (unresolved items land in the Capture Inbox); **Settings** (gear) holds API keys, board column names, and import/export.
 
 **Browser-only UI** (no database / no native features):
 
@@ -245,14 +250,17 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ### Python
 
+Locally, these run through [**uv**](https://docs.astral.sh/uv/), which manages the Python environment from `pyproject.toml` / `uv.lock` automatically — no manual `pip install` needed:
+
 ```bash
-pip install -r requirements-dev.txt
-npm run py:lint    # ruff check + black --check + isort --check-only
-npm run py:format  # isort + black (writes files)
-npm run py:test    # pytest
+npm run py:lint    # uv run: ruff check + black --check + isort --check-only
+npm run py:format  # uv run: isort + black (writes files)
+npm run py:test    # uv run: pytest
 ```
 
-Tool config: [`pyproject.toml`](pyproject.toml).
+CI (`.github/workflows/python.yml`) instead runs `pip install -r requirements-dev.txt` and calls `ruff` / `black` / `isort` / `pytest` directly — use that flow if you prefer a plain pip/venv over uv.
+
+Tool config: [`pyproject.toml`](pyproject.toml) (uv / local) and [`requirements-dev.txt`](requirements-dev.txt) (CI).
 
 > **Forks:** Update the badge URLs if your repo is not `eikrad/Job-Tracker`.
 

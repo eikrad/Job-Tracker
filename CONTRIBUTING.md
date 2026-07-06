@@ -6,7 +6,7 @@ Thanks for helping out. This document describes how to build the project, run ch
 
 - **Node.js** 20+ and npm
 - **Rust** stable (`rustup`, `cargo`)
-- **Python** 3.12+ with **pip** (`python3 -m pip` — on Arch: `sudo pacman -S python-pip`) for contract tests and the `verify` / pre-commit hook
+- **[uv](https://docs.astral.sh/uv/)** (Python 3.12+ environment manager) for contract tests and the `verify` / pre-commit hook — `npm run py:*` and `verify:python` run everything through `uv run` / `uv sync`, which installs from `pyproject.toml` / `uv.lock` automatically
 - **OS packages** required by [Tauri v2](https://v2.tauri.app/start/prerequisites/) (WebKit + GTK on Linux)
 
 On **Arch Linux**, for example:
@@ -87,9 +87,10 @@ Equivalent piecemeal:
 npm run lint && npm run test && npm run build
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
 cargo test --manifest-path src-tauri/Cargo.toml
-python3 -m pip install -r requirements-dev.txt
-npm run py:lint && npm run py:test
+uv sync && npm run py:lint && npm run py:test
 ```
+
+To mirror CI's Python job exactly (pip instead of uv): `pip install -r requirements-dev.txt && ruff check tests && black --check tests && isort --check-only tests && pytest -q`.
 
 Fix issues or explain in the PR why something is intentionally skipped.
 
