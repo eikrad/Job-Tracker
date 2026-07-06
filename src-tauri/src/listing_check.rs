@@ -1,6 +1,5 @@
 use chrono::Utc;
 use reqwest::blocking::Client;
-use tauri::Manager;
 
 use crate::db::connection;
 
