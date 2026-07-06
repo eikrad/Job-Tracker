@@ -21,6 +21,7 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
   onListingStatusChecked,
 }: Props) {
   const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState<string | null>(null);
 
   async function onDelete() {
     if (!selected) return;
@@ -35,11 +36,12 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
   async function onCheckListing() {
     if (!selected?.url) return;
     setChecking(true);
+    setCheckError(null);
     try {
       const status = await checkListingStatus(selected.id, selected.url);
       onListingStatusChecked(selected.id, status);
-    } catch {
-      // silently ignore — the dot stays in its previous state
+    } catch (e) {
+      setCheckError(e instanceof Error ? e.message : String(e));
     } finally {
       setChecking(false);
     }
@@ -118,6 +120,11 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
               {checking ? "Checking…" : "Check listing"}
             </button>
           </div>
+        )}
+        {checkError && (
+          <p className="detailMeta" style={{ fontSize: "0.7rem", color: "var(--color-danger)" }}>
+            {checkError}
+          </p>
         )}
         <div className="detailActions row" style={{ marginTop: "0.75rem" }}>
           <button type="button" className="btn btnPrimary btnSm" onClick={() => onViewDetails(selected.id)}>
