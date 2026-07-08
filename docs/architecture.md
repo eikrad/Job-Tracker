@@ -91,18 +91,17 @@ Lets a user paste a job listing URL and get a pre-filled draft without manual da
 
 ```mermaid
 flowchart TD
-    A([User pastes a job URL]) --> B[Tauri fetches the page text]
-    B -->|fetch fails| D[Fallback: empty draft, manual entry]
-    B -->|success| C[AI extraction of the fetched text]
-    C -->|extract fails| D
-    C -->|success| E[Merge extracted fields into draft]
-    E --> F[Capture preview: user reviews / edits]
-    D --> F
-    F --> G[User confirms]
-    G --> H[create_job Tauri command → SQLite, status = Interesting]
+    A([User opens Capture drawer, pastes a job URL]) --> B[Rust fetches the listing page text]
+    B -->|fetch ok| C[Text sent to AI provider for extraction]
+    B -->|fetch fails| G[Draft pre-filled with just the URL]
+    C -->|extract ok| D[Draft merged with extracted fields]
+    C -->|extract fails| G
+    D --> E[User reviews / edits draft in the Capture Inbox]
+    G --> E
+    E --> F([User confirms: create_job Tauri command → SQLite, status = Interesting])
 ```
 
-The **capture inbox** (`captureInbox.ts`) queues browser-originated URLs client-side (browser `localStorage`); there is currently no Tauri/Rust backend command for it, so queued items do not sync across devices or survive a data wipe.
+A URL can also be queued from outside the app via a copyable handoff link (`?capture_url=<url>`, e.g. from a browser bookmarklet). The **capture inbox** (`captureInbox.ts`) queues these client-side in browser `localStorage`; there is no Tauri/Rust backend command for it, so queued items do not sync across devices or survive a data wipe.
 
 ### Adding a job manually
 
@@ -115,21 +114,18 @@ flowchart TD
     E --> F[UI updates job list / Kanban]
 ```
 
-### Quick capture (paste a job URL)
+### Listing status check
+
+Lets a user re-check whether a saved posting is still live. Implemented in `src-tauri/src/listing_check.rs` and surfaced via `ListingStatusDot` in the job table, board, and detail timeline.
 
 ```mermaid
 flowchart TD
-    A([User opens Capture drawer, pastes a job URL]) --> B[Rust fetches the listing page text]
-    B -->|fetch ok| C[Text sent to AI provider for extraction]
-    B -->|fetch fails| G[Draft pre-filled with just the URL]
-    C -->|extract ok| D[Draft merged with extracted fields]
-    C -->|extract fails| G
-    D --> E[User reviews / edits draft in the Capture Inbox]
-    G --> E
-    E --> F([User accepts: job saved, or dismisses])
+    A([User triggers a listing check]) --> B[Rust re-fetches the job URL]
+    B --> C{Platform-specific heuristics\nLinkedIn · Jobindex · Indeed via SerpAPI · generic}
+    C --> D[active / closed / archived / unreachable]
+    D --> E[Rust writes listing_status + listing_checked_at to the job row]
+    E --> F[UI shows the status dot on the job]
 ```
-
-A URL can also be queued from outside the app via a copyable handoff link (`?capture_url=<url>`, e.g. from a browser bookmarklet); the app enqueues it into the same Capture Inbox on next load.
 
 ### AI-assisted extraction
 
@@ -149,7 +145,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A([User searches on Jobindex / Indeed]) --> B[UI calls job search feature]
+    A([User searches on Jobindex / Indeed / The Hub]) --> B[UI calls job search feature]
     B --> C{SerpAPI key set?}
     C -->|yes| D[SerpAPI query]
     C -->|no| E[Brave Search API query]
@@ -188,8 +184,11 @@ All data lives in the OS app data directory — nothing is stored in the repo.
 | Uploaded PDFs | OS file system | Rust file commands |
 | API keys (AI, search) | Browser local storage | React UI |
 | Theme preference | Browser local storage | React UI |
-| Google OAuth refresh token | OS credential store | Tauri / OS keychain |
-| Board column names | SQLite | Rust |
+| Board column names (`statuses`) | Browser local storage | React UI |
+| Capture inbox queue (browser handoff URLs) | Browser local storage | React UI |
+| Google OAuth refresh token | OS credential store (keyring) | Tauri / OS keychain |
+| Google OAuth Client ID | Plain file in OS app data dir (`google_oauth_client_id.txt`) | Rust |
+| Backup copy (DB + PDFs) | User-chosen folder (Settings → Backup) | Rust `backup_to_folder`, run automatically after every change |
 
 ### SQLite tables
 
@@ -210,6 +209,8 @@ The **Dashboard** is the home screen and supports three view modes:
 | Kanban | Drag-and-drop columns by application status |
 | Table | Sortable / filterable list of all jobs |
 | Calendar | Month grid showing apply-by, interview, and start dates |
+
+A **Reminders** panel (`ReminderCenter`) surfaces upcoming and overdue deadlines across all jobs, classed by urgency within a 14-day window.
 
 ### Status workflow
 
