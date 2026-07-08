@@ -2,6 +2,28 @@
 
 ---
 
+## 2026-07-08
+
+### Checks performed
+- Reviewed `src-tauri/Cargo.toml` Rust deps against the 2026-06-24 entry's "Current" table
+- Reviewed `requirements-dev.txt` against `pyproject.toml` following up on the 2026-06-30 mismatch finding
+
+### Findings
+
+The 2026-06-24 dependency table below is now out of date on these rows — both were bumped since:
+
+| Package | Then | Now |
+|---|---|---|
+| `rusqlite` | `0.32.1` | `0.40.1` — Current |
+| `rand` (Rust) | `0.9` | `0.10` — Current |
+
+The `requirements-dev.txt` / `pyproject.toml` mismatch flagged on 2026-06-30 is resolved: both now pin `pytest>=9.1.1,<10`. `black` and `ruff` in `requirements-dev.txt` have also moved on to `>=26.5.1` and `>=0.15.20` respectively (were `>=24.0` / `>=0.8.0` in the 2026-06-24 table).
+
+### Fixes applied
+None this cycle — this entry corrects the record only.
+
+---
+
 ## 2026-06-24
 
 ### Checks performed

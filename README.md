@@ -13,15 +13,15 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 - **Job detail page** — a dedicated `/job/:id` page per application with a full edit form, document uploads, and a status-change history timeline
 - **Configurable status workflow** — the default board pipeline is `Interesting → Plan to Apply → Application Sent → Feedback → Done`; column names are editable in Settings
 - **Quick capture** — paste a job URL into the header's Capture drawer to auto-fetch and AI-extract it into a draft; unresolved captures land in a Capture Inbox for later triage. A copyable handoff link (`?capture_url=…`) lets you queue a URL from outside the app (e.g. a bookmark); the app picks it up as a browser capture the next time it loads
-- **In-app job search** — search Jobindex and Indeed without leaving the app (SerpAPI + Brave Search fallback), with one-click save
+- **In-app job search** — search Jobindex, Indeed, LinkedIn, and The Hub without leaving the app (SerpAPI + Brave Search fallback), with one-click save
 - **AI-assisted extraction** — paste a job listing and let Gemini or Mistral fill in the fields automatically
-- **Job detail page** — a dedicated view per application with status timeline, contact/workplace details, salary, and attached documents
+- **Listing status check** — re-check a saved posting and flag it as active, closed, archived, or unreachable
 - **Application PDFs** — attach and manage documents per application
-- **Deadline tracking** — apply-by, interview, and role-start dates shown on a calendar month view
+- **Deadline tracking** — apply-by, interview, and role-start dates shown on a calendar month view, with a reminders panel for upcoming and overdue dates
 - **Google Calendar integration** — push events to your primary Google Calendar via OAuth PKCE (no Client Secret required)
-- **Light / dark theme** — "Breath" (KDE/Manjaro) palette; follows the OS color scheme by default or can be toggled system/light/dark from the header
+- **Automatic backup** — every change is backed up (database + PDFs) to a folder you choose in Settings
 - **Import / export** — JSON and CSV for backups or migrating between machines
-- **Light / dark theme** — the "Breath" theme follows your system preference or can be set manually
+- **Light / dark theme** — the "Breath" (KDE/Manjaro) palette follows your system preference by default or can be toggled system/light/dark from the header
 - **Local-first** — all data in SQLite in the OS app data directory; no cloud account required
 
 ## How it works
@@ -36,7 +36,7 @@ flowchart TD
     EXTRACT --> SAVE
     FORM --> SAVE
     SAVE --> BOARD[Dashboard\nKanban · Table · Calendar]
-    BOARD -->|drag & drop or edit| STATUS[Update status\nInteresting → Applied → Interview → Offer]
+    BOARD -->|drag & drop or edit| STATUS[Update status\nInteresting → Plan to Apply → Application Sent → Feedback → Done]
     STATUS --> DATES[Track deadlines\napply-by · interview · role start]
     DATES -->|optional| GCAL[Push to Google Calendar\nOAuth PKCE]
 ```
@@ -67,7 +67,10 @@ See [docs/architecture.md](docs/architecture.md) for a deeper breakdown of compo
 | AI extraction | Google Gemini / Mistral (user-supplied key) |
 | Job search | SerpAPI (primary) + Brave Search API (fallback) |
 | Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
-| Testing | Vitest (frontend), cargo test (Rust), pytest (Python scripts) |
+| Theme | "Breath" light/dark palette (KDE/Manjaro), OS-aware, togglable in the header |
+| Frontend tests | Vitest + Testing Library |
+| Rust tests | cargo test + cargo clippy |
+| Python scripts | Ruff, Black, isort, pytest |
 
 Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
@@ -179,8 +182,8 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 ## Job Search
 
-- Platforms in-app: **Jobindex**, **Indeed**, **LinkedIn**.
-- **Jobindex** and **Indeed** use provider-based web search (SerpAPI + Brave fallback).
+- Platforms in-app: **Jobindex**, **Indeed**, **The Hub**, **LinkedIn**.
+- **Jobindex**, **Indeed**, and **The Hub** use provider-based web search (SerpAPI + Brave fallback).
 - **LinkedIn** remains browser-only and opens directly in your default browser.
 - Search result cards support:
   - **Add as Interesting** (one-click save with status `Interesting`)
@@ -219,7 +222,9 @@ If **Create in Google** fails after a long time, use **Disconnect** and **Connec
 
 - **SQLite and uploaded PDFs** live in the OS app data directory for the Tauri app (not in this repo).
 - The repo `storage/` folder is for optional manual files; see `.gitignore`.
-- User-entered API keys in Settings are stored in local storage for this app profile.
+- User-entered API keys, theme preference, and board column names are stored in local storage for this app profile.
+- The Google OAuth refresh token lives in the OS credential store (keyring); the Client ID you paste in Settings is saved to a small file in the app data directory.
+- **Automatic backup**: after every job create/update/delete/import/status change, the database and PDFs are copied to the folder you chose in Settings → Backup. See [docs/architecture.md](docs/architecture.md#data-storage) for the full storage map.
 
 ## Import / export
 
@@ -265,30 +270,6 @@ CI (`.github/workflows/python.yml`) instead runs `pip install -r requirements-de
 Tool config: [`pyproject.toml`](pyproject.toml) (uv / local) and [`requirements-dev.txt`](requirements-dev.txt) (CI).
 
 > **Forks:** Update the badge URLs if your repo is not `eikrad/Job-Tracker`.
-
-## Documentation
-
-| File | What it covers |
-|------|----------------|
-| [docs/architecture.md](docs/architecture.md) | Component breakdown, key data flows, CI setup — with Mermaid diagrams |
-| [docs/maintenance.md](docs/maintenance.md) | Dependency versions and upgrade notes |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Build setup, pre-commit hooks, platform prerequisites, PR checklist |
-
-## Tech stack
-
-| Layer | Technology |
-|---|---|
-| UI | React 19 + TypeScript + Vite |
-| Routing | React Router v7 |
-| Desktop shell | Tauri v2 (Rust) |
-| Database | SQLite via rusqlite |
-| Drag-and-drop | dnd-kit |
-| AI extraction | Google Gemini / Mistral (user-supplied key) |
-| Job search | SerpAPI (primary) + Brave Search API (fallback) |
-| Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
-| Frontend tests | Vitest + Testing Library |
-| Rust tests | cargo test + cargo clippy |
-| Python scripts | Ruff, Black, isort, pytest |
 
 ## License
 
