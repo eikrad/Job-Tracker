@@ -10,7 +10,7 @@ dev = [
   "pytest>=9.1.1,<10",
   "black>=26.5.1",
   "isort>=5.13",
-  "ruff>=0.15.20",
+  "ruff>=0.15.21",
 ]
 
 [tool.black]
