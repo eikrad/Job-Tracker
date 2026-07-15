@@ -6,7 +6,7 @@ Documentation for Job Tracker.
 
 | File | What it covers |
 |------|----------------|
-| [architecture.md](architecture.md) | App structure, tech stack, key data flows (adding a job, AI extraction, job search, Google Calendar), CI setup — with Mermaid diagrams |
+| [architecture.md](architecture.md) | App structure, tech stack, key data flows (capture, adding a job, AI extraction, job search, listing status check, Google Calendar), CI setup — with Mermaid diagrams |
 | [maintenance.md](maintenance.md) | Dependency versions, upgrade notes, and periodic maintenance tasks |
 
 ## Where to start

@@ -2,6 +2,28 @@
 
 ---
 
+## 2026-07-15
+
+### Checks performed
+- Spot-checked the "Current" dependency claims in the 2026-06-24 entry below against the actual `src-tauri/Cargo.toml` and `pyproject.toml` / `requirements-dev.txt` in the repo today.
+
+### Findings
+
+A few rows in the 2026-06-24 table are now out of date:
+
+| Package | 2026-06-24 entry said | Actually in repo now |
+|---|---|---|
+| `rusqlite` (Rust) | `0.32.1` | `0.40.1` |
+| `rand` (Rust) | `0.9` | `0.10` |
+| `black` (Python dev) | `>=24.0` | `>=26.5.1` |
+| `ruff` (Python dev) | `>=0.8.0` | `>=0.15.20` |
+| `pytest` (Python dev) | `>=8.0,<9` (flagged as pending) | `>=9.1.1,<10` in both `pyproject.toml` and `requirements-dev.txt` — the `requirements-dev.txt` mismatch noted in the 2026-06-30 entry has been resolved |
+
+### Fixes applied
+None this cycle — this entry corrects the record only. A full dependency/breaking-change review (per the usual routine) is still needed to confirm these newer versions don't need call-site updates.
+
+---
+
 ## 2026-06-24
 
 ### Checks performed
