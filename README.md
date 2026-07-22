@@ -10,18 +10,17 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 ## Features
 
 - **Kanban / Table / Calendar dashboard** — view all applications in the format that works for you
-- **Job detail page** — a dedicated `/job/:id` page per application with a full edit form, document uploads, and a status-change history timeline
+- **Job detail page** — a dedicated `/job/:id` page per application with a full edit form (contact/workplace details, salary, etc.), document upload/management, and a status-change history timeline
 - **Configurable status workflow** — the default board pipeline is `Interesting → Plan to Apply → Application Sent → Feedback → Done`; column names are editable in Settings
 - **Quick capture** — paste a job URL into the header's Capture drawer to auto-fetch and AI-extract it into a draft; unresolved captures land in a Capture Inbox for later triage. A copyable handoff link (`?capture_url=…`) lets you queue a URL from outside the app (e.g. a bookmark); the app picks it up as a browser capture the next time it loads
 - **In-app job search** — search Jobindex and Indeed without leaving the app (SerpAPI + Brave Search fallback), with one-click save
+- **Listing status check** — one click on the job detail page checks whether a saved listing is still active, closed, archived, or unreachable (direct fetch, or via SerpAPI for sources that block automated requests, e.g. Indeed)
 - **AI-assisted extraction** — paste a job listing and let Gemini or Mistral fill in the fields automatically
-- **Job detail page** — a dedicated view per application with status timeline, contact/workplace details, salary, and attached documents
 - **Application PDFs** — attach and manage documents per application
-- **Deadline tracking** — apply-by, interview, and role-start dates shown on a calendar month view
+- **Deadline tracking** — apply-by, interview, and role-start dates shown on a calendar month view, plus a Reminder Center panel on the dashboard surfacing upcoming and overdue deadlines
 - **Google Calendar integration** — push events to your primary Google Calendar via OAuth PKCE (no Client Secret required)
 - **Light / dark theme** — "Breath" (KDE/Manjaro) palette; follows the OS color scheme by default or can be toggled system/light/dark from the header
 - **Import / export** — JSON and CSV for backups or migrating between machines
-- **Light / dark theme** — the "Breath" theme follows your system preference or can be set manually
 - **Local-first** — all data in SQLite in the OS app data directory; no cloud account required
 
 ## How it works
@@ -36,7 +35,7 @@ flowchart TD
     EXTRACT --> SAVE
     FORM --> SAVE
     SAVE --> BOARD[Dashboard\nKanban · Table · Calendar]
-    BOARD -->|drag & drop or edit| STATUS[Update status\nInteresting → Applied → Interview → Offer]
+    BOARD -->|drag & drop or edit| STATUS[Update status\nconfigurable pipeline, default:\nInteresting → Plan to Apply → ... → Done]
     STATUS --> DATES[Track deadlines\napply-by · interview · role start]
     DATES -->|optional| GCAL[Push to Google Calendar\nOAuth PKCE]
 ```
@@ -48,9 +47,9 @@ graph TD
     UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC commands| RUST[Rust backend<br>Tauri v2]
     RUST -->|rusqlite| DB[(SQLite<br>jobs · status_history · job_documents)]
     RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
-    UI -->|HTTPS| AI[AI text extraction<br>Gemini / Mistral]
-    UI -->|HTTPS| SEARCH[Job search<br>SerpAPI + Brave fallback]
-    UI -->|OAuth 2 PKCE| GCAL[Google Calendar API<br>create events]
+    UI -->|HTTPS, browser fetch| AI[AI text extraction<br>Gemini / Mistral]
+    RUST -->|HTTPS| SEARCH[Job search & listing check<br>SerpAPI + Brave fallback]
+    RUST -->|OAuth 2 PKCE + HTTPS| GCAL[Google Calendar API<br>create events]
 ```
 
 See [docs/architecture.md](docs/architecture.md) for a deeper breakdown of components, feature modules, and data flow.
@@ -65,7 +64,7 @@ See [docs/architecture.md](docs/architecture.md) for a deeper breakdown of compo
 | Database | SQLite via rusqlite |
 | Drag-and-drop | dnd-kit |
 | AI extraction | Google Gemini / Mistral (user-supplied key) |
-| Job search | SerpAPI (primary) + Brave Search API (fallback) |
+| Job search & listing check | SerpAPI (primary) + Brave Search API (fallback) |
 | Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
 | Testing | Vitest (frontend), cargo test (Rust), pytest (Python scripts) |
 
@@ -186,6 +185,7 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
   - **Add as Interesting** (one-click save with status `Interesting`)
   - auto-tags from source platform/location
   - **Open form** if you want to edit details before saving
+- **Listing status check**: once a job is saved, the **Check listing** button on its detail page re-checks the original URL and marks it `active`, `closed`, `archived`, or `unreachable` (uses SerpAPI for sources that block direct fetches, e.g. Indeed).
 
 ## Google Calendar
 
@@ -228,13 +228,14 @@ If **Create in Google** fails after a long time, use **Disconnect** and **Connec
 
 ## CI & tests
 
-GitHub Actions runs three independent workflows (each with its own status badge above):
+GitHub Actions runs three independent workflows on every push and pull request (each with its own status badge above), plus a scheduled security audit:
 
 | Workflow | What it checks |
 |---|---|
 | **Frontend** | `npm run lint` → `npm run test` (Vitest) → `npm run build` |
 | **Rust** | `cargo clippy` → `cargo test` |
 | **Python** | `ruff check` → `black --check` → `isort --check-only` → `pytest` |
+| **Weekly Security Audit** ([weekly-audit.yml](.github/workflows/weekly-audit.yml)) | Scheduled (Mondays) `npm audit` + `pip-audit` + `cargo-audit`; opens/updates a GitHub issue when vulnerabilities are found |
 
 ### Frontend (Vitest)
 
@@ -265,30 +266,6 @@ CI (`.github/workflows/python.yml`) instead runs `pip install -r requirements-de
 Tool config: [`pyproject.toml`](pyproject.toml) (uv / local) and [`requirements-dev.txt`](requirements-dev.txt) (CI).
 
 > **Forks:** Update the badge URLs if your repo is not `eikrad/Job-Tracker`.
-
-## Documentation
-
-| File | What it covers |
-|------|----------------|
-| [docs/architecture.md](docs/architecture.md) | Component breakdown, key data flows, CI setup — with Mermaid diagrams |
-| [docs/maintenance.md](docs/maintenance.md) | Dependency versions and upgrade notes |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Build setup, pre-commit hooks, platform prerequisites, PR checklist |
-
-## Tech stack
-
-| Layer | Technology |
-|---|---|
-| UI | React 19 + TypeScript + Vite |
-| Routing | React Router v7 |
-| Desktop shell | Tauri v2 (Rust) |
-| Database | SQLite via rusqlite |
-| Drag-and-drop | dnd-kit |
-| AI extraction | Google Gemini / Mistral (user-supplied key) |
-| Job search | SerpAPI (primary) + Brave Search API (fallback) |
-| Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
-| Frontend tests | Vitest + Testing Library |
-| Rust tests | cargo test + cargo clippy |
-| Python scripts | Ruff, Black, isort, pytest |
 
 ## License
 
