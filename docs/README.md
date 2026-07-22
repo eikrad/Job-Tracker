@@ -6,7 +6,7 @@ Documentation for Job Tracker.
 
 | File | What it covers |
 |------|----------------|
-| [architecture.md](architecture.md) | App structure, tech stack, key data flows (adding a job, AI extraction, job search, Google Calendar), CI setup — with Mermaid diagrams |
+| [architecture.md](architecture.md) | App structure, tech stack, key data flows (capture, adding a job, AI extraction, job search, listing check, Google Calendar), CI setup — with Mermaid diagrams |
 | [maintenance.md](maintenance.md) | Dependency versions, upgrade notes, and periodic maintenance tasks |
 
 ## Where to start
@@ -23,3 +23,5 @@ Forward-looking design documents — not descriptions of the current codebase.
 | File | What it covers |
 |------|----------------|
 | [refactor-sync-roadmap.md](refactor-sync-roadmap.md) | Planned performance refactors (phases A / B / C), Android support, and cross-device sync design |
+
+`superpowers/plans/` and `superpowers/specs/` hold historical implementation plans and design specs for features that have since shipped (e.g. quick capture, job detail enrichment). They're kept as an audit trail of *why* a feature was built a certain way, not as current specs — for the shipped behavior, see [architecture.md](architecture.md) instead.
