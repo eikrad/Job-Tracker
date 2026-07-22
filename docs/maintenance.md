@@ -2,7 +2,133 @@
 
 ---
 
-## 2026-06-24
+## 2026-07-22
+
+### Checks performed
+- Reset working branch to `origin/main` tip (`3ac0d25`) before making any changes
+- Baseline (before changes): `npm ci`, `npm run lint`, `npm run test`, `npm run build`, `npm run py:test`, `cargo build --manifest-path src-tauri/Cargo.toml` (rust build), `cargo update --dry-run` (lockfile-wide check), `npm outdated`
+- Reviewed `package.json` frontend and dev deps
+- Reviewed `src-tauri/Cargo.toml` Rust deps + full `cargo update --dry-run` for transitive drift
+- Reviewed `pyproject.toml` / `requirements-dev.txt` Python dev deps (both currently in sync, unlike the drift flagged on 2026-06-30)
+- Checked for an open `security-audit`-labelled issue (from `.github/workflows/weekly-audit.yml`) to cross-reference — **none found, open or closed** — ran all three audits fresh instead of relying on stale results
+- Installed `cargo-audit` (`cargo install cargo-audit --locked`, ~4.5 min build) and `pip-audit` (`pip install pip-audit`) since neither was preinstalled in this sandbox — both succeeded this cycle (contrast with prior cycles where this may have been skipped)
+
+### PR/issue backlog — flagged for repo owner
+
+**This repo currently has 18 open, unmerged PRs against `main` (#54–#72), and `main` has not absorbed any of them in over two weeks (oldest since 2026-07-06).** Every additional unmerged PR compounds review effort and risks conflicting lockfile changes. Breakdown:
+
+| Category | PRs | Notes |
+|---|---|---|
+| Dependabot (npm) | #55 (dayjs), #56 (lucide-react), #58 (vite), #60 (react-dom), #61 (vitest) | Single-package bumps, safe to merge independently |
+| Dependabot (cargo, `/src-tauri`) | #57 (tauri), #59 (log), #62 (tauri-build), #63 (open), #64 (sha2 0.10→0.11, crosses 0.x "major" boundary — review before merging) | All now also reflected in this cycle's lockfile-wide `cargo update`, except #64 (see Majors table) |
+| Dependabot (pip) | #54 (isort ≥5.13→≥8.0.1), #72 (ruff ≥0.15.20→≥0.15.22) | #54 only formalizes the floor — `isort` already resolves to `8.0.1` in `uv.lock` under the existing unbounded constraint |
+| Dependabot (github-actions) | #70 (setup-python), #71 (setup-node) | Not touched by this cycle (out of scope — CI action pins, not app deps) |
+| Prior weekly-maintenance (unmerged) | #65 (2026-07-08), #68 (2026-07-15) | Neither landed — this explains why `docs/maintenance.md` on `main` jumps from 2026-06-30 straight to this entry with no 07-08/07-15 record |
+| Docs (unmerged) | #66, #69 | Unrelated to dependency maintenance; still pending review |
+
+**Recommendation: triage and merge or close #54–#72 before/alongside this PR.** The longer these sit, the more this cycle's lockfile-wide sync (below) will conflict with them on merge. This PR intentionally does **not** duplicate any single-package Dependabot bump already proposed above — it only does the broader lockfile-wide refresh (transitive deps, drift Dependabot's per-package PRs don't catch) plus the security audit.
+
+### Fixes applied
+
+- **npm** — `npm update` (lockfile-only, no `package.json` range changes): resolved 63 transitive packages, including `brace-expansion` which fixes the one npm-audit high-severity finding (see Security findings). `npm audit` is now clean (0 vulnerabilities, was 1 high).
+- **Rust** — `cargo update` (lockfile-only, respects existing `Cargo.toml` ranges): refreshed 145+ crates across the dependency graph — this is exactly the "Dependabot per-package PRs miss transitive deps" gap flagged in the task; direct deps that moved within their existing semver range: `tauri` 2.11.2→2.11.5, `tauri-build` 2.6.2→2.6.3, `tauri-plugin-log` 2.8.0→2.9.0, `log` 0.4.29→0.4.33, `chrono` 0.4.44→0.4.45, `open` 5.3.3→5.4.0, `serde`/`serde_json`/`serde_repr`/`serde_with` patch bumps. `rand`'s stale 0.7/0.8/0.9 lockfile entries (orphaned from earlier merged PRs #44/#48) were also pruned.
+- **Python** — `uv lock --upgrade` (respects existing `pyproject.toml` constraints): `black` 26.3.1→26.5.1, `ruff` 0.15.10→0.15.22, `pytest` 9.1.0→9.1.1, plus transitive `click`/`packaging`/`pathspec`/`platformdirs`. Note: `pyproject.toml` and `requirements-dev.txt` are **already in sync** this cycle (both `pytest>=9.1.1,<10`) — the drift flagged on 2026-06-30 was resolved at some point between then and now.
+
+### Dependency status
+
+**Frontend (`package.json` — dependencies):**
+
+| Package | Version (range) | Resolved | Status |
+|---|---|---|---|
+| `react` / `react-dom` | `^19.2.4` | `19.2.8` | Current (within range) |
+| `react-router-dom` | `^7.18.1` | `7.18.1` | Current |
+| `@dnd-kit/core` | `^6.3.1` | `6.3.1` | Current |
+| `lucide-react` | `^1.6.0` | `1.6.0` (installed) / `1.25.0` latest | Behind — Dependabot PR #56 open for this |
+| `dayjs` | `^1.11.20` | `1.11.21` | Current — Dependabot PR #55 open for this |
+| `@tauri-apps/api` | `^2.11.1` | `2.11.1` | Current |
+
+**Frontend (`package.json` — devDependencies):**
+
+| Package | Version (range) | Resolved | Status |
+|---|---|---|---|
+| `vite` | `^8.0.1` | `8.1.5` | Current (within range) — Dependabot PR #58 open, would only formalize |
+| `vitest` | `^4.1.0` | `4.1.10` | Current (within range) — Dependabot PR #61 open, would only formalize |
+| `@vitejs/plugin-react` | `^6.0.1` | `6.0.4` | Current |
+| `typescript` | `~6.0.0` | `6.0.3` | Current (see Majors — 7.x not applied) |
+| `eslint` / `@eslint/js` | `^10.0.x` | `10.7.0` / `10.0.1` | Current |
+| `typescript-eslint` | `^8.62.1` | `8.65.0` | Current |
+| `husky` | `^9.1.7` | `9.1.7` | Current |
+| `@tauri-apps/cli` | `^2.11.4` | `2.11.4` | Current |
+| `happy-dom` | `^20.10.6` | `20.11.1` | Current |
+| `@testing-library/react` | `^16.3.2` | `16.3.2` | Current |
+| `@types/node` | `^24.12.0` | `24.13.3` | Current (see Majors — 26.x not applied) |
+
+**Rust (`src-tauri/Cargo.toml`):**
+
+| Crate | Version (range) | Resolved | Status |
+|---|---|---|---|
+| `tauri` | `2.11` | `2.11.5` | Current — Dependabot PR #57 open, would only formalize |
+| `tauri-build` | `2.5.6` | `2.6.3` | Current — Dependabot PR #62 open, would only formalize |
+| `tauri-plugin-log` | `2` | `2.9.0` | Current |
+| `rusqlite` | `0.40.1` | `0.40.1` | Current |
+| `serde` / `serde_json` | `1.0` | `1.0.229` / `1.0.151` | Current |
+| `chrono` | `0.4` | `0.4.45` | Current |
+| `reqwest` | `0.12` | `0.12.28` | Current within range (see Majors — 0.13 not applied) |
+| `keyring` | `3` | `3.6.3` | Current within range (see Majors — 4.x not applied — new finding this cycle) |
+| `open` | `5.2` | `5.4.0` | Current — Dependabot PR #63 open, would only formalize |
+| `sha2` | `0.10` | `0.10.9` | Current within range (see Majors — 0.11 not applied — Dependabot PR #64 open) |
+| `rand` | `0.10` | `0.10.2` | Current |
+| `base64` | `0.22` | `0.22.1` | Current |
+| `url` | `2.5` | `2.5.8` | Current |
+| `shellexpand` | `3` | `3.1.2` | Current |
+| `log` | `0.4` | `0.4.33` | Current — Dependabot PR #59 open, would only formalize |
+
+**Python dev (`pyproject.toml` / `requirements-dev.txt` — in sync):**
+
+| Package | Constraint | Resolved | Status |
+|---|---|---|---|
+| `pytest` | `>=9.1.1,<10` | `9.1.1` | Current |
+| `black` | `>=26.5.1` | `26.5.1` | Current |
+| `ruff` | `>=0.15.20` | `0.15.22` | Current — Dependabot PR #72 open, would only formalize |
+| `isort` | `>=5.13` | `8.0.1` | Resolves 3 majors ahead of the stated floor under the unbounded constraint — Dependabot PR #54 proposes raising the floor to `>=8.0.1` to match reality; no functional change needed from us |
+
+### Security findings
+
+- **npm audit** — 1 high-severity finding before this cycle: `brace-expansion` (`GHSA-3jxr-9vmj-r5cp`, CVSS 5.3, ReDoS via exponential-time expansion, affects `3.0.0–5.0.6`, transitive dev-only dependency). Not reachable in production app usage (dev-tooling only), but fixed anyway by `npm update` → **0 vulnerabilities now**.
+- **pip-audit** — run against the `uv`-exported lockfile (`uv export --no-hashes -o requirements-export.txt`) using the project's `uv`-managed interpreter (`.venv/bin/python3`, Python 3.12.3) → **no known vulnerabilities found**.
+- **cargo audit** — installed fresh this cycle (`cargo-audit v0.22.2`) and run against `src-tauri/Cargo.lock` (465 crates scanned) → **0 exploitable vulnerabilities**. 17 informational "unmaintained"/"unsound" advisories, all pre-existing and none with an available non-breaking fix:
+  - `RUSTSEC-2024-0411..0420` (10 advisories): `atk`/`atk-sys`, `gdk`/`gdk-sys`, `gdkwayland-sys`, `gdkx11`/`gdkx11-sys`, `gtk`/`gtk-sys`, `gtk3-macros` `0.18.2` — the `gtk-rs` GTK3 bindings are unmaintained upstream. These are transitive, pulled in by the Linux system-tray feature stack; no drop-in replacement exists without a GTK4/Tauri-tray migration (out of scope for a dependency-sync cycle).
+  - `RUSTSEC-2024-0419`: `proc-macro-error 1.0.4` unmaintained (transitive, build-time only).
+  - `RUSTSEC-2025-0075/0080/0081/0098/0100` (5 advisories): `unic-char-property`/`unic-char-range`/`unic-common`/`unic-ucd-ident`/`unic-ucd-version` `0.9.0` unmaintained (transitive, Unicode data tables).
+  - `RUSTSEC-2024-0429`: `glib 0.18.5` unsound iterator impl (`VariantStrIter`) — transitive via the GTK3 stack; no CVE, low practical risk for this app's usage (no direct `glib::Variant` iteration in `src-tauri/src/`).
+  - None of these are blocking (`cargo audit` exit code `0` — warnings only, no hard vulnerabilities).
+- No open `security-audit`-labelled GitHub issue exists (checked both open and closed) — nothing stale to reconcile; this cycle's findings above are the current ground truth.
+
+### Major upgrades — flagged, NOT applied
+
+| Package | In use | Latest | Notes |
+|---|---|---|---|
+| `typescript` | `~6.0.0` (`6.0.3`) | `7.0.2` | Crosses a major boundary; needs a dedicated `tsc --noEmit` pass across the codebase before adopting, per prior cycles' pattern for TS majors |
+| `@types/node` | `^24.12.0` (`24.13.3`) | `26.1.1` | Two majors ahead; verify against the pinned Node runtime version before bumping |
+| `sha2` (Rust) | `0.10` (`0.10.9`) | `0.11.0` | 0.x "minor" bump is breaking per semver convention for pre-1.0 crates; Dependabot PR #64 already proposes this — reviewed there, not duplicated here |
+| `reqwest` (Rust) | `0.12` (`0.12.28`) | `0.13.4` | Same 0.x breaking-boundary situation; no Dependabot PR yet for the direct dependency — audit `src-tauri/src/` HTTP call sites (blocking client usage, TLS config) before bumping |
+| `keyring` (Rust) | `3` (`3.6.3`) | `4.1.5` | New finding this cycle — no open Dependabot PR covers it. Keyring 4.x changed its credential-store API surface; audit every `keyring::Entry` call site in `src-tauri/src/` before upgrading |
+
+### Post-change verification (must be green before commit)
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Pass — 0 errors, 1 pre-existing warning (`react-hooks/exhaustive-deps` in `JobDetailPage.tsx`, unrelated to this cycle) |
+| `npm run test` (vitest) | Pass — 16 test files, 97 tests |
+| `npm run build` | Pass — `tsc -b && vite build` succeeds |
+| `npm run py:test` (pytest via uv) | Pass — 3 tests |
+| `npm run py:lint` (ruff + black + isort via uv) | Pass — all checks clean |
+| `npm audit` | Pass — 0 vulnerabilities (was 1 high) |
+| `cargo build` / `cargo clippy` / `cargo test` (`src-tauri`) | **Environment-limited, not a regression** — fails at the `gdk-sys` build script because `gdk-3.0.pc` / GTK3 system libs are not installed in this sandbox (`pkg-config --exists gdk-3.0` → exit 1). This is pre-existing per `package.json`'s own `verify:rust` script, which already special-cases this and echoes a skip message when GTK prerequisites are absent. Not something this cycle can fix without system package installation outside repo scope. |
+| `cargo audit` | Pass — 0 vulnerabilities, 17 pre-existing informational warnings (see Security findings) |
+| `pip-audit` | Pass — 0 known vulnerabilities |
+
+
 
 ### Checks performed
 - Reviewed `package.json` frontend and dev deps
