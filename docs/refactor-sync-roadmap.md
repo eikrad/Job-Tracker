@@ -3,14 +3,16 @@
 ## Scope
 This roadmap tracks performance and maintainability work in three refactor phases, plus Android support and cross-device sync.
 
+**Current state:** Phase A is done and merged. Phases B and C, the Android app, and cross-device sync are all still planned — none of that code exists in the repo yet (verified against `src/` and `src-tauri/src/` — there is still a single global `JobTrackerContext`, no reducer-based state machine, and no android/ or sync module anywhere).
+
 ## Phase A: Quick Safe Pass
-Status: in progress
+Status: **done**
 
 ### Completed in this pass
 - Stabilized job-search result keys to avoid remount churn.
-- Reduced render hot-path work in search cards with memoized derived values.
+- Reduced render hot-path work in search cards with memoized derived values (`src/features/jobSearch/SearchResultCard.tsx`).
 - Reduced job-search state update bursts by grouping platform loading/error initialization.
-- Added DB indexes for common sort/filter patterns.
+- Added DB indexes for common sort/filter patterns (`idx_jobs_updated_at`, `idx_status_history_job_changed`, `idx_job_documents_job_created` in `src-tauri/src/db.rs`).
 - Wrapped bulk imports in a transaction.
 - Wrapped status updates + history writes in a transaction.
 - Extracted shared filename/path helper logic in Rust storage functions.
@@ -23,10 +25,10 @@ Status: in progress
 - [x] `cargo test` (in `src-tauri`)
 
 ### Known follow-up from verification
-- ESLint shows existing warnings in `src/pages/JobDetailPage.tsx` (`react-hooks/exhaustive-deps`), not introduced by this pass.
+- ESLint shows existing warnings in `src/pages/JobDetailPage.tsx` (`react-hooks/exhaustive-deps`), not introduced by this pass. Still present — no action taken yet.
 
 ## Phase B: Medium Refactor
-Status: planned
+Status: planned — not started
 
 ### Milestones
 1. Split broad app context into narrower slices (or selector-based state) to reduce global rerenders.
@@ -38,7 +40,7 @@ Status: planned
 - Medium: moderate changes to state wiring and component APIs.
 
 ## Phase C: Deep Refactor
-Status: planned
+Status: planned — not started
 
 ### Milestones
 1. Consolidate DB access strategy and shared persistence boundaries.
@@ -50,7 +52,7 @@ Status: planned
 - Medium-high: broad architectural change surface.
 
 ## Android App Roadmap
-Status: planned
+Status: planned — not started
 
 ### Milestones
 1. Decide mobile stack (recommended: React Native + Expo for TypeScript alignment).
@@ -64,7 +66,7 @@ Status: planned
 5. Ship beta and gather sync conflict telemetry.
 
 ## Cross-Device Sync Roadmap
-Status: planned
+Status: planned — not started
 
 ### Architecture decision track
 - Option A: Supabase (Auth + Postgres + RLS + storage metadata).

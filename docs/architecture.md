@@ -32,10 +32,9 @@ graph TD
 | AI extraction | Google Gemini / Mistral (user-supplied key) |
 | Job search | SerpAPI (primary) + Brave Search API (fallback) |
 | Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
-| Theme | "Breath" light/dark palette (KDE/Manjaro), OS-aware via `prefers-color-scheme`, togglable in the header |
+| Theme | "Breath" light/dark palette (KDE/Manjaro), OS-aware via `prefers-color-scheme`, togglable in the header (`src/lib/theme.ts`, `src/hooks/useTheme.ts`) |
 | Testing | Vitest (frontend), cargo test (Rust), pytest (Python scripts) |
 | Linting | ESLint, TypeScript, cargo clippy, Ruff, Black, isort |
-| Theming | "Breath" light/dark theme (`src/lib/theme.ts`, `src/hooks/useTheme.ts`) |
 
 ---
 
@@ -102,6 +101,8 @@ flowchart TD
     G --> H[create_job Tauri command → SQLite, status = Interesting]
 ```
 
+A URL can also be queued from outside the app via a copyable handoff link (`?capture_url=<url>`, e.g. from a browser bookmarklet); the app enqueues it into the same Capture Inbox on next load.
+
 The **capture inbox** (`captureInbox.ts`) queues browser-originated URLs client-side (browser `localStorage`); there is currently no Tauri/Rust backend command for it, so queued items do not sync across devices or survive a data wipe.
 
 ### Adding a job manually
@@ -114,22 +115,6 @@ flowchart TD
     D --> E[Returns new job ID]
     E --> F[UI updates job list / Kanban]
 ```
-
-### Quick capture (paste a job URL)
-
-```mermaid
-flowchart TD
-    A([User opens Capture drawer, pastes a job URL]) --> B[Rust fetches the listing page text]
-    B -->|fetch ok| C[Text sent to AI provider for extraction]
-    B -->|fetch fails| G[Draft pre-filled with just the URL]
-    C -->|extract ok| D[Draft merged with extracted fields]
-    C -->|extract fails| G
-    D --> E[User reviews / edits draft in the Capture Inbox]
-    G --> E
-    E --> F([User accepts: job saved, or dismisses])
-```
-
-A URL can also be queued from outside the app via a copyable handoff link (`?capture_url=<url>`, e.g. from a browser bookmarklet); the app enqueues it into the same Capture Inbox on next load.
 
 ### AI-assisted extraction
 

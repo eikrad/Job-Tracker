@@ -10,18 +10,16 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 ## Features
 
 - **Kanban / Table / Calendar dashboard** — view all applications in the format that works for you
-- **Job detail page** — a dedicated `/job/:id` page per application with a full edit form, document uploads, and a status-change history timeline
+- **Job detail page** — a dedicated `/job/:id` page per application with a full edit form, document uploads, contact/workplace details, salary, and a status-change history timeline
 - **Configurable status workflow** — the default board pipeline is `Interesting → Plan to Apply → Application Sent → Feedback → Done`; column names are editable in Settings
 - **Quick capture** — paste a job URL into the header's Capture drawer to auto-fetch and AI-extract it into a draft; unresolved captures land in a Capture Inbox for later triage. A copyable handoff link (`?capture_url=…`) lets you queue a URL from outside the app (e.g. a bookmark); the app picks it up as a browser capture the next time it loads
 - **In-app job search** — search Jobindex and Indeed without leaving the app (SerpAPI + Brave Search fallback), with one-click save
 - **AI-assisted extraction** — paste a job listing and let Gemini or Mistral fill in the fields automatically
-- **Job detail page** — a dedicated view per application with status timeline, contact/workplace details, salary, and attached documents
 - **Application PDFs** — attach and manage documents per application
 - **Deadline tracking** — apply-by, interview, and role-start dates shown on a calendar month view
 - **Google Calendar integration** — push events to your primary Google Calendar via OAuth PKCE (no Client Secret required)
-- **Light / dark theme** — "Breath" (KDE/Manjaro) palette; follows the OS color scheme by default or can be toggled system/light/dark from the header
+- **Light / dark theme** — the "Breath" (KDE/Manjaro) palette follows the OS color scheme by default or can be toggled system/light/dark from the header
 - **Import / export** — JSON and CSV for backups or migrating between machines
-- **Light / dark theme** — the "Breath" theme follows your system preference or can be set manually
 - **Local-first** — all data in SQLite in the OS app data directory; no cloud account required
 
 ## How it works
@@ -266,29 +264,9 @@ Tool config: [`pyproject.toml`](pyproject.toml) (uv / local) and [`requirements-
 
 > **Forks:** Update the badge URLs if your repo is not `eikrad/Job-Tracker`.
 
-## Documentation
+## Contributing
 
-| File | What it covers |
-|------|----------------|
-| [docs/architecture.md](docs/architecture.md) | Component breakdown, key data flows, CI setup — with Mermaid diagrams |
-| [docs/maintenance.md](docs/maintenance.md) | Dependency versions and upgrade notes |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Build setup, pre-commit hooks, platform prerequisites, PR checklist |
-
-## Tech stack
-
-| Layer | Technology |
-|---|---|
-| UI | React 19 + TypeScript + Vite |
-| Routing | React Router v7 |
-| Desktop shell | Tauri v2 (Rust) |
-| Database | SQLite via rusqlite |
-| Drag-and-drop | dnd-kit |
-| AI extraction | Google Gemini / Mistral (user-supplied key) |
-| Job search | SerpAPI (primary) + Brave Search API (fallback) |
-| Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
-| Frontend tests | Vitest + Testing Library |
-| Rust tests | cargo test + cargo clippy |
-| Python scripts | Ruff, Black, isort, pytest |
+Bug reports and pull requests are welcome. See **[CONTRIBUTING.md](CONTRIBUTING.md)** for build setup, the pre-commit `verify` hook, platform prerequisites, and the PR checklist.
 
 ## License
 

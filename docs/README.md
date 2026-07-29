@@ -18,8 +18,12 @@ Documentation for Job Tracker.
 
 ## Planning
 
-Forward-looking design documents — not descriptions of the current codebase.
+Mostly forward-looking design documents — not descriptions of the current codebase, with one exception noted below.
 
 | File | What it covers |
 |------|----------------|
-| [refactor-sync-roadmap.md](refactor-sync-roadmap.md) | Planned performance refactors (phases A / B / C), Android support, and cross-device sync design |
+| [refactor-sync-roadmap.md](refactor-sync-roadmap.md) | Phase A (quick performance pass) is **done and merged**. Phases B/C (deeper refactors), Android support, and cross-device sync are still just planned — none of that code exists yet |
+
+## Historical design docs
+
+`superpowers/plans/` and `superpowers/specs/` hold dated, one-off design specs and step-by-step implementation plans used to build specific past features (e.g. the job detail enrichment and capture workflow). They're a record of *how* those features were designed and shipped, not a live status board — checkboxes in the plan files are template artifacts and don't reflect current progress. The features themselves are implemented (see [architecture.md](architecture.md)).
