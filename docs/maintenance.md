@@ -149,6 +149,12 @@ Remaining 20 `cargo audit` findings are all **warnings**, not vulnerabilities (n
 | `uv run pytest -q` | 3 passed (same as baseline) |
 | `uv run ruff check .` / `black --check .` / `isort --check-only .` | All clean |
 
+### Post-merge rebase note (same day)
+
+After this entry was written, the rest of the open PR backlog was processed per the repo owner's request: 12 Dependabot/docs PRs merged, and #68/#73/#84 (the three stacked weekly-maintenance PRs flagged above) were closed as superseded. That moved `main` out from under this branch, so it was rebased onto the new tip.
+
+The rebase produced a real `src-tauri/Cargo.lock` conflict: none of the 12 merged Dependabot PRs touched the `quick-xml`/`plist`, `quinn-proto`, or `rustls-webpki` advisories this cycle had fixed, so taking the new base's lockfile as the starting point silently reintroduced all **8** `cargo audit` findings from before. Re-verified with a fresh `cargo audit` run and reapplied 7 of them on top of the rebased lockfile (`plist` → 1.10.0, pulling `quick-xml` → 0.41.0; `quinn-proto` → 0.11.15; `rustls-webpki` → 0.103.13). The 8th (`rkyv` 0.7.46, RUSTSEC-2026-0235) is pulled in transitively via `rust_decimal` ← `byte-unit` ← `tauri-plugin-log`, which has no release using `rkyv` 0.8 yet — fixing it needs a manifest-level change (dropping or replacing `tauri-plugin-log`'s dependency chain), not a lockfile bump, so it's left flagged rather than forced. `cargo audit` now reports **1 vulnerability** (down from 8, not 0 as the table above says — that table reflects the pre-rebase state and is left as-is for the historical record; this note is the accurate final state). `npm run test` re-confirmed 97/97 passing after the rebase.
+
 ---
 
 ## 2026-07-08
