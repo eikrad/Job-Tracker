@@ -132,7 +132,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A([User searches on Jobindex / Indeed]) --> B[UI calls job search feature]
+    A([User searches on Jobindex / Indeed / LinkedIn / The Hub]) --> B[UI calls job search feature]
     B --> C{SerpAPI key set?}
     C -->|yes| D[SerpAPI query]
     C -->|no| E[Brave Search API query]
