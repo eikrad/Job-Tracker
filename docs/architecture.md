@@ -13,9 +13,9 @@ graph TD
     UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC commands| RUST[Rust backend<br>Tauri v2]
     RUST -->|rusqlite| DB[(SQLite<br>jobs · status_history · job_documents)]
     RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
-    UI -->|HTTPS| AI[AI text extraction<br>Gemini / Mistral]
-    UI -->|HTTPS| SEARCH[Job search<br>SerpAPI + Brave fallback]
-    UI -->|OAuth 2 PKCE| GCAL[Google Calendar API<br>create events]
+    UI -->|HTTPS, browser fetch| AI[AI text extraction<br>Gemini / Mistral]
+    RUST -->|HTTPS| SEARCH[Job search & listing check<br>SerpAPI + Brave fallback]
+    RUST -->|OAuth 2 PKCE + HTTPS| GCAL[Google Calendar API<br>create events]
 ```
 
 ---
@@ -30,12 +30,11 @@ graph TD
 | Database | SQLite via rusqlite |
 | Drag-and-drop | dnd-kit |
 | AI extraction | Google Gemini / Mistral (user-supplied key) |
-| Job search | SerpAPI (primary) + Brave Search API (fallback) |
+| Job search & listing check | SerpAPI (primary) + Brave Search API (fallback) |
 | Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
-| Theme | "Breath" light/dark palette (KDE/Manjaro), OS-aware via `prefers-color-scheme`, togglable in the header |
+| Theme | "Breath" light/dark palette (KDE/Manjaro); OS-aware via `prefers-color-scheme`, togglable in the header (`src/lib/theme.ts`, `src/hooks/useTheme.ts`) |
 | Testing | Vitest (frontend), cargo test (Rust), pytest (Python scripts) |
 | Linting | ESLint, TypeScript, cargo clippy, Ruff, Black, isort |
-| Theming | "Breath" light/dark theme (`src/lib/theme.ts`, `src/hooks/useTheme.ts`) |
 
 ---
 
@@ -102,7 +101,7 @@ flowchart TD
     G --> H[create_job Tauri command → SQLite, status = Interesting]
 ```
 
-The **capture inbox** (`captureInbox.ts`) queues browser-originated URLs client-side (browser `localStorage`); there is currently no Tauri/Rust backend command for it, so queued items do not sync across devices or survive a data wipe.
+The **capture inbox** (`captureInbox.ts`) queues browser-originated URLs client-side (browser `localStorage`); there is currently no Tauri/Rust backend command for it, so queued items do not sync across devices or survive a data wipe. A URL can also be queued from outside the app via a copyable handoff link (`?capture_url=<url>`, e.g. from a browser bookmarklet); the app enqueues it into the same Capture Inbox on next load (see `App.tsx`).
 
 ### Adding a job manually
 
@@ -114,22 +113,6 @@ flowchart TD
     D --> E[Returns new job ID]
     E --> F[UI updates job list / Kanban]
 ```
-
-### Quick capture (paste a job URL)
-
-```mermaid
-flowchart TD
-    A([User opens Capture drawer, pastes a job URL]) --> B[Rust fetches the listing page text]
-    B -->|fetch ok| C[Text sent to AI provider for extraction]
-    B -->|fetch fails| G[Draft pre-filled with just the URL]
-    C -->|extract ok| D[Draft merged with extracted fields]
-    C -->|extract fails| G
-    D --> E[User reviews / edits draft in the Capture Inbox]
-    G --> E
-    E --> F([User accepts: job saved, or dismisses])
-```
-
-A URL can also be queued from outside the app via a copyable handoff link (`?capture_url=<url>`, e.g. from a browser bookmarklet); the app enqueues it into the same Capture Inbox on next load.
 
 ### AI-assisted extraction
 
@@ -161,6 +144,10 @@ flowchart TD
     H --> I([User saves with Add as Interesting])
 ```
 
+### Listing status check
+
+A one-click freshness check per saved job, implemented in `src-tauri/src/listing_check.rs` (`check_listing_status` command) and surfaced by the **Check listing** button on the job detail page (`JobDetailTimeline.tsx`). Rust fetches the job's stored URL directly and classifies it as `active`, `closed`, `archived`, or `unreachable`; for sources that block automated requests (e.g. Indeed), it instead resolves the listing via SerpAPI. The result and timestamp are written to the `jobs.listing_status` / `jobs.listing_checked_at` columns.
+
 ### Google Calendar event creation
 
 ```mermaid
@@ -182,7 +169,7 @@ All data lives in the OS app data directory — nothing is stored in the repo.
 
 | What | Where | Managed by |
 |---|---|---|
-| Jobs (incl. deadline, interview/start dates, notes, contact & workplace fields) | SQLite `jobs` table | Rust via rusqlite |
+| Jobs (incl. deadline, interview/start dates, notes, contact & workplace fields, listing status) | SQLite `jobs` table | Rust via rusqlite |
 | Status change history | SQLite `status_history` table | Rust via rusqlite |
 | Per-job document metadata (CV, cover letter, other) | SQLite `job_documents` table | Rust via rusqlite |
 | Uploaded PDFs | OS file system | Rust file commands |
@@ -211,6 +198,8 @@ The **Dashboard** is the home screen and supports three view modes:
 | Table | Sortable / filterable list of all jobs |
 | Calendar | Month grid showing apply-by, interview, and start dates |
 
+Alongside the three views, a **Reminder Center** panel (`src/features/reminders/ReminderCenter.tsx`) lists jobs with a deadline in the next 14 days (or overdue), excluding jobs already in a `Done` status.
+
 ### Status workflow
 
 The default board pipeline (`DEFAULT_STATUSES` in `src/lib/types.ts`) is:
@@ -229,12 +218,13 @@ Each job has a dedicated page at `/job/:id` (`src/pages/JobDetailPage.tsx`) with
 
 ## CI
 
-Three independent GitHub Actions workflows run on every push and pull request:
+Three independent GitHub Actions workflows run on every push and pull request, plus a scheduled security audit:
 
 | Workflow | Checks |
 |---|---|
 | **Frontend** | ESLint → Vitest → `tsc -b && vite build` |
 | **Rust** | `cargo clippy` → `cargo test` |
 | **Python** | `ruff check` → `black --check` → `isort --check-only` → `pytest` |
+| **Weekly Security Audit** (`weekly-audit.yml`) | Scheduled (Mondays) `npm audit` + `pip-audit` + `cargo-audit`; opens/updates a GitHub issue when vulnerabilities are found — see `docs/maintenance.md` for audit history |
 
 A pre-commit hook (installed by `npm ci`) runs `npm run verify` locally before every commit so CI failures are caught early. Locally this uses **uv** to manage the Python environment (`pyproject.toml` / `uv.lock`); CI's `python.yml` instead installs from `requirements-dev.txt` via pip.
