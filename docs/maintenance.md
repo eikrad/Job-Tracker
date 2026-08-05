@@ -2,6 +2,155 @@
 
 ---
 
+## 2026-08-05
+
+### ⚠️ Backlog correction — THREE weekly-maintenance PRs now stacked unmerged
+
+Before doing anything else, the live open-PR list was re-verified via `list_pull_requests` (never trust the prior cycle's assumed backlog). Confirmed still open and unmerged:
+
+- **#84** — `chore: weekly maintenance 2026-07-29` (opened 2026-07-29)
+- **#73** — `chore: weekly maintenance 2026-07-22` (opened 2026-07-22)
+- **#68** — `chore: weekly maintenance 2026-07-15` (opened 2026-07-15)
+
+This is the **third consecutive cycle** to note a growing, unmerged weekly-maintenance queue — it is now three PRs deep, worse than at the last check-in. None of these were touched by this cycle (no merging, closing, or editing other PRs — out of scope per policy), but this is flagged prominently again: **the repo owner should review and merge (or close, if superseded) #68, #73, #84 soon**, ideally oldest-first, since later cycles' lockfile/dependency states may drift further from each unmerged PR's baseline the longer they sit. This cycle's own PR will make that four open weekly-maintenance PRs if none are cleared first.
+
+Also present: a long-standing Dependabot backlog (see full table below) and four open docs PRs (#85, #74, #69, #66), none of which were merged/closed/edited by this cycle either.
+
+### Checks performed
+- Fresh `git fetch origin main`; confirmed `claude/upbeat-cray-f8vh9h` already sat exactly at `origin/main` tip (`969dc0c8`) with no unique commits either direction — no reset needed.
+- Re-verified the live open-PR backlog via `list_pull_requests` (state=open) rather than trusting the assumed list from the task brief — it matched.
+- Baseline: `npm ci`, `npm run lint`, `npm run test`, `npm run build` (no separate `typecheck` script exists — `tsc -b` runs as part of `npm run build`)
+- Baseline: `npm audit` (JSON, full detail)
+- Baseline: `cargo check --manifest-path src-tauri/Cargo.toml` — failed for an environment reason (see Sandbox limitation below), not a code defect
+- Baseline: `cargo update --dry-run --manifest-path src-tauri/Cargo.toml` (full, to survey outdated crates) and targeted per-crate dry-runs
+- Baseline: installed `cargo-audit` (`cargo install cargo-audit --locked`) and ran `cargo audit --file src-tauri/Cargo.lock`
+- Baseline: `uv sync`, `uv run pytest -q`, `uv run ruff check .`, `uv run black --check .`, `uv run isort --check-only .`
+- Baseline: installed `pip-audit`, ran against `uv export --format requirements-txt --no-hashes`
+- Baseline: `uv tree --outdated` (pip-side equivalent of `npm outdated` for the dev-tool lockfile)
+- Cross-referenced every candidate update against the live open Dependabot PR list (#86, #83, #82, #81, #80, #79, #77, #76, #75, #64, #63) to avoid duplicating in-flight bumps
+
+### Sandbox limitation (not a code defect)
+`cargo check` / `cargo test` fail in this sandbox because `gdk-sys` (pulled in by Tauri's Linux GTK backend) requires the `gdk-3.0` pkg-config file, which needs `libgtk-3-dev` / `libwebkit2gtk-4.1-dev` system headers. `apt-get install` was attempted and failed on 404s from the sandbox's package mirrors (no network path to fetch those `.deb`s). This matches the known Tauri-sandbox limitation flagged in prior cycles and elsewhere in this maintenance program — `package.json`'s own `verify:rust` script already guards for exactly this (`pkg-config --exists gdk-3.0 ... || echo 'Skipping Rust checks'`). Rust dependency changes below were verified via `cargo update --dry-run` / targeted `cargo update -p` resolution and `cargo audit` (both of which only need the lockfile/registry, not a full compile) rather than `cargo check`/`cargo test`.
+
+### Findings
+
+**1. npm audit — 4 high-severity findings at baseline, 2 fixed, 1 flagged as a major migration (not applied).**
+
+| Package | Severity | Issue | Fix | Applied? |
+|---|---|---|---|---|
+| `brace-expansion` (transitive, via `eslint`→`minimatch`) | high | 3× DoS via exponential/unbounded expansion (GHSA-3jxr-9vmj-r5cp, GHSA-mh99-v99m-4gvg, GHSA-rgw5-rvv9-x895) | `npm audit fix` | Yes — `5.0.6` → `5.0.9` |
+| `postcss` (transitive, via `vite`) | high | Path traversal / arbitrary `.map` file disclosure (GHSA-r28c-9q8g-f849, GHSA-fxqj-rqcc-2cmp) | `npm audit fix` | Yes — `8.5.16` → `8.5.25` |
+| `react-router` (transitive, via `react-router-dom`) | high | RSC Mode CSRF bypass allows action execution before 400 response (GHSA-qwww-vcr4-c8h2), affects `7.12.0–8.2.0` | Requires `npm audit fix --force`, which would **downgrade** `react-router-dom` to `7.11.0` (a regression, not a real fix) | **No** — flagged below |
+| `react-router-dom` (direct dep) | high | Depends on vulnerable `react-router` | See above | **No** — flagged below |
+
+Investigated the `react-router-dom` finding further: `react-router-dom`'s own `latest` dist-tag is still `7.18.2` — it never published a v8 release. The patched line (`react-router@>=8.3.0`) only exists under the separate `react-router` package, which merged `react-router-dom`'s functionality starting at v8. Fixing this properly means **migrating off `react-router-dom` onto the `react-router` package directly (v8)** — a real code migration (import paths, possibly routing API surface), not a version bump. Flagged as a major/security item for manual review; not attempted in this cycle.
+
+**2. `cargo audit` — 8 real vulnerabilities at baseline (all transitive), 8 fixed via semver-compatible lockfile-only updates; 20 unmaintained/unsound advisories remain as informational warnings.**
+
+| Crate | Version (before) | Advisory | Severity | Fixed via |
+|---|---|---|---|---|
+| `quinn-proto` | 0.11.14 | RUSTSEC-2026-0185 (remote memory exhaustion) | 7.5 high | `cargo update -p quinn-proto` → `0.11.16` |
+| `rustls-webpki` | 0.103.9 | RUSTSEC-2026-0099, -0104, -0098, -0049 (name-constraint / CRL bypass issues) | high | `cargo update -p rustls-webpki` → `0.103.13` |
+| `quick-xml` | 0.38.4 | RUSTSEC-2026-0194, -0195 (quadratic runtime / unbounded namespace-decl allocation DoS) | 7.5 high | `cargo update -p quick-xml -p plist -p tauri-plugin-log` → `0.41.0` (required bumping `plist` 1.8.0→1.10.0 and `tauri-plugin-log` 2.8.0→2.9.0 together — a plain `-p quick-xml` alone was rejected by the resolver) |
+| `rkyv` | 0.7.46 | RUSTSEC-2026-0235 (OOB read validating `Rc`/`Arc` in archives) | — | Same update above **removed `rkyv` from the tree entirely** — `tauri-plugin-log 2.9.0` dropped its `byte-unit`→`rust_decimal`→`rkyv` dependency chain |
+
+All four fixes are **lockfile-only** — no `Cargo.toml` range was edited, and none of the touched crates (`quinn-proto`, `rustls-webpki`, `quick-xml`, `plist`, `tauri-plugin-log`) overlap with any open Dependabot cargo PR, so nothing here duplicates in-flight work.
+
+Remaining 20 `cargo audit` findings are all **warnings**, not vulnerabilities (no `error:` in the audit run after the fix): the `atk`/`gdk`/`gtk`/`gtk3-macros`/etc. gtk-rs GTK3 binding crates are flagged "unmaintained" (RUSTSEC-2024-041x series) — inherent to Tauri's Linux GTK3 backend, not fixable without Tauri itself moving off gtk-rs; plus a handful of "unsound" advisories on old transitive versions of `anyhow`, `glib`, and `rand` (0.7.3, pulled in by an unrelated sub-dependency, not the project's own `rand = "0.10"`). None are directly actionable from this repo's manifests.
+
+**3. `pip-audit` — 1 finding, fixed.**
+
+| Package | Version (before) | Advisory | Fix |
+|---|---|---|---|
+| `click` (transitive, via `black`) | 8.3.2 | PYSEC-2026-2132 | `uv lock --upgrade-package click` → `8.4.2` |
+
+**4. `uv.lock` had drifted from `pyproject.toml` again** (same class of issue as the 2026-07-08 entry). `pyproject.toml` already reads `ruff>=0.15.22`, but the committed `uv.lock` still resolved `ruff==0.15.20` from a stale prior floor. Fixed by `uv sync`, which re-resolved to `ruff==0.16.1` (still within the unbounded floor — no manifest edit). Note: open Dependabot PR **#86** separately proposes bumping the *documented floor* to `ruff>=0.16.1` — not duplicated here, since our fix only touches the lockfile resolution, matching what #86's floor bump would produce anyway once merged.
+
+**5. Three safe transitive Python dev-tool bumps applied** (none overlap Dependabot's pip ecosystem, which only tracks the four direct dev dependencies `pytest`/`black`/`isort`/`ruff`):
+
+| Package | Before | After |
+|---|---|---|
+| `packaging` (via `black`) | 26.1 | 26.3 |
+| `pathspec` (via `black`) | 1.0.4 | 1.1.1 |
+| `platformdirs` (via `black`) | 4.9.6 | 4.11.0 |
+
+**6. Six safe npm devDependency/transitive bumps applied**, all within existing `package.json` semver ranges (no manifest edit needed) and none overlapping an open Dependabot PR:
+
+| Package | Before | After |
+|---|---|---|
+| `@types/react` | 19.2.14 | 19.2.18 |
+| `@types/react-dom` | 19.2.3 | 19.2.4 |
+| `@vitejs/plugin-react` | 6.0.1 | 6.0.5 |
+| `eslint-plugin-react-refresh` | 0.5.2 | 0.5.3 |
+| `happy-dom` | 20.10.6 | 20.11.1 |
+| `vite` | 8.1.3 | 8.2.0 |
+
+**7. `typescript` has an unflagged major available — not applied, not yet covered by Dependabot either.** `typescript` `~6.0.0` (resolves `6.0.3`) has `7.0.2` available. No open Dependabot PR currently proposes this (Dependabot's npm ecosystem hasn't opened one yet). Flagged below for manual review — do not bump automatically per policy, and expect Dependabot to pick this up in a future cycle.
+
+### Fixes applied
+- `npm audit fix` — resolved `brace-expansion` and `postcss` high-severity transitive vulnerabilities.
+- `npm update @types/react @types/react-dom @vitejs/plugin-react eslint-plugin-react-refresh happy-dom vite` — safe patch/minor bumps, all six confirmed already covered by no open Dependabot PR.
+- `cargo update -p quinn-proto -p rustls-webpki` — fixes 5 of 8 `cargo audit` findings (transitive, lockfile-only).
+- `cargo update -p quick-xml -p plist -p tauri-plugin-log` — fixes the remaining 3 `cargo audit` findings, including removing the `rkyv`/`rust_decimal`/`byte-unit` chain entirely (transitive, lockfile-only).
+- `uv sync` — regenerated `uv.lock` to catch up with `pyproject.toml`'s already-current `ruff>=0.15.22` floor (resolves `0.16.1`).
+- `uv lock --upgrade-package click` — fixes `pip-audit` finding PYSEC-2026-2132.
+- `uv lock --upgrade-package packaging --upgrade-package pathspec --upgrade-package platformdirs` — safe transitive Python dev-tool bumps.
+- **No `package.json`, `Cargo.toml`, `pyproject.toml`, or `requirements-dev.txt` edits** — every fix above stayed within already-declared semver ranges; only `package-lock.json`, `src-tauri/Cargo.lock`, and `uv.lock` changed.
+- **Explicitly skipped** (already covered by an open Dependabot PR, to avoid duplicating in-flight work): `ruff` floor bump (#86), `keyring` (#83), `@types/node` (#82), `chrono` (#81), `eslint` (#80), `globals` (#79), `typescript-eslint` (#77), `serde_json` (#76), `lucide-react` (#75), `sha2` (#64), `open` (#63).
+
+### Majors flagged for owner decision (not applied)
+
+| Item | In use | Latest | Notes |
+|---|---|---|---|
+| `react-router-dom` → `react-router` (npm, **security-relevant**) | `react-router-dom@7.18.1` (pulls vulnerable `react-router` `7.12–8.2`) | `react-router@8.3.0` (unified package) | GHSA-qwww-vcr4-c8h2 (high, CSRF bypass). Real fix requires migrating off `react-router-dom` onto the `react-router` v8 package — a code migration, not a version bump. `npm audit fix --force` only offers a regression (downgrade to `7.11.0`), not a real fix — do not apply. |
+| `typescript` (npm) | `~6.0.0` (resolves `6.0.3`) | `7.0.2` | Major, not yet covered by an open Dependabot PR. Review TS7 migration notes before bumping; run `tsc -b` end-to-end after. |
+| `keyring` (cargo, PR #83) | `3.6.3` | `4.1.5` | Already tracked by Dependabot — left alone per policy. |
+| `@types/node` (npm, PR #82) | `24.12.0` | `26.1.2` | Already tracked by Dependabot — left alone per policy. |
+| `sha2` (cargo, PR #64) | `0.10.9` | `0.11.0` | Already tracked by Dependabot — left alone per policy (recurring flag since 2026-07-08). |
+
+### Open PR backlog (owner decision required)
+
+**Weekly-maintenance PRs (unmerged, stacking — see warning at top):**
+
+| PR | Title | Opened | Status |
+|---|---|---|---|
+| #84 | `chore: weekly maintenance 2026-07-29` | 2026-07-29 | Open, unmerged |
+| #73 | `chore: weekly maintenance 2026-07-22` | 2026-07-22 | Open, unmerged |
+| #68 | `chore: weekly maintenance 2026-07-15` | 2026-07-15 | Open, unmerged |
+
+**Dependabot PRs (all open, none merged/closed by this cycle):**
+
+| PR | Title | Ecosystem | Notes |
+|---|---|---|---|
+| #86 | `chore(deps-dev): update ruff requirement from >=0.15.22 to >=0.16.1` | pip | Floor-only, already resolves to 0.16.1 regardless (see Finding 4) |
+| #83 | `chore(deps): bump keyring from 3.6.3 to 4.1.5 in /src-tauri` | cargo | Major |
+| #82 | `chore(deps-dev): bump @types/node from 24.12.0 to 26.1.2` | npm | Major-ish jump |
+| #81 | `chore(deps): bump chrono from 0.4.44 to 0.4.45 in /src-tauri` | cargo | Patch |
+| #80 | `chore(deps-dev): bump eslint from 10.5.0 to 10.8.0` | npm | Minor |
+| #79 | `chore(deps-dev): bump globals from 17.4.0 to 17.8.0` | npm | Minor |
+| #77 | `chore(deps-dev): bump typescript-eslint from 8.62.1 to 8.65.0` | npm | Minor |
+| #76 | `chore(deps): bump serde_json from 1.0.149 to 1.0.151 in /src-tauri` | cargo | Patch |
+| #75 | `chore(deps): bump lucide-react from 1.26.0 to 1.27.0` | npm | Minor |
+| #64 | `chore(deps): bump sha2 from 0.10.9 to 0.11.0 in /src-tauri` | cargo | Major |
+| #63 | `chore(deps): bump open from 5.3.3 to 5.4.0 in /src-tauri` | cargo | Minor |
+
+**Docs PRs (open, unmerged, untouched):** #85, #74, #69, #66.
+
+### Post-change verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | 0 errors, 1 pre-existing warning (`JobDetailPage.tsx` exhaustive-deps — unchanged from baseline) |
+| `npm run test` | 16 test files, 97 tests passed (same count as baseline) |
+| `npm run build` | `tsc -b && vite build` — succeeds |
+| `npm audit` | 4 high → 2 high (both remaining are the flagged `react-router`/`react-router-dom` migration item) |
+| `cargo audit --file src-tauri/Cargo.lock` | 8 vulnerabilities → 0; 20 informational warnings remain (unmaintained gtk-rs bindings + old unsound transitive advisories, non-actionable here) |
+| `cargo check` / `cargo test` (`src-tauri/`) | Fails in this sandbox for an environment reason (missing GTK/webkit system headers, `apt-get` blocked by mirror 404s) — not a regression from this cycle's changes; see Sandbox limitation above |
+| `uv run pytest -q` | 3 passed (same as baseline) |
+| `uv run ruff check .` / `black --check .` / `isort --check-only .` | All clean |
+
+---
+
 ## 2026-07-08
 
 ### Checks performed
