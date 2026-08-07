@@ -97,6 +97,29 @@
   justify-content: flex-end;
 }
 
+.appJobSearch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: min(16rem, 100%);
+}
+
+.appJobSearchInput {
+  width: 100%;
+  min-width: 10rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  font-size: 0.875rem;
+}
+
+.appJobSearchInput:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
 .tabList {
   display: inline-flex;
   padding: 3px;

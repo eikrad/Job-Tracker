@@ -74,6 +74,25 @@ describe("useJobTrackerState", () => {
     expect(setItem).toHaveBeenCalledWith("jobtracker.defaultBoardView", "kanban");
   });
 
+  it("loads and persists the dashboard job search query", () => {
+    const setItem = vi.fn();
+    const storage = {
+      getItem: vi.fn((key: string) => (key === "jobtracker.jobSearchQuery" ? "acme" : null)),
+      setItem,
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    };
+    vi.stubGlobal("localStorage", storage);
+    const { result } = renderHook(() => useJobTrackerState());
+    expect(result.current.jobSearchQuery).toBe("acme");
+
+    act(() => {
+      result.current.setJobSearchQuery("beta");
+    });
+    expect(result.current.jobSearchQuery).toBe("beta");
+    expect(setItem).toHaveBeenCalledWith("jobtracker.jobSearchQuery", "beta");
+  });
+
   it("migrates saved statuses from v1 to v2 on init", () => {
     const storage = {
       getItem: vi.fn((key: string) =>

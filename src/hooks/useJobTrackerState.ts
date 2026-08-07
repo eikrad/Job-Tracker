@@ -26,6 +26,7 @@ import {
   saveDefaultBoardView,
   type BoardView,
 } from "../lib/jobs/boardViewPreference";
+import { loadJobSearchQuery, saveJobSearchQuery } from "../lib/jobs/jobSearchQuery";
 
 function readLlmProvider(): LlmProvider {
   const p = localStorage.getItem("llmProvider");
@@ -42,11 +43,17 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
   const [selected, setSelected] = useState<Job | undefined>();
   const [view, setView] = useState<BoardView>(loadDefaultBoardView);
   const [defaultBoardView, setDefaultBoardViewState] = useState<BoardView>(loadDefaultBoardView);
+  const [jobSearchQuery, setJobSearchQueryState] = useState(loadJobSearchQuery);
 
   const setDefaultBoardView = useCallback((next: BoardView) => {
     saveDefaultBoardView(next);
     setDefaultBoardViewState(next);
     setView(next);
+  }, []);
+
+  const setJobSearchQuery = useCallback((next: string) => {
+    setJobSearchQueryState(next);
+    saveJobSearchQuery(next);
   }, []);
   const [llmProvider, setLlmProvider] = useState<LlmProvider>(readLlmProvider);
   const [geminiApiKey, setGeminiApiKey] = useState(localStorage.getItem("geminiApiKey") ?? "");
@@ -273,6 +280,8 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
     setView,
     defaultBoardView,
     setDefaultBoardView,
+    jobSearchQuery,
+    setJobSearchQuery,
     llmProvider,
     setLlmProvider,
     geminiApiKey,
