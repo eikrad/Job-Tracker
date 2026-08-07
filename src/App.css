@@ -626,6 +626,10 @@ table {
   gap: var(--space-xs) var(--space-md);
 }
 
+.jobTableFilteredEmpty {
+  margin: var(--space-md) 0 0;
+}
+
 .jobTableColumnCheck {
   display: inline-flex;
   align-items: center;

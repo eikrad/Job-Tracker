@@ -37,7 +37,10 @@ const baseJob: Job = {
   updated_at: "2026-04-16T00:00:00Z",
 };
 
-function makeTrackerState(view: JobTrackerState["view"]): JobTrackerState {
+function makeTrackerState(
+  view: JobTrackerState["view"],
+  overrides: Partial<JobTrackerState> = {},
+): JobTrackerState {
   return {
     jobs: [baseJob],
     selected: baseJob,
@@ -80,13 +83,17 @@ function makeTrackerState(view: JobTrackerState["view"]): JobTrackerState {
     renameStatus: vi.fn(),
     moveStatus: vi.fn(),
     syncJobList: vi.fn(),
+    ...overrides,
   };
 }
 
-function renderDashboard(view: JobTrackerState["view"]) {
+function renderDashboard(
+  view: JobTrackerState["view"],
+  overrides: Partial<JobTrackerState> = {},
+) {
   return render(
     <MemoryRouter>
-      <JobTrackerProvider value={makeTrackerState(view)}>
+      <JobTrackerProvider value={makeTrackerState(view, overrides)}>
         <DashboardPage />
       </JobTrackerProvider>
     </MemoryRouter>,
@@ -106,5 +113,12 @@ describe("DashboardPage", () => {
 
     expect(document.querySelector(".appAside .dashboardPanel")).not.toBeNull();
     expect(screen.getAllByText("Acme").length).toBeGreaterThan(0);
+  });
+
+  it("shows a clearable empty state when search matches no jobs", () => {
+    renderDashboard("table", { jobSearchQuery: "zzzz-no-match" });
+
+    expect(screen.getByText("No jobs match your search")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Clear search" })).toBeTruthy();
   });
 });

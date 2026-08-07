@@ -231,6 +231,9 @@ export const JobTable = memo(function JobTable({ jobs, statuses, onSelect }: Pro
               </button>
             </div>
           </div>
+          {sortedJobs.length === 0 ? (
+            <p className="muted jobTableFilteredEmpty">{en.empty.tableFilteredBody}</p>
+          ) : (
           <div className="tableWrap jobTableWrap">
             <table className="jobTable">
               <colgroup>
@@ -314,6 +317,7 @@ export const JobTable = memo(function JobTable({ jobs, statuses, onSelect }: Pro
               </tbody>
             </table>
           </div>
+          )}
         </>
       )}
     </section>
