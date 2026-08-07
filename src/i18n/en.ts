@@ -25,6 +25,8 @@ export const en = {
     themeLight: "Light",
     themeDark: "Dark",
     themeToggleAria: (label: string) => `Switch theme (currently: ${label})`,
+    defaultBoardViewLabel: "Default view after startup",
+    defaultBoardViewHint: "Choose which dashboard tab opens when the app starts. Switching tabs later does not change this setting.",
     settingsSectionIntegrations: "AI & calendar",
     settingsSectionPipeline: "Board columns",
     settingsSectionData: "Backup & restore",

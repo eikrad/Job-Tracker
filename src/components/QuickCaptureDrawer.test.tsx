@@ -14,6 +14,8 @@ function makeTrackerState(): JobTrackerState {
     setSelected: vi.fn(),
     view: "table",
     setView: vi.fn(),
+    defaultBoardView: "table",
+    setDefaultBoardView: vi.fn(),
     llmProvider: "gemini",
     setLlmProvider: vi.fn(),
     geminiApiKey: "",
