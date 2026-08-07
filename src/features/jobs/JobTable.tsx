@@ -7,6 +7,12 @@ import {
   toggleVisibleColumn,
   type JobTableColumnId,
 } from "../../lib/jobs/jobTableColumns";
+import { filterJobsByHiddenStatuses } from "../../lib/jobs/filterJobs";
+import {
+  loadHiddenJobStatuses,
+  saveHiddenJobStatuses,
+  toggleHiddenJobStatus,
+} from "../../lib/jobs/hiddenJobStatuses";
 import {
   sortJobs,
   type JobSortKey,
@@ -71,10 +77,19 @@ export const JobTable = memo(function JobTable({ jobs, statuses, onSelect }: Pro
   const [secondary, setSecondary] = useState<JobSortKey | "none">("company");
   const [secondaryDirection, setSecondaryDirection] = useState<SortDirection>("asc");
   const [visibleColumns, setVisibleColumns] = useState(loadVisibleJobTableColumns);
+  const [hiddenStatuses, setHiddenStatuses] = useState(() => loadHiddenJobStatuses(statuses));
 
   useEffect(() => {
     saveVisibleJobTableColumns(visibleColumns);
   }, [visibleColumns]);
+
+  useEffect(() => {
+    setHiddenStatuses((current) => current.filter((name) => statuses.includes(name)));
+  }, [statuses]);
+
+  useEffect(() => {
+    saveHiddenJobStatuses(hiddenStatuses);
+  }, [hiddenStatuses]);
 
   const activeColumns = useMemo(
     () => JOB_TABLE_COLUMNS.filter((col) => visibleColumns.includes(col.id)),
@@ -94,16 +109,25 @@ export const JobTable = memo(function JobTable({ jobs, statuses, onSelect }: Pro
     setVisibleColumns((current) => toggleVisibleColumn(current, columnId));
   }
 
+  function onToggleHiddenStatus(status: string) {
+    setHiddenStatuses((current) => toggleHiddenJobStatus(current, status, statuses));
+  }
+
+  const visibleJobs = useMemo(
+    () => filterJobsByHiddenStatuses(jobs, hiddenStatuses),
+    [jobs, hiddenStatuses],
+  );
+
   const sortedJobs = useMemo(
     () =>
-      sortJobs(jobs, {
+      sortJobs(visibleJobs, {
         primary,
         primaryDirection,
         secondary: secondary === "none" ? null : secondary,
         secondaryDirection,
         statusOrder: statuses,
       }),
-    [jobs, primary, primaryDirection, secondary, secondaryDirection, statuses],
+    [visibleJobs, primary, primaryDirection, secondary, secondaryDirection, statuses],
   );
 
   return (
@@ -132,6 +156,24 @@ export const JobTable = memo(function JobTable({ jobs, statuses, onSelect }: Pro
                       onChange={() => onToggleColumn(col.id)}
                     />
                     <span>{COLUMN_LABELS[col.id]}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+          <fieldset className="jobTableColumnPicker">
+            <legend>{en.jobTable.hideStatusesLegend}</legend>
+            <div className="jobTableColumnChecks">
+              {statuses.map((status) => {
+                const checked = hiddenStatuses.includes(status);
+                return (
+                  <label key={status} className="jobTableColumnCheck">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggleHiddenStatus(status)}
+                    />
+                    <span>{status}</span>
                   </label>
                 );
               })}

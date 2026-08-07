@@ -216,6 +216,7 @@ export const en = {
     sortSecondary: "Then by",
     sortNone: "—",
     columnsLegend: "Columns",
+    hideStatusesLegend: "Hide statuses",
     sortControls: "Table sort",
     togglePrimaryDirection: "Toggle primary sort direction",
     toggleSecondaryDirection: "Toggle secondary sort direction",

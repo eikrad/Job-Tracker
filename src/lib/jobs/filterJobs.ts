@@ -9,3 +9,9 @@ export function filterJobsBySearch(jobs: Job[], query: string): Job[] {
     return company.includes(needle) || title.includes(needle);
   });
 }
+
+export function filterJobsByHiddenStatuses(jobs: Job[], hiddenStatuses: string[]): Job[] {
+  if (hiddenStatuses.length === 0) return jobs;
+  const hidden = new Set(hiddenStatuses);
+  return jobs.filter((job) => !hidden.has(job.status));
+}
