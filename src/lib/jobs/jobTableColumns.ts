@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Job } from "../types";
 import type { JobSortKey } from "./sortJobs";
 import { formatJobAddedDate } from "./sortJobs";
+import { readStoredJson, writeStoredJson } from "../storage/localStoragePref";
 
 export type JobTableColumnId = JobSortKey;
 
@@ -101,32 +102,14 @@ export function normalizeVisibleColumns(raw: unknown): JobTableColumnId[] {
   return unique.length > 0 ? unique : [...DEFAULT_VISIBLE_JOB_TABLE_COLUMNS];
 }
 
-function storageAvailable(): boolean {
-  try {
-    return typeof localStorage !== "undefined" && typeof localStorage.setItem === "function";
-  } catch {
-    return false;
-  }
-}
-
 export function loadVisibleJobTableColumns(): JobTableColumnId[] {
-  if (!storageAvailable()) return [...DEFAULT_VISIBLE_JOB_TABLE_COLUMNS];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [...DEFAULT_VISIBLE_JOB_TABLE_COLUMNS];
-    return normalizeVisibleColumns(JSON.parse(raw));
-  } catch {
-    return [...DEFAULT_VISIBLE_JOB_TABLE_COLUMNS];
-  }
+  const raw = readStoredJson(STORAGE_KEY);
+  if (raw == null) return [...DEFAULT_VISIBLE_JOB_TABLE_COLUMNS];
+  return normalizeVisibleColumns(raw);
 }
 
 export function saveVisibleJobTableColumns(columns: JobTableColumnId[]): void {
-  if (!storageAvailable()) return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(columns));
-  } catch {
-    /* ignore quota / private mode */
-  }
+  writeStoredJson(STORAGE_KEY, columns);
 }
 
 export function toggleVisibleColumn(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Job } from "../types";
-import { filterJobsBySearch } from "./filterJobs";
+import { filterJobs, filterJobsBySearch } from "./filterJobs";
 
 function job(partial: Partial<Job> & Pick<Job, "id" | "company">): Job {
   return {
@@ -38,5 +38,19 @@ describe("filterJobsBySearch", () => {
   it("treats a missing title as empty", () => {
     expect(filterJobsBySearch(jobs, "gamma").map((j) => j.id)).toEqual([3]);
     expect(filterJobsBySearch(jobs, "engineer").map((j) => j.id)).toEqual([1]);
+  });
+});
+
+describe("filterJobs", () => {
+  const jobs = [
+    job({ id: 1, company: "Acme Corp", title: "Frontend Engineer", status: "Interesting" }),
+    job({ id: 2, company: "Acme Labs", title: "Backend Developer", status: "Done" }),
+    job({ id: 3, company: "Beta", title: "Frontend Lead", status: "Feedback" }),
+  ];
+
+  it("combines search and hidden-status filters", () => {
+    expect(
+      filterJobs(jobs, { query: "acme", hiddenStatuses: ["Done"] }).map((j) => j.id),
+    ).toEqual([1]);
   });
 });

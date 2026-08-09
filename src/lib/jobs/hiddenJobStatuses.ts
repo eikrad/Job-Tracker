@@ -1,12 +1,6 @@
-const STORAGE_KEY = "jobtracker.hiddenJobStatuses";
+import { readStoredJson, writeStoredJson } from "../storage/localStoragePref";
 
-function storageAvailable(): boolean {
-  try {
-    return typeof localStorage !== "undefined" && typeof localStorage.setItem === "function";
-  } catch {
-    return false;
-  }
-}
+const STORAGE_KEY = "jobtracker.hiddenJobStatuses";
 
 export function normalizeHiddenJobStatuses(raw: unknown, pipeline: string[]): string[] {
   if (!Array.isArray(raw)) return [];
@@ -16,23 +10,11 @@ export function normalizeHiddenJobStatuses(raw: unknown, pipeline: string[]): st
 }
 
 export function loadHiddenJobStatuses(pipeline: string[]): string[] {
-  if (!storageAvailable()) return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    return normalizeHiddenJobStatuses(JSON.parse(raw), pipeline);
-  } catch {
-    return [];
-  }
+  return normalizeHiddenJobStatuses(readStoredJson(STORAGE_KEY), pipeline);
 }
 
 export function saveHiddenJobStatuses(statuses: string[]): void {
-  if (!storageAvailable()) return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(statuses));
-  } catch {
-    /* ignore quota / private mode */
-  }
+  writeStoredJson(STORAGE_KEY, statuses);
 }
 
 export function toggleHiddenJobStatus(

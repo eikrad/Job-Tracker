@@ -1,12 +1,6 @@
-const STORAGE_KEY = "jobtracker.jobSearchQuery";
+import { readStoredString, writeStoredString } from "../storage/localStoragePref";
 
-function storageAvailable(): boolean {
-  try {
-    return typeof localStorage !== "undefined" && typeof localStorage.setItem === "function";
-  } catch {
-    return false;
-  }
-}
+const STORAGE_KEY = "jobtracker.jobSearchQuery";
 
 export function normalizeJobSearchQuery(raw: unknown): string {
   if (typeof raw !== "string") return "";
@@ -14,19 +8,9 @@ export function normalizeJobSearchQuery(raw: unknown): string {
 }
 
 export function loadJobSearchQuery(): string {
-  if (!storageAvailable()) return "";
-  try {
-    return normalizeJobSearchQuery(localStorage.getItem(STORAGE_KEY));
-  } catch {
-    return "";
-  }
+  return normalizeJobSearchQuery(readStoredString(STORAGE_KEY) ?? "");
 }
 
 export function saveJobSearchQuery(query: string): void {
-  if (!storageAvailable()) return;
-  try {
-    localStorage.setItem(STORAGE_KEY, normalizeJobSearchQuery(query));
-  } catch {
-    /* ignore quota / private mode */
-  }
+  writeStoredString(STORAGE_KEY, normalizeJobSearchQuery(query));
 }
