@@ -21,6 +21,7 @@ import {
 import { WorkspaceEmpty } from "../../components/WorkspaceEmpty";
 import { en } from "../../i18n/en";
 import { ExternalLink } from "lucide-react";
+import { openUrlInBrowser } from "../../lib/tauriApi";
 import { ListingStatusDot } from "./ListingStatusDot";
 
 type Props = {
@@ -306,6 +307,10 @@ export const JobTable = memo(function JobTable({ jobs, statuses, onSelect }: Pro
                             target="_blank"
                             rel="noopener noreferrer"
                             title={job.url}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              void openUrlInBrowser(job.url!.trim()).catch(console.error);
+                            }}
                           >
                             <ExternalLink size={13} />
                           </a>

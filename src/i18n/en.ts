@@ -285,6 +285,7 @@ export const en = {
     interviewShort: "Interview",
     startShort: "Start",
     notes: "Notes",
+    openListing: "Open job listing",
     deleteJob: "Delete job",
     history: "History",
     newStatus: "New",
