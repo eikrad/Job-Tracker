@@ -2,7 +2,7 @@ import { memo, useState } from "react";
 import { Star, Calendar, Monitor, Tag, ArrowRight, Trash2, ExternalLink, RefreshCw } from "lucide-react";
 import { en } from "../../i18n/en";
 import type { Job } from "../../lib/types";
-import { checkListingStatus } from "../../lib/tauriApi";
+import { checkListingStatus, openUrlInBrowser } from "../../lib/tauriApi";
 import { ListingStatusDot } from "./ListingStatusDot";
 
 const PRIORITY_MAX = 10;
@@ -72,9 +72,14 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
               href={selected.url}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void openUrlInBrowser(selected.url!.trim()).catch(console.error);
+              }}
               title={selected.url}
               className="detailExternalLink"
+              aria-label={en.detail.openListing}
             >
               <ExternalLink size={13} style={{ display: "inline" }} />
             </a>

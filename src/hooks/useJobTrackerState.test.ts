@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useJobTrackerState } from "./useJobTrackerState";
 
@@ -32,6 +32,65 @@ describe("useJobTrackerState", () => {
   it("defaults the dashboard view to table", () => {
     const { result } = renderHook(() => useJobTrackerState());
     expect(result.current.view).toBe("table");
+    expect(result.current.defaultBoardView).toBe("table");
+  });
+
+  it("initializes the dashboard view from the saved default preference", () => {
+    const storage = {
+      getItem: vi.fn((key: string) => (key === "jobtracker.defaultBoardView" ? "kanban" : null)),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    };
+    vi.stubGlobal("localStorage", storage);
+    const { result } = renderHook(() => useJobTrackerState());
+    expect(result.current.view).toBe("kanban");
+    expect(result.current.defaultBoardView).toBe("kanban");
+  });
+
+  it("persists default board view without treating tab switches as the default", () => {
+    const setItem = vi.fn();
+    const storage = {
+      getItem: vi.fn(() => null),
+      setItem,
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    };
+    vi.stubGlobal("localStorage", storage);
+    const { result } = renderHook(() => useJobTrackerState());
+
+    act(() => {
+      result.current.setView("calendar");
+    });
+    expect(result.current.view).toBe("calendar");
+    expect(result.current.defaultBoardView).toBe("table");
+    expect(setItem).not.toHaveBeenCalledWith("jobtracker.defaultBoardView", expect.anything());
+
+    act(() => {
+      result.current.setDefaultBoardView("kanban");
+    });
+    expect(result.current.defaultBoardView).toBe("kanban");
+    expect(result.current.view).toBe("kanban");
+    expect(setItem).toHaveBeenCalledWith("jobtracker.defaultBoardView", "kanban");
+  });
+
+  it("loads and persists the dashboard job search query", () => {
+    const setItem = vi.fn();
+    const storage = {
+      getItem: vi.fn((key: string) => (key === "jobtracker.jobSearchQuery" ? "acme" : null)),
+      setItem,
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    };
+    vi.stubGlobal("localStorage", storage);
+    const { result } = renderHook(() => useJobTrackerState());
+    expect(result.current.jobSearchQuery).toBe("acme");
+
+    act(() => {
+      result.current.setJobSearchQuery("beta");
+    });
+    expect(result.current.jobSearchQuery).toBe("beta");
+    expect(setItem).toHaveBeenCalledWith("jobtracker.jobSearchQuery", "beta");
   });
 
   it("migrates saved statuses from v1 to v2 on init", () => {

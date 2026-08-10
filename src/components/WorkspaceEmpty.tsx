@@ -3,12 +3,13 @@ import { Link } from "react-router-dom";
 type Props = {
   title: string;
   body: string;
-  cta: string;
+  cta?: string;
   to?: string;
+  action?: { label: string; onClick: () => void };
 };
 
-/** Simple inline illustration + copy + optional CTA link. */
-export function WorkspaceEmpty({ title, body, cta, to = "/jobs/new" }: Props) {
+/** Simple inline illustration + copy + optional CTA link or button. */
+export function WorkspaceEmpty({ title, body, cta, to = "/jobs/new", action }: Props) {
   return (
     <div className="workspaceEmpty">
       <div className="workspaceEmptyIcon" aria-hidden>
@@ -21,9 +22,15 @@ export function WorkspaceEmpty({ title, body, cta, to = "/jobs/new" }: Props) {
       </div>
       <h3 className="workspaceEmptyTitle">{title}</h3>
       <p className="workspaceEmptyBody">{body}</p>
-      <Link className="btn btnPrimary workspaceEmptyCta" to={to}>
-        {cta}
-      </Link>
+      {action ? (
+        <button type="button" className="btn btnPrimary workspaceEmptyCta" onClick={action.onClick}>
+          {action.label}
+        </button>
+      ) : cta ? (
+        <Link className="btn btnPrimary workspaceEmptyCta" to={to}>
+          {cta}
+        </Link>
+      ) : null}
     </div>
   );
 }

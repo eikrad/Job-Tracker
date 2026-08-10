@@ -21,8 +21,12 @@ import { findDuplicateJob } from "../lib/jobs/duplicateCheck";
 import { DEFAULT_STATUSES } from "../lib/types";
 import { migrateStatusesV2 } from "../lib/statusUtils";
 import { en } from "../i18n/en";
-
-type BoardView = "kanban" | "table" | "calendar";
+import {
+  loadDefaultBoardView,
+  saveDefaultBoardView,
+  type BoardView,
+} from "../lib/jobs/boardViewPreference";
+import { loadJobSearchQuery, saveJobSearchQuery } from "../lib/jobs/jobSearchQuery";
 
 function readLlmProvider(): LlmProvider {
   const p = localStorage.getItem("llmProvider");
@@ -37,7 +41,20 @@ export type JobTrackerStateOptions = {
 export function useJobTrackerState(options?: JobTrackerStateOptions) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selected, setSelected] = useState<Job | undefined>();
-  const [view, setView] = useState<BoardView>("table");
+  const [view, setView] = useState<BoardView>(loadDefaultBoardView);
+  const [defaultBoardView, setDefaultBoardViewState] = useState<BoardView>(loadDefaultBoardView);
+  const [jobSearchQuery, setJobSearchQueryState] = useState(loadJobSearchQuery);
+
+  const setDefaultBoardView = useCallback((next: BoardView) => {
+    saveDefaultBoardView(next);
+    setDefaultBoardViewState(next);
+    setView(next);
+  }, []);
+
+  const setJobSearchQuery = useCallback((next: string) => {
+    setJobSearchQueryState(next);
+    saveJobSearchQuery(next);
+  }, []);
   const [llmProvider, setLlmProvider] = useState<LlmProvider>(readLlmProvider);
   const [geminiApiKey, setGeminiApiKey] = useState(localStorage.getItem("geminiApiKey") ?? "");
   const [mistralApiKey, setMistralApiKey] = useState(localStorage.getItem("mistralApiKey") ?? "");
@@ -261,6 +278,10 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
     setSelected,
     view,
     setView,
+    defaultBoardView,
+    setDefaultBoardView,
+    jobSearchQuery,
+    setJobSearchQuery,
     llmProvider,
     setLlmProvider,
     geminiApiKey,

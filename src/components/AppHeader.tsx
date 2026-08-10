@@ -22,7 +22,7 @@ const THEME_META: Record<
 };
 
 export function AppHeader({ onOpenSettings, onOpenQuickCapture }: Props) {
-  const { view, setView } = useJobTracker();
+  const { view, setView, jobSearchQuery, setJobSearchQuery } = useJobTracker();
   const { preference, setPreference } = useTheme();
   const location = useLocation();
   const isDashboard = location.pathname === "/";
@@ -48,37 +48,61 @@ export function AppHeader({ onOpenSettings, onOpenQuickCapture }: Props) {
         </Link>
         <div className="appHeaderActions">
           {isDashboard && (
-            <nav className="appNav" aria-label={en.app.navAriaMainViews}>
-              <div className="tabList" role="tablist">
-                <button
-                  type="button"
-                  role="tab"
-                  className="btnTab"
-                  aria-selected={view === "kanban"}
-                  onClick={() => setView("kanban")}
-                >
-                  {en.nav.kanban}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  className="btnTab"
-                  aria-selected={view === "table"}
-                  onClick={() => setView("table")}
-                >
-                  {en.nav.table}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  className="btnTab"
-                  aria-selected={view === "calendar"}
-                  onClick={() => setView("calendar")}
-                >
-                  {en.nav.calendar}
-                </button>
+            <>
+              <nav className="appNav" aria-label={en.app.navAriaMainViews}>
+                <div className="tabList" role="tablist">
+                  <button
+                    type="button"
+                    role="tab"
+                    className="btnTab"
+                    aria-selected={view === "kanban"}
+                    onClick={() => setView("kanban")}
+                  >
+                    {en.nav.kanban}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    className="btnTab"
+                    aria-selected={view === "table"}
+                    onClick={() => setView("table")}
+                  >
+                    {en.nav.table}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    className="btnTab"
+                    aria-selected={view === "calendar"}
+                    onClick={() => setView("calendar")}
+                  >
+                    {en.nav.calendar}
+                  </button>
+                </div>
+              </nav>
+              <div className="appJobSearch">
+                <label className="visuallyHidden" htmlFor="dashboard-job-search">
+                  {en.app.jobSearchLabel}
+                </label>
+                <input
+                  id="dashboard-job-search"
+                  type="search"
+                  className="appJobSearchInput"
+                  value={jobSearchQuery}
+                  placeholder={en.app.jobSearchPlaceholder}
+                  onChange={(e) => setJobSearchQuery(e.target.value)}
+                />
+                {jobSearchQuery.trim() !== "" && (
+                  <button
+                    type="button"
+                    className="btn btnGhost btnSm appJobSearchClear"
+                    onClick={() => setJobSearchQuery("")}
+                  >
+                    {en.app.jobSearchClear}
+                  </button>
+                )}
               </div>
-            </nav>
+            </>
           )}
             <div className="appToolbar appToolbarEnd" role="toolbar" aria-label={en.app.navAriaToolbar}>
             <NavLink

@@ -15,6 +15,7 @@ import type { Job } from "../../lib/types";
 import { WorkspaceEmpty } from "../../components/WorkspaceEmpty";
 import { en } from "../../i18n/en";
 import { GripVertical, ExternalLink } from "lucide-react";
+import { openUrlInBrowser } from "../../lib/tauriApi";
 import { ListingStatusDot } from "./ListingStatusDot";
 
 type Props = {
@@ -84,7 +85,11 @@ function JobCard({
             href={job.url}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void openUrlInBrowser(job.url!.trim()).catch(console.error);
+            }}
             title={job.url}
             className="jobCardLink"
           >

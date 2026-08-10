@@ -3,6 +3,7 @@ import { ChevronUp, ChevronDown } from "lucide-react";
 import { useJobTracker } from "../context/JobTrackerContext";
 import { useTheme } from "../hooks/useTheme";
 import type { ThemePreference } from "../lib/theme";
+import { BOARD_VIEWS, type BoardView } from "../lib/jobs/boardViewPreference";
 import { exportJobsAsCsv, exportJobsAsJson } from "../lib/export/exportBundle";
 import { googleOauthGetClientId, googleOauthSetClientId } from "../lib/tauriApi";
 import { en } from "../i18n/en";
@@ -12,6 +13,12 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "light", label: en.app.themeLight },
   { value: "dark", label: en.app.themeDark },
 ];
+
+const BOARD_VIEW_LABELS: Record<BoardView, string> = {
+  kanban: en.nav.kanban,
+  table: en.nav.table,
+  calendar: en.nav.calendar,
+};
 
 type Props = {
   open: boolean;
@@ -38,6 +45,8 @@ export function SettingsModal({ open, onClose }: Props) {
     refreshGoogleOauthStatus,
     connectGoogleCalendar,
     disconnectGoogleCalendar,
+    defaultBoardView,
+    setDefaultBoardView,
     statuses,
     renameStatus,
     moveStatus,
@@ -150,6 +159,27 @@ export function SettingsModal({ open, onClose }: Props) {
                   onClick={() => setThemePreference(option.value)}
                 >
                   {option.label}
+                </button>
+              ))}
+            </div>
+            <p className="muted settingsHint">{en.app.defaultBoardViewHint}</p>
+            <div
+              className="themeOptions"
+              role="radiogroup"
+              aria-label={en.app.defaultBoardViewLabel}
+            >
+              {BOARD_VIEWS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  role="radio"
+                  aria-checked={defaultBoardView === option}
+                  className={`btn btnSm ${
+                    defaultBoardView === option ? "btnPrimary" : "btnGhost"
+                  }`}
+                  onClick={() => setDefaultBoardView(option)}
+                >
+                  {BOARD_VIEW_LABELS[option]}
                 </button>
               ))}
             </div>
