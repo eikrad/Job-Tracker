@@ -178,9 +178,8 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 
 ## Job Search
 
-- Platforms in-app: **Jobindex**, **Indeed**, **LinkedIn**.
-- **Jobindex** and **Indeed** use provider-based web search (SerpAPI + Brave fallback).
-- **LinkedIn** remains browser-only and opens directly in your default browser.
+- Platforms in-app: **Jobindex**, **Indeed**, **LinkedIn**, **The Hub**.
+- All four platforms use the same provider-based web search (SerpAPI + Brave fallback), scoped to each platform's domain.
 - Search result cards support:
   - **Add as Interesting** (one-click save with status `Interesting`)
   - auto-tags from source platform/location
