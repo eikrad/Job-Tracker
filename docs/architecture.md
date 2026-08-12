@@ -53,7 +53,7 @@ src/                    — React + TypeScript UI
   context/              — React context providers (global app state)
   hooks/                — Shared custom hooks (incl. useTheme — Breath light/dark theme)
   i18n/                 — Internationalisation strings
-  lib/                  — Utility functions (incl. theme.ts)
+  lib/                  — Utility functions (incl. theme.ts); lib/jobs/ holds dashboard/table helpers (sortJobs, filterJobs, boardViewPreference, jobTableColumns, hiddenJobStatuses)
   pages/                — Route-level page components: Dashboard, Add Job, Job Detail (`/job/:id`), Job Search
 src-tauri/              — Rust / Tauri backend
   src/                  — Tauri commands, SQLite access, file handling
@@ -195,8 +195,16 @@ The **Dashboard** is the home screen and supports three view modes:
 | View | Description |
 |---|---|
 | Kanban | Drag-and-drop columns by application status |
-| Table | Sortable / filterable list of all jobs |
+| Table | Sortable / filterable list of all jobs, with a **Customize** panel for column visibility and hidden statuses |
 | Calendar | Month grid showing apply-by, interview, and start dates |
+
+The view shown on load is set by **Settings → Default board view** (`kanban` / `table` / `calendar`, default `table`), persisted in local storage via `src/lib/jobs/boardViewPreference.ts`.
+
+The header's search box (`en.app.jobSearchLabel`) filters the dashboard by company or title across all three views — implemented in `src/lib/jobs/filterJobs.ts` (`filterJobsBySearch`) and wired through `useJobTrackerState.ts` / `DashboardPage.tsx`. Its query text persists in local storage (`src/lib/jobs/jobSearchQuery.ts`).
+
+The Table view's **Customize** toggle (`src/features/jobs/JobTable.tsx`) opens a panel with two checkbox groups:
+- **Columns** — show/hide any of the nine table columns (at least one must stay visible); selection persists via `src/lib/jobs/jobTableColumns.ts`.
+- **Hide statuses** — exclude one or more pipeline statuses from the table; persists via `src/lib/jobs/hiddenJobStatuses.ts` and applies only to the Table view.
 
 Alongside the three views, a **Reminder Center** panel (`src/features/reminders/ReminderCenter.tsx`) lists jobs with a deadline in the next 14 days (or overdue), excluding jobs already in a `Done` status.
 

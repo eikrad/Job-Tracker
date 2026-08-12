@@ -9,7 +9,7 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 
 ## Features
 
-- **Kanban / Table / Calendar dashboard** — view all applications in the format that works for you
+- **Kanban / Table / Calendar dashboard** — view all applications in the format that works for you; pick a default view in Settings, search the dashboard by company/title, and use the Table's **Customize** panel to show/hide columns and filter out statuses
 - **Job detail page** — a dedicated `/job/:id` page per application with a full edit form (contact/workplace details, salary, etc.), document upload/management, and a status-change history timeline
 - **Configurable status workflow** — the default board pipeline is `Interesting → Plan to Apply → Application Sent → Feedback → Done`; column names are editable in Settings
 - **Quick capture** — paste a job URL into the header's Capture drawer to auto-fetch and AI-extract it into a draft; unresolved captures land in a Capture Inbox for later triage. A copyable handoff link (`?capture_url=…`) lets you queue a URL from outside the app (e.g. a bookmark); the app picks it up as a browser capture the next time it loads
