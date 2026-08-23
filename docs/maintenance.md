@@ -2,6 +2,80 @@
 
 ---
 
+## 2026-08-19
+
+### Checks performed
+- `git status` — working tree clean; `claude/upbeat-cray-jdicez` freshly reset, already at `origin/main` tip — no rebase needed.
+- Confirmed zero open PRs of any kind and zero open `security-audit`-labelled issues before starting (per task brief, not re-derived).
+- Full local check suite, mirroring all three CI workflows exactly: `npm ci`, `npm run lint`, `npm run test`, `npm run build`; `pip install -r requirements-dev.txt` into a clean Python 3.12 venv + `ruff check tests` / `black --check tests` / `isort --check-only tests` / `pytest -q`; installed Tauri's Linux system deps (`libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `patchelf`) fresh, then `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` and `cargo test --manifest-path src-tauri/Cargo.toml`.
+- Security audits: `npm audit`; `uv export --format requirements-txt --no-hashes` + `pip-audit`; `cargo audit` (installed `cargo-audit` fresh via `cargo install cargo-audit --locked`).
+- Outdated-package survey: `npm outdated`, `uv pip list --outdated`, `cargo update --dry-run --manifest-path src-tauri/Cargo.toml`. Checked `src-tauri/tauri.conf.json` bundle config and all `.github/workflows/*.yml` action pins for anything outside Dependabot's four configured ecosystems (npm root, cargo `/src-tauri`, pip root, github-actions) — found nothing: no version pins live in `tauri.conf.json`, and every pinned Action (`actions/checkout@v7`, `actions/setup-node@v7`, `actions/setup-python@v7`, `actions/cache@v6`, `actions/github-script@v9`, `Swatinem/rust-cache@v2`, `astral-sh/setup-uv@v7`) is covered by the `github-actions` ecosystem.
+- Re-ran the full check suite after applying fixes (below).
+
+### Findings
+
+**1. `npm audit` — 1 high-severity finding at baseline, fixed.**
+
+| Package | Severity | Issue | Fix | Applied? |
+|---|---|---|---|---|
+| `nanoid` (transitive, via `vite`→`postcss`) | high | Custom generators can loop indefinitely when size is zero (GHSA-2v37-7h3g-55p8) | `npm audit fix` | Yes — `3.3.17` → `3.3.18` |
+
+**2. `cargo audit` — 0 vulnerabilities.** Exit 0, "20 allowed warnings found" — all 20 are the same recurring informational advisories as every prior cycle (unmaintained gtk-rs GTK3 bindings — `gdk`/`glib`/etc. — plus unsound advisories on old transitive `anyhow`, `glib`, `rand 0.7.3`), none actionable from this repo's manifests. Registry "yanked" checks against crates.io returned noisy 503s through the sandbox's proxy path (network artifact, not an audit finding) but the advisory-database scan itself completed cleanly.
+
+**3. `pip-audit` — 0 vulnerabilities.** Clean run against the `uv export`-ed requirements.
+
+**4. `uv.lock` had drifted from `pyproject.toml` — fixed.** `pyproject.toml` already required `ruff>=0.16.3` (landed via merged Dependabot PR #103), but the committed `uv.lock` still resolved the stale `ruff==0.16.1`. Fixed by `uv export`, which re-resolved and rewrote the lock entry to `0.16.3`. Lockfile-only; no manifest edit (CI's `python.yml` uses `pip install -r requirements-dev.txt` and never reads `uv.lock`, so this had no effect on CI, but keeps `uv sync`-based local dev in sync).
+
+**5. `npm outdated` — three minor/patch bumps, all within Dependabot's npm ecosystem scope, left untouched.** `dayjs` `1.11.21`→`1.11.23` (patch), `lucide-react` `1.30.0`→`1.33.0` (minor), `vitest` `4.1.10`→`4.1.11` (patch) — zero open Dependabot PRs currently, so these just haven't been picked up on its weekly schedule yet. Not duplicated here per policy (Dependabot already tracks the npm root ecosystem).
+
+**6. `typescript` major still outstanding — unchanged, recurring flag since 2026-08-05.** `typescript` `~6.0.0` (resolves `6.0.3`) has `7.0.2` available. Not covered by any open Dependabot PR. Not applied — breaking type-system changes, needs `tsc -b` verification end-to-end after a manual bump.
+
+**7. No outdated items found beyond Dependabot's four ecosystems.** `src-tauri/tauri.conf.json` bundle config carries no dependency version pins (only the app's own `"version": "0.3.0"`, which already matches `package.json`/`Cargo.toml`); all workflow Action pins are within the `github-actions` ecosystem's coverage.
+
+**8. `cargo update --dry-run` surveys ~160 transitive crates with newer semver-compatible versions** (large churn: `zbus`, `zvariant`, ICU/`zerovec` crates, `wit-bindgen`, `winnow`, etc.). None tied to a known vulnerability (see Finding 2) — consistent with prior-cycle policy, no blanket `cargo update` applied; routine transitive freshness is Dependabot's job over time.
+
+### Fixes applied
+- `npm audit fix` — resolved the `nanoid` high-severity transitive vulnerability (`3.3.17`→`3.3.18`).
+- `uv export --format requirements-txt --no-hashes` — regenerated `uv.lock` to catch up with `pyproject.toml`'s already-current `ruff>=0.16.3` floor (resolves `0.16.3`).
+- **No `package.json`, `Cargo.toml`, `pyproject.toml`, or `requirements-dev.txt` edits** — only `package-lock.json` and `uv.lock` changed.
+- **No Rust lockfile changes** — `cargo audit` found 0 vulnerabilities, so no audit-motivated bump was needed.
+
+### Majors flagged for owner decision (not applied)
+
+| Item | In use | Latest | Notes |
+|---|---|---|---|
+| `typescript` (npm) | `~6.0.0` (resolves `6.0.3`) | `7.0.2` | Major, not yet covered by an open Dependabot PR. Recurring flag since 2026-08-05. Investigated 2026-08-23: still blocked, see below. |
+
+**2026-08-23 follow-up investigation.** Test-installed `typescript@7.0.2` (`npm install typescript@7.0.2 --no-save`) to execute the recommended review: `npx tsc -b` compiles cleanly under TS7 with no errors across both project references. However, `npm run lint` hard-fails — `typescript-eslint` (currently pinned `^8.67.0`, the latest stable release) explicitly refuses to run against TS 7.0:
+
+```
+Error: typescript-eslint does not support TS 7.0.
+```
+
+`@typescript-eslint/eslint-plugin`'s peer dependency range is `typescript@">=4.8.4 <6.1.0"` — confirmed unchanged even on the newest published alpha (`8.67.1-alpha.27`) as of this check. Upstream tracking issue: [typescript-eslint/typescript-eslint#10940](https://github.com/typescript-eslint/typescript-eslint/issues/10940). TS7's own migration notes acknowledge this and describe a side-by-side workaround (running `typescript-eslint` against the separate TS6 API package) — see the [TS7 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0) — but that requires restructuring the lint toolchain to depend on two TypeScript versions simultaneously, which is out of scope for a routine dependency bump.
+
+**Verdict: still not applied.** `npm run lint` is a CI-gating check (`frontend.yml`); bumping `typescript` today would break it outright. Re-flag next cycle and re-check whether `typescript-eslint` has shipped TS7 support.
+
+### Open PR backlog
+
+None. Zero open PRs of any kind (manual or Dependabot) confirmed before this cycle started — the healthiest state recorded in this log to date. This cycle's own PR is the only one open as of writing.
+
+### Post-change verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | 0 errors, 1 pre-existing warning (`JobDetailPage.tsx` exhaustive-deps — unchanged from baseline) |
+| `npm run test` | 22 test files, 127 tests passed (baseline and post-change identical) |
+| `npm run build` | `tsc -b && vite build` — succeeds |
+| `npm audit` | 1 high → 0 vulnerabilities |
+| `cargo clippy --all-targets -- -D warnings` | Clean, 0 warnings |
+| `cargo test` (`src-tauri/`) | 80 passed, 0 failed |
+| `cargo audit` | 0 vulnerabilities, 20 informational warnings (unchanged, non-actionable) |
+| `pytest -q` | 3 passed |
+| `ruff check tests` / `black --check tests` / `isort --check-only tests` | All clean |
+
+---
+
 ## 2026-08-12
 
 ### Backlog status — manual weekly-maintenance PR pileup: resolved, holding
