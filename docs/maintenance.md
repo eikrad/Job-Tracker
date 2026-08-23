@@ -44,7 +44,17 @@
 
 | Item | In use | Latest | Notes |
 |---|---|---|---|
-| `typescript` (npm) | `~6.0.0` (resolves `6.0.3`) | `7.0.2` | Major, not yet covered by an open Dependabot PR. Recurring flag since 2026-08-05. Review TS7 migration notes; run `tsc -b` end-to-end after bumping. |
+| `typescript` (npm) | `~6.0.0` (resolves `6.0.3`) | `7.0.2` | Major, not yet covered by an open Dependabot PR. Recurring flag since 2026-08-05. Investigated 2026-08-23: still blocked, see below. |
+
+**2026-08-23 follow-up investigation.** Test-installed `typescript@7.0.2` (`npm install typescript@7.0.2 --no-save`) to execute the recommended review: `npx tsc -b` compiles cleanly under TS7 with no errors across both project references. However, `npm run lint` hard-fails — `typescript-eslint` (currently pinned `^8.67.0`, the latest stable release) explicitly refuses to run against TS 7.0:
+
+```
+Error: typescript-eslint does not support TS 7.0.
+```
+
+`@typescript-eslint/eslint-plugin`'s peer dependency range is `typescript@">=4.8.4 <6.1.0"` — confirmed unchanged even on the newest published alpha (`8.67.1-alpha.27`) as of this check. Upstream tracking issue: [typescript-eslint/typescript-eslint#10940](https://github.com/typescript-eslint/typescript-eslint/issues/10940). TS7's own migration notes acknowledge this and describe a side-by-side workaround (running `typescript-eslint` against the separate TS6 API package) — see the [TS7 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0) — but that requires restructuring the lint toolchain to depend on two TypeScript versions simultaneously, which is out of scope for a routine dependency bump.
+
+**Verdict: still not applied.** `npm run lint` is a CI-gating check (`frontend.yml`); bumping `typescript` today would break it outright. Re-flag next cycle and re-check whether `typescript-eslint` has shipped TS7 support.
 
 ### Open PR backlog
 
