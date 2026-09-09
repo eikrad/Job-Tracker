@@ -16,12 +16,12 @@
     "tauri:build": "tauri build && node scripts/post-tauri-build.mjs",
     "icon:generate": "magick assets/app-icon-source.png -resize 1024x1024^ -gravity center -extent 1024x1024 assets/app-icon-1024.png && tauri icon assets/app-icon-1024.png -o src-tauri/icons",
     "desktop:shortcut": "./scripts/install-desktop-shortcut.sh",
-    "py:format": "uv run isort tests && uv run black tests",
-    "py:lint": "uv run ruff check tests && uv run black --check tests && uv run isort --check-only tests",
+    "py:format": "uv run isort tests python && uv run black tests python",
+    "py:lint": "uv run ruff check tests python && uv run black --check tests python && uv run isort --check-only tests python",
     "py:test": "uv run pytest -q",
     "verify": "npm run verify:frontend && npm run verify:rust && npm run verify:python",
     "verify:frontend": "npm run lint && npm run test && npm run build",
-    "verify:rust": "pkg-config --exists gdk-3.0 2>/dev/null && (cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml) || echo 'Skipping Rust checks (GTK system libs not found – run in an environment with Tauri prerequisites installed)'",
+    "verify:rust": "pkg-config --exists gdk-3.0 2>/dev/null && (cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml) || echo 'Skipping Rust checks (GTK system libs not found \u2013 run in an environment with Tauri prerequisites installed)'",
     "verify:python": "uv sync --quiet && npm run py:lint && npm run py:test",
     "prepare": "husky"
   },
@@ -29,7 +29,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@tauri-apps/api": "^2.11.1",
     "dayjs": "^1.11.21",
-    "lucide-react": "^1.30.0",
+    "lucide-react": "^1.33.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.1"
@@ -42,7 +42,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
-    "eslint": "^10.8.0",
+    "eslint": "^10.9.0",
     "eslint-plugin-react-hooks": "^7.1.0",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.8.0",
@@ -51,6 +51,6 @@
     "typescript": "~6.0.0",
     "typescript-eslint": "^8.67.0",
     "vite": "^8.2.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

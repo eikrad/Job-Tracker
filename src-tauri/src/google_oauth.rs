@@ -217,6 +217,11 @@ pub fn resolve_calendar_access_token(
             return Ok(t.to_string());
         }
     }
+    if let Ok(Some(stored)) = crate::secrets::get_secret("google_access_token") {
+        if !stored.trim().is_empty() {
+            return Ok(stored);
+        }
+    }
     let client_id = read_client_id(app)?;
     let entry = keyring_entry()?;
     let refresh = entry

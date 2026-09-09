@@ -9,7 +9,6 @@ import {
   type JobSearchResult,
   type JobSearchFallbackHint,
 } from "../../lib/tauriApi";
-import { useJobTracker } from "../../context/JobTrackerContext";
 
 export type { KeywordStat, JobSearchResult };
 
@@ -54,7 +53,7 @@ function mapPlatformRecord<T>(
 }
 
 export function useJobSearch() {
-  const { serpApiKey, braveSearchApiKey } = useJobTracker();
+  // Search API keys live in the OS keyring; Rust reads them (no secrets in React state).
   // ── Keyword state ──────────────────────────────────────────────────────────
   const [allKeywords, setAllKeywords] = useState<KeywordStat[]>([]);
   const [selectedKeywords, setSelectedKeywords] = useState<Set<string>>(new Set());
@@ -192,8 +191,6 @@ export function useJobSearch() {
         location: location || null,
         region: indeedRegion,
         platforms: selectedPlatforms,
-        serpApiKey: serpApiKey || null,
-        braveSearchApiKey: braveSearchApiKey || null,
       });
 
       setGlobalTop5(bundle.global_top5);
@@ -219,14 +216,7 @@ export function useJobSearch() {
         return next;
       });
     }
-  }, [
-    selectedKeywords,
-    activePlatforms,
-    location,
-    indeedRegion,
-    serpApiKey,
-    braveSearchApiKey,
-  ]);
+  }, [selectedKeywords, activePlatforms, location, indeedRegion]);
 
   return {
     // Keywords

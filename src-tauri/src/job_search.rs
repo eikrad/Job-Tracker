@@ -1,11 +1,12 @@
 use chrono::{DateTime, NaiveDate, Utc};
-use reqwest::blocking::Client;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use tauri::Manager;
 use url::Url;
+
+use crate::net::{api_client, assert_api_host, fetch_untrusted};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct KeywordStat {
@@ -313,24 +314,11 @@ fn fetch_job_page_text(url: &str) -> Result<String, String> {
         return Ok(String::new());
     }
 
-    let client = Client::builder()
-        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let response = client
-        .get(url)
-        .send()
-        .map_err(|e| format!("Failed to fetch job page: {e}"))?;
-
-    if !response.status().is_success() {
-        return Err(format!("Failed to fetch job page: HTTP {}", response.status()));
+    let fetched = fetch_untrusted(url)?;
+    if !(200..300).contains(&fetched.status) {
+        return Err(format!("Failed to fetch job page: HTTP {}", fetched.status));
     }
-
-    let body = response
-        .text()
-        .map_err(|e| format!("Failed to read job page: {e}"))?;
-    Ok(extract_job_page_text_from_html(&body))
+    Ok(extract_job_page_text_from_html(&fetched.body))
 }
 
 fn parse_age_days(value: &str) -> Option<f64> {
@@ -525,18 +513,16 @@ fn fetch_platform_results(
         return Err(format!("Unknown platform: {platform}"));
     }
     let query = keywords.join(" ");
-    let client = Client::builder()
-    .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
-    .timeout(std::time::Duration::from_secs(15))
-    .build()
-    .map_err(|e| e.to_string())?;
+    let client = api_client()?;
     let provider_query = build_provider_query(platform, &query, location);
     let gl = region.to_lowercase();
     let brave_country = gl.to_uppercase();
 
     if !serp_api_key.trim().is_empty() {
+        let serp_url = "https://serpapi.com/search.json";
+        assert_api_host(serp_url)?;
         let response = client
-            .get("https://serpapi.com/search.json")
+            .get(serp_url)
             .query(&[
                 ("engine", "google"),
                 ("q", provider_query.as_str()),
@@ -559,8 +545,10 @@ fn fetch_platform_results(
     }
 
     if !brave_search_api_key.trim().is_empty() {
+        let brave_url = "https://api.search.brave.com/res/v1/web/search";
+        assert_api_host(brave_url)?;
         let response = client
-            .get("https://api.search.brave.com/res/v1/web/search")
+            .get(brave_url)
             .header("X-Subscription-Token", brave_search_api_key.trim())
             .query(&[
                 ("q", provider_query.as_str()),
@@ -633,13 +621,11 @@ pub fn fetch_job_search_results(
     keywords: Vec<String>,
     location: Option<String>,
     region: Option<String>,
-    serp_api_key: Option<String>,
-    brave_search_api_key: Option<String>,
 ) -> Result<Vec<JobSearchResult>, String> {
     let loc = location.unwrap_or_default();
     let reg = region.unwrap_or_else(|| "dk".to_string());
-    let serp_key = serp_api_key.unwrap_or_default();
-    let brave_key = brave_search_api_key.unwrap_or_default();
+    let serp_key = crate::secrets::get_secret_or_default("serpapi");
+    let brave_key = crate::secrets::get_secret_or_default("brave");
     if serp_key.trim().is_empty() && brave_key.trim().is_empty() {
         return Err(
             "Missing search API keys. Add SerpAPI and/or Brave Search API key in Settings."
@@ -656,8 +642,6 @@ pub fn fetch_job_search_bundle(
     location: Option<String>,
     region: Option<String>,
     platforms: Vec<String>,
-    serp_api_key: Option<String>,
-    brave_search_api_key: Option<String>,
 ) -> Result<JobSearchResultsBundle, String> {
     if keywords.is_empty() {
         return Ok(JobSearchResultsBundle {
@@ -680,8 +664,8 @@ pub fn fetch_job_search_bundle(
             .filter(|p| is_supported_platform(p))
             .collect()
     };
-    let serp_key = serp_api_key.unwrap_or_default();
-    let brave_key = brave_search_api_key.unwrap_or_default();
+    let serp_key = crate::secrets::get_secret_or_default("serpapi");
+    let brave_key = crate::secrets::get_secret_or_default("brave");
     if serp_key.trim().is_empty() && brave_key.trim().is_empty() {
         return Err(
             "Missing search API keys. Add SerpAPI and/or Brave Search API key in Settings."

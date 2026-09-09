@@ -108,7 +108,17 @@ fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 pub(crate) fn connection(app: &tauri::AppHandle) -> Result<Connection, String> {
     let path = db_path(app)?;
-    Connection::open(path).map_err(|e| format!("DB open failed: {e}"))
+    let conn = Connection::open(path).map_err(|e| format!("DB open failed: {e}"))?;
+    // WAL is a persistent DB property, and setting it takes a write lock — do it once
+    // per process rather than on every command's connection.
+    static WAL_SET: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    if WAL_SET.get().is_none() {
+        crate::migrations::ensure_wal(&conn)?;
+        let _ = WAL_SET.set(());
+    }
+    // These are per-connection and must be applied every time.
+    crate::migrations::apply_connection_pragmas(&conn)?;
+    Ok(conn)
 }
 
 const SQL_INSERT_JOB: &str = r#"
@@ -157,144 +167,10 @@ fn insert_new_job(
     )
 }
 
-/// One-time migration: move existing pdf_path rows into job_documents as doc_type = 'other'.
-fn migrate_pdf_path_to_documents(conn: &Connection) -> Result<(), String> {
-    let rows: Vec<(i64, String)> = {
-        let mut stmt = conn
-            .prepare("SELECT id, pdf_path FROM jobs WHERE pdf_path IS NOT NULL")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-            })
-            .map_err(|e| e.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?;
-        rows
-    };
-    let now = Utc::now().to_rfc3339();
-    for (job_id, file_path) in rows {
-        let already: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM job_documents WHERE job_id = ?1 AND file_path = ?2",
-                params![job_id, &file_path],
-                |r| r.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-        if already == 0 {
-            let original_name = std::path::Path::new(&file_path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| file_path.clone());
-            conn
-        .execute(
-          "INSERT INTO job_documents (job_id, doc_type, original_name, file_path, created_at) VALUES (?1, 'other', ?2, ?3, ?4)",
-          params![job_id, original_name, file_path, now],
-        )
-        .map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
-}
-
-fn migrate_jobs_columns(conn: &Connection) -> Result<(), String> {
-    let mut stmt = conn
-        .prepare("PRAGMA table_info(jobs)")
-        .map_err(|e| e.to_string())?;
-    let cols: Vec<String> = stmt
-        .query_map([], |row| row.get::<_, String>(1))
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
-    let new_cols: &[(&str, &str)] = &[
-        ("interview_date", "TEXT"),
-        ("start_date", "TEXT"),
-        ("contact_name", "TEXT"),
-        ("contact_email", "TEXT"),
-        ("contact_phone", "TEXT"),
-        ("workplace_street", "TEXT"),
-        ("workplace_city", "TEXT"),
-        ("workplace_postal_code", "TEXT"),
-        ("work_mode", "TEXT"),
-        ("salary_range", "TEXT"),
-        ("contract_type", "TEXT"),
-        ("priority", "INTEGER"),
-        ("reference_number", "TEXT"),
-        ("source", "TEXT"),
-        ("listing_status", "TEXT"),
-        ("listing_checked_at", "TEXT"),
-    ];
-    for (col, col_type) in new_cols {
-        if !cols.iter().any(|c| c == col) {
-            // col and col_type are compile-time constants; no user input involved
-            conn.execute(&format!("ALTER TABLE jobs ADD COLUMN {col} {col_type}"), [])
-                .map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
-}
-
 #[tauri::command]
 pub fn init_db(app: tauri::AppHandle) -> Result<(), String> {
-    let conn = connection(&app)?;
-    conn.execute_batch(
-        r#"
-      CREATE TABLE IF NOT EXISTS jobs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        company TEXT NOT NULL,
-        title TEXT,
-        url TEXT,
-        raw_text TEXT,
-        status TEXT NOT NULL,
-        deadline TEXT,
-        interview_date TEXT,
-        start_date TEXT,
-        tags TEXT,
-        detected_language TEXT,
-        notes TEXT,
-        pdf_path TEXT,
-        contact_name TEXT,
-        contact_email TEXT,
-        contact_phone TEXT,
-        workplace_street TEXT,
-        workplace_city TEXT,
-        workplace_postal_code TEXT,
-        work_mode TEXT,
-        salary_range TEXT,
-        contract_type TEXT,
-        priority INTEGER,
-        reference_number TEXT,
-        source TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS status_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        job_id INTEGER NOT NULL,
-        from_status TEXT,
-        to_status TEXT NOT NULL,
-        changed_at TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS job_documents (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        job_id INTEGER NOT NULL,
-        doc_type TEXT NOT NULL,
-        original_name TEXT NOT NULL,
-        file_path TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_jobs_updated_at ON jobs(updated_at);
-      CREATE INDEX IF NOT EXISTS idx_status_history_job_changed
-        ON status_history(job_id, changed_at);
-      CREATE INDEX IF NOT EXISTS idx_job_documents_job_created
-        ON job_documents(job_id, created_at);
-      "#,
-    )
-    .map_err(|e| format!("DB init failed: {e}"))?;
-    migrate_jobs_columns(&conn)?;
-    migrate_pdf_path_to_documents(&conn)?;
-    Ok(())
+    let mut conn = connection(&app)?;
+    crate::migrations::run(&mut conn)
 }
 
 #[tauri::command]
@@ -675,9 +551,10 @@ pub fn backup_to_folder(dest: String, app: tauri::AppHandle) -> Result<(), Strin
 
     std::fs::create_dir_all(&dest_storage).map_err(|e| e.to_string())?;
 
-    let db_src = app_data.join("data").join("app.db");
     let db_dst = dest_dir.join("app.db");
-    std::fs::copy(&db_src, &db_dst).map_err(|e| e.to_string())?;
+    // WAL-safe: single consistent file (no -wal/-shm sidecars). See migrations::vacuum_into.
+    let conn = connection(&app)?;
+    crate::migrations::vacuum_into(&conn, &db_dst)?;
 
     let pdf_src = app_data.join("storage").join("applications");
     if pdf_src.exists() {

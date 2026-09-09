@@ -68,6 +68,52 @@ export async function openDocument(path: string): Promise<void> {
   return invoke("open_document", { path });
 }
 
+export type LlmKeyStatus = { configured: boolean; backend: string };
+
+export async function llmKeySet(provider: string, key: string): Promise<void> {
+  return invoke("llm_key_set", { provider, key });
+}
+
+export async function llmKeyStatus(provider: string): Promise<LlmKeyStatus> {
+  return invoke<LlmKeyStatus>("llm_key_status", { provider });
+}
+
+export async function llmKeyClear(provider: string): Promise<void> {
+  return invoke("llm_key_clear", { provider });
+}
+
+export type LlmProviderOverride = {
+  baseUrl?: string | null;
+  modelId?: string | null;
+};
+
+export async function llmProviderOverrideGet(provider: string): Promise<LlmProviderOverride> {
+  return invoke<LlmProviderOverride>("llm_provider_override_get", { provider });
+}
+
+export async function llmProviderOverrideSet(
+  provider: string,
+  baseUrl: string | null,
+  modelId: string | null,
+): Promise<void> {
+  return invoke("llm_provider_override_set", {
+    provider,
+    baseUrl,
+    modelId,
+  });
+}
+
+export type LlmTestConnectionResult = {
+  ok: boolean;
+  modelId?: string;
+  detail?: string;
+  error?: string;
+};
+
+export async function llmTestConnection(provider: string): Promise<LlmTestConnectionResult> {
+  return invoke<LlmTestConnectionResult>("llm_test_connection", { provider });
+}
+
 export type GoogleCalendarDateKind = "apply" | "interview" | "start";
 
 export async function googleOauthGetClientId(): Promise<string> {
@@ -135,16 +181,12 @@ export async function fetchJobSearchResults(params: {
   keywords: string[];
   location?: string | null;
   region?: string | null;
-  serpApiKey?: string | null;
-  braveSearchApiKey?: string | null;
 }): Promise<JobSearchResult[]> {
   return invoke<JobSearchResult[]>("fetch_job_search_results", {
     platform: params.platform,
     keywords: params.keywords,
     location: params.location ?? null,
     region: params.region ?? null,
-    serpApiKey: params.serpApiKey ?? null,
-    braveSearchApiKey: params.braveSearchApiKey ?? null,
   });
 }
 
@@ -153,16 +195,12 @@ export async function fetchJobSearchResultsBundle(params: {
   location?: string | null;
   region?: string | null;
   platforms: string[];
-  serpApiKey?: string | null;
-  braveSearchApiKey?: string | null;
 }): Promise<JobSearchResultsBundle> {
   return invoke<JobSearchResultsBundle>("fetch_job_search_bundle", {
     keywords: params.keywords,
     location: params.location ?? null,
     region: params.region ?? null,
     platforms: params.platforms,
-    serpApiKey: params.serpApiKey ?? null,
-    braveSearchApiKey: params.braveSearchApiKey ?? null,
   });
 }
 
@@ -191,9 +229,8 @@ export async function fetchJobSearchResultPageText(url: string): Promise<string>
 export async function checkListingStatus(
   jobId: number,
   url: string,
-  serpApiKey?: string | null,
 ): Promise<"active" | "closed" | "archived" | "unreachable"> {
-  return invoke("check_listing_status", { jobId, url, serpApiKey: serpApiKey ?? null });
+  return invoke("check_listing_status", { jobId, url });
 }
 
 export async function googleCalendarCreateEvent(params: {

@@ -1,4 +1,4 @@
-# Python dev tooling (tests/). Install: uv sync
+# Python dev tooling (tests/ + future python/ sidecar). Install: uv sync
 
 [project]
 name = "job-tracker-dev"
@@ -9,7 +9,7 @@ requires-python = ">=3.12"
 dev = [
   "pytest>=9.1.1,<10",
   "black>=26.5.1",
-  "isort>=8.0.1",
+  "isort>=9.0.1",
   "ruff>=0.16.3",
 ]
 
@@ -23,13 +23,13 @@ extend-exclude = '/(\.eggs|\.git|node_modules|dist|src-tauri/target)/'
 [tool.isort]
 profile = "black"
 line_length = 88
-src_paths = ["tests"]
+src_paths = ["tests", "python"]
 skip_gitignore = true
 
 [tool.ruff]
 target-version = "py312"
 line-length = 88
-src = ["tests"]
+src = ["tests", "python"]
 extend-exclude = ["node_modules", "src-tauri/target", "dist"]
 
 [tool.ruff.lint]
