@@ -4,11 +4,15 @@ mod google_oauth;
 mod job_search;
 mod listing_check;
 mod migrations;
+mod secrets;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            if let Err(e) = secrets::init_app_store(app.handle()) {
+                log::warn!("Secret store init failed: {}", secrets::redact(&e));
+            }
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -33,6 +37,9 @@ pub fn run() {
             db::import_jobs,
             db::backup_to_folder,
             db::open_document,
+            secrets::llm_key_set,
+            secrets::llm_key_status,
+            secrets::llm_key_clear,
             calendar::google_calendar_create_event,
             google_oauth::google_oauth_get_client_id,
             google_oauth::google_oauth_set_client_id,
