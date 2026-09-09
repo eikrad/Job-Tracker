@@ -3,6 +3,7 @@ mod db;
 mod google_oauth;
 mod job_search;
 mod listing_check;
+mod migrations;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
