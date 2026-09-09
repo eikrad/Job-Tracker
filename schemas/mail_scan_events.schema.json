@@ -19,7 +19,8 @@
         "size": { "type": "integer", "minimum": 0 },
         "mtime_ns": { "type": "integer", "minimum": 0 },
         "offset": { "type": "integer", "minimum": 0 },
-        "last_message_id": { "type": ["string", "null"] }
+        "last_message_id": { "type": ["string", "null"] },
+        "sentinel_hash": { "type": ["string", "null"] }
       }
     },
     "fingerprint": {

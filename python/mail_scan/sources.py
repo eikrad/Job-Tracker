@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import email
+import hashlib
 import mailbox
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ class SourceCursor:
     mtime_ns: int
     offset: int
     last_message_id: str | None
+    sentinel_hash: str | None = None
 
     def as_dict(self) -> dict[str, int | str | None]:
         return {
@@ -35,18 +37,26 @@ class SourceCursor:
             "mtime_ns": self.mtime_ns,
             "offset": self.offset,
             "last_message_id": self.last_message_id,
+            "sentinel_hash": self.sentinel_hash,
         }
 
 
-def _file_cursor(path: Path, last_message_id: str | None, offset: int) -> SourceCursor:
+@dataclass(frozen=True)
+class OpenResult:
+    messages: Iterator[MailMessage]
+    finalize: Callable[[], SourceCursor]
+    cursor_reset: bool
+    reset_reason: str | None
+
+
+def _file_meta(path: Path) -> tuple[int, int]:
     st = path.stat()
     mtime_ns = getattr(st, "st_mtime_ns", int(st.st_mtime * 1_000_000_000))
-    return SourceCursor(
-        size=st.st_size,
-        mtime_ns=mtime_ns,
-        offset=offset,
-        last_message_id=last_message_id,
-    )
+    return st.st_size, mtime_ns
+
+
+def _from_line_hash(from_line: bytes) -> str:
+    return hashlib.sha256(from_line).hexdigest()
 
 
 def _message_date(msg: Message) -> str:
@@ -99,24 +109,88 @@ def _to_mail_message(msg: Message, raw_size: int, max_body_chars: int) -> MailMe
     )
 
 
-def _iter_mbox_bytes(path: Path) -> Iterator[tuple[bytes, int]]:
-    """Yield (raw_message_bytes, end_offset) without mutating the file."""
+def _parse_stored_cursor(raw: dict | None) -> SourceCursor | None:
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return SourceCursor(
+            size=int(raw["size"]),
+            mtime_ns=int(raw["mtime_ns"]),
+            offset=int(raw["offset"]),
+            last_message_id=raw.get("last_message_id"),
+            sentinel_hash=raw.get("sentinel_hash"),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _last_from_line_before(data: bytes) -> bytes | None:
+    idx = data.rfind(b"\nFrom ")
+    if idx != -1:
+        line = data[idx + 1 :]
+    elif data.startswith(b"From "):
+        line = data
+    else:
+        return None
+    nl = line.find(b"\n")
+    return line[: nl + 1] if nl != -1 else line
+
+
+def _iter_mbox_bytes(
+    path: Path, *, start_offset: int = 0
+) -> Iterator[tuple[bytes, int, bytes]]:
+    """Yield (raw_message, end_offset, from_line).
+
+    A message is emitted when closed by the next ``From `` line, or at EOF only if the
+    trailing buffer ends with ``\\n`` (complete last line). A mid-write truncated
+    message without a final newline is skipped and its bytes are not consumed.
+    """
     with path.open("rb") as handle:
+        if start_offset:
+            handle.seek(start_offset)
         buf = bytearray()
-        start_offset = 0
+        start = start_offset
+        from_line = b""
         while True:
             line = handle.readline()
             if not line:
-                break
-            if line.startswith(b"From ") and buf:
-                end_offset = start_offset + len(buf)
-                yield bytes(buf), end_offset
+                if buf and bytes(buf).endswith(b"\n"):
+                    yield bytes(buf), start + len(buf), from_line
+                return
+            if line.startswith(b"From "):
+                if buf:
+                    end_offset = start + len(buf)
+                    yield bytes(buf), end_offset, from_line
+                    start = end_offset
                 buf.clear()
-                start_offset = end_offset
-            buf.extend(line)
-        if buf:
-            end_offset = start_offset + len(buf)
-            yield bytes(buf), end_offset
+                from_line = line
+                buf.extend(line)
+            elif buf:
+                buf.extend(line)
+            # else: skip preamble before the first From (e.g. after resume)
+
+
+def _resolve_resume(
+    path: Path, stored: SourceCursor | None
+) -> tuple[int, bool, str | None]:
+    if stored is None:
+        return 0, False, None
+    size, mtime_ns = _file_meta(path)
+    if size < stored.size or mtime_ns < stored.mtime_ns:
+        return 0, True, "size_or_mtime_regression"
+    if stored.offset > size:
+        return 0, True, "offset_past_eof"
+    if stored.offset <= 0:
+        return 0, False, None
+    if stored.sentinel_hash:
+        window = min(stored.offset, 16384)
+        with path.open("rb") as handle:
+            handle.seek(stored.offset - window)
+            chunk = handle.read(window)
+        last_from = _last_from_line_before(chunk)
+        if last_from is None or _from_line_hash(last_from) != stored.sentinel_hash:
+            return 0, True, "sentinel_mismatch"
+    return stored.offset, False, None
 
 
 def iter_mbox(
@@ -125,24 +199,28 @@ def iter_mbox(
     max_messages: int,
     max_message_bytes: int,
     max_body_chars: int,
-) -> tuple[Iterator[MailMessage], Callable[[], SourceCursor]]:
-    """Yield messages from an mbox; return (iterator, finalize_cursor_fn)."""
-
+    stored_cursor: SourceCursor | None = None,
+) -> OpenResult:
     if not path.is_file():
         raise FileNotFoundError(f"mbox not found: {path}")
 
+    start_offset, cursor_reset, reset_reason = _resolve_resume(path, stored_cursor)
     last_id: list[str | None] = [None]
-    last_offset: list[int] = [0]
+    last_offset: list[int] = [start_offset]
+    last_sentinel: list[str | None] = [None]
 
     def generator() -> Iterator[MailMessage]:
         count = 0
-        for raw, end_offset in _iter_mbox_bytes(path):
+        for raw, end_offset, from_line in _iter_mbox_bytes(
+            path, start_offset=start_offset
+        ):
             if count >= max_messages:
                 break
             if len(raw) > max_message_bytes:
                 last_offset[0] = end_offset
+                if from_line:
+                    last_sentinel[0] = _from_line_hash(from_line)
                 continue
-            # Drop the leading "From " separator line for email parsing.
             body = raw
             nl = raw.find(b"\n")
             if nl != -1 and raw.startswith(b"From "):
@@ -151,13 +229,27 @@ def iter_mbox(
             mail = _to_mail_message(msg, len(raw), max_body_chars)
             last_id[0] = mail.message_id or last_id[0]
             last_offset[0] = end_offset
+            if from_line:
+                last_sentinel[0] = _from_line_hash(from_line)
             count += 1
             yield mail
 
     def finalize() -> SourceCursor:
-        return _file_cursor(path, last_id[0], last_offset[0] or path.stat().st_size)
+        size_now, mtime_now = _file_meta(path)
+        return SourceCursor(
+            size=size_now,
+            mtime_ns=mtime_now,
+            offset=last_offset[0],
+            last_message_id=last_id[0],
+            sentinel_hash=last_sentinel[0],
+        )
 
-    return generator(), finalize
+    return OpenResult(
+        messages=generator(),
+        finalize=finalize,
+        cursor_reset=cursor_reset,
+        reset_reason=reset_reason,
+    )
 
 
 def iter_maildir(
@@ -166,17 +258,18 @@ def iter_maildir(
     max_messages: int,
     max_message_bytes: int,
     max_body_chars: int,
-) -> tuple[Iterator[MailMessage], Callable[[], SourceCursor]]:
+    stored_cursor: SourceCursor | None = None,
+) -> OpenResult:
     if not path.is_dir():
         raise FileNotFoundError(f"maildir not found: {path}")
 
+    _ = stored_cursor
     box = mailbox.Maildir(path, create=False)
     last_id: list[str | None] = [None]
 
     def generator() -> Iterator[MailMessage]:
         count = 0
         try:
-            # Sorted keys keep scans deterministic.
             for key in sorted(box.keys()):
                 if count >= max_messages:
                     break
@@ -206,9 +299,15 @@ def iter_maildir(
             mtime_ns=mtime_ns,
             offset=total,
             last_message_id=last_id[0],
+            sentinel_hash=None,
         )
 
-    return generator(), finalize
+    return OpenResult(
+        messages=generator(),
+        finalize=finalize,
+        cursor_reset=False,
+        reset_reason=None,
+    )
 
 
 def open_source(
@@ -218,13 +317,16 @@ def open_source(
     max_messages: int,
     max_message_bytes: int,
     max_body_chars: int,
-) -> tuple[Iterator[MailMessage], Callable[[], SourceCursor]]:
+    stored_cursor: dict | None = None,
+) -> OpenResult:
+    cursor = _parse_stored_cursor(stored_cursor)
     if kind == "mbox":
         return iter_mbox(
             path,
             max_messages=max_messages,
             max_message_bytes=max_message_bytes,
             max_body_chars=max_body_chars,
+            stored_cursor=cursor,
         )
     if kind == "maildir":
         return iter_maildir(
@@ -232,5 +334,6 @@ def open_source(
             max_messages=max_messages,
             max_message_bytes=max_message_bytes,
             max_body_chars=max_body_chars,
+            stored_cursor=cursor,
         )
     raise ValueError(f"unknown source kind: {kind}")

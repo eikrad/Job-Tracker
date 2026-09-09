@@ -82,13 +82,27 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
             raise ValueError("source requires id, kind, and path")
 
         path = Path(path_raw)
-        messages, finalize = open_source(
+        opened = open_source(
             kind,
             path,
             max_messages=int(limits["max_messages_per_source"]),
             max_message_bytes=int(limits["max_message_bytes"]),
             max_body_chars=int(limits["max_body_chars"]),
+            stored_cursor=source.get("cursor"),
         )
+        messages = opened.messages
+        finalize = opened.finalize
+
+        if opened.cursor_reset:
+            emit_event(
+                emit,
+                {
+                    "t": "warning",
+                    "code": "W_CURSOR_RESET",
+                    "source": source_id,
+                    "detail": opened.reset_reason or "cursor reset",
+                },
+            )
 
         # estimated_messages is best-effort; 0 is fine for fixtures.
         emit_event(
@@ -172,6 +186,7 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
                 mtime_ns=cursor.mtime_ns,
                 offset=cursor.offset,
                 last_message_id=last_message_id,
+                sentinel_hash=cursor.sentinel_hash,
             )
 
         emit_event(

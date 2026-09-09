@@ -2,6 +2,7 @@
 //!
 //! Behind `mailScanEnabled` (default off). Scoring/enrichment are stubbed until PR C.
 
+pub mod cluster;
 pub mod fingerprint;
 pub mod persist;
 pub mod protocol;
@@ -18,7 +19,10 @@ use tauri::{AppHandle, Emitter, State};
 use crate::db;
 use crate::secrets::redact;
 
-use self::persist::{finish_run, persist_listing, start_run, update_run_stats, RunStats};
+use self::persist::{
+    finish_run, persist_listing, start_run, update_run_stats, upsert_source_cursor, PersistOutcome,
+    RunStats,
+};
 use self::protocol::{read_event_line, Event, ProtocolError, MAX_LINE_BYTES};
 use self::scoring::StubScorer;
 use self::spawn::{spawn_scan, SpawnedScan};
@@ -227,8 +231,11 @@ fn drive_scan(
             }
             Ok(Some(Event::Listing(listing))) => {
                 match persist_listing(&mut conn, run_id, listing.as_ref(), &scorer) {
-                    Ok(()) => {
+                    Ok(PersistOutcome::Committed) => {
                         stats.listings_committed += 1;
+                    }
+                    Ok(PersistOutcome::SuppressedByDismissal) => {
+                        stats.suppressed_by_dismissal += 1;
                     }
                     Err(e) => {
                         status = "failed".into();
@@ -238,9 +245,21 @@ fn drive_scan(
                     }
                 }
             }
-            Ok(Some(Event::SourceFinished(_)))
-            | Ok(Some(Event::SourceStarted(_)))
-            | Ok(Some(Event::Warning(_))) => {}
+            Ok(Some(Event::SourceFinished(ev))) => {
+                let _ = upsert_source_cursor(
+                    &mut conn,
+                    &ev.source,
+                    "",
+                    "mbox",
+                    ev.cursor.size as i64,
+                    ev.cursor.mtime_ns as i64,
+                    ev.cursor.offset as i64,
+                    ev.cursor.last_message_id.as_deref(),
+                    ev.cursor.sentinel_hash.as_deref(),
+                );
+                stats.messages_parsed = stats.messages_parsed.saturating_add(ev.messages_read);
+            }
+            Ok(Some(Event::SourceStarted(_))) | Ok(Some(Event::Warning(_))) => {}
             Ok(Some(Event::Finished(ev))) => {
                 stats.messages_seen = ev.messages_total;
                 if ev.cancelled.unwrap_or(false) {
@@ -357,8 +376,14 @@ pub fn consume_event_stream<R: std::io::Read>(
         }
         match protocol::parse_event_line(trimmed) {
             Ok(Event::Listing(listing)) => {
-                persist_listing(conn, run_id, listing.as_ref(), scorer)?;
-                stats.listings_committed += 1;
+                match persist_listing(conn, run_id, listing.as_ref(), scorer)? {
+                    PersistOutcome::Committed => stats.listings_committed += 1,
+                    PersistOutcome::SuppressedByDismissal => stats.suppressed_by_dismissal += 1,
+                }
+            }
+            Ok(Event::SourceFinished(ev)) => {
+                stats.messages_parsed =
+                    stats.messages_parsed.saturating_add(ev.messages_read);
             }
             Ok(Event::Finished(ev)) => {
                 stats.messages_seen = ev.messages_total;

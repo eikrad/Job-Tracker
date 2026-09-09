@@ -97,6 +97,7 @@ pub struct CursorEvent {
     pub mtime_ns: u64,
     pub offset: u64,
     pub last_message_id: Option<String>,
+    pub sentinel_hash: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
