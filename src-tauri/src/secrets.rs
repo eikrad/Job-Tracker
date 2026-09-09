@@ -231,8 +231,7 @@ fn with_store<R>(f: impl FnOnce(&dyn SecretStore) -> Result<R, String>) -> Resul
     f(store.as_ref())
 }
 
-/// Rust-side read (never exposed to the frontend). Used by LLM/search in later tasks.
-#[allow(dead_code)]
+/// Rust-side read (never exposed to the frontend).
 pub fn get_secret(provider: &str) -> Result<Option<String>, String> {
     with_store(|s| s.get(provider))
 }

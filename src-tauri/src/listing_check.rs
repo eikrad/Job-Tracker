@@ -1,7 +1,7 @@
 use chrono::Utc;
-use reqwest::blocking::Client;
 
 use crate::db::connection;
+use crate::net::{api_client, assert_api_host, fetch_untrusted};
 
 #[derive(Debug, PartialEq)]
 enum ListingStatus {
@@ -22,56 +22,37 @@ impl ListingStatus {
     }
 }
 
-fn make_client() -> Result<Client, String> {
-    Client::builder()
-        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
-        .timeout(std::time::Duration::from_secs(15))
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .build()
-        .map_err(|e| e.to_string())
-}
-
 fn detect_status(url: &str, serp_api_key: &str) -> ListingStatus {
-    let client = match make_client() {
-        Ok(c) => c,
-        Err(_) => return ListingStatus::Unreachable,
-    };
-
     let domain = extract_domain(url).unwrap_or_default();
 
     // Indeed blocks automated requests — skip direct fetch and go straight to SerpAPI
     if domain.contains("indeed.com") {
         if let Some(job_key) = extract_indeed_job_key(url) {
             if !serp_api_key.trim().is_empty() {
-                return classify_indeed_via_serp(&job_key, serp_api_key, &client)
+                return classify_indeed_via_serp(&job_key, serp_api_key)
                     .unwrap_or(ListingStatus::Unreachable);
             }
         }
         return ListingStatus::Unreachable;
     }
 
-    let response = match client.get(url).send() {
+    let fetched = match fetch_untrusted(url) {
         Ok(r) => r,
         Err(_) => return ListingStatus::Unreachable,
     };
 
-    let final_url = response.url().to_string();
-    let status_code = response.status();
-
-    if status_code.is_client_error() || status_code.is_server_error() {
+    if !(200..400).contains(&fetched.status) {
         return ListingStatus::Unreachable;
     }
 
-    // Read body for title-based heuristics (cap at 4KB — <title> is always near the top)
-    let body = response
-        .text()
-        .unwrap_or_default()
+    let body = fetched
+        .body
         .chars()
         .take(4096)
         .collect::<String>()
         .to_lowercase();
 
-    classify_by_domain(url, &final_url, &body)
+    classify_by_domain(url, &fetched.final_url, &body)
 }
 
 fn classify_by_domain(original_url: &str, final_url: &str, body_head: &str) -> ListingStatus {
@@ -109,10 +90,13 @@ fn extract_indeed_job_key(url: &str) -> Option<String> {
     })
 }
 
-fn classify_indeed_via_serp(job_key: &str, serp_api_key: &str, client: &Client) -> Option<ListingStatus> {
+fn classify_indeed_via_serp(job_key: &str, serp_api_key: &str) -> Option<ListingStatus> {
+    let client = api_client().ok()?;
+    let url = "https://serpapi.com/search.json";
+    assert_api_host(url).ok()?;
     let query = format!("site:indeed.com jk:{job_key}");
     let resp = client
-        .get("https://serpapi.com/search.json")
+        .get(url)
         .query(&[
             ("engine", "google"),
             ("q", query.as_str()),
@@ -140,7 +124,11 @@ fn classify_indeed_via_serp(job_key: &str, serp_api_key: &str, client: &Client) 
         })
         .unwrap_or(false);
 
-    Some(if hits { ListingStatus::Active } else { ListingStatus::Closed })
+    Some(if hits {
+        ListingStatus::Active
+    } else {
+        ListingStatus::Closed
+    })
 }
 
 #[cfg(test)]
@@ -198,7 +186,6 @@ pub async fn check_listing_status(
     app: tauri::AppHandle,
     job_id: i64,
     url: String,
-    serp_api_key: Option<String>,
 ) -> Result<String, String> {
     if url.trim().is_empty() {
         return Err("No URL provided".to_string());
@@ -206,7 +193,10 @@ pub async fn check_listing_status(
 
     // reqwest::blocking cannot run on the Tokio async runtime thread — use spawn_blocking
     let url_clone = url.clone();
-    let serp_key = serp_api_key.unwrap_or_default();
+    let serp_key = crate::secrets::get_secret("serpapi")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     let status = tauri::async_runtime::spawn_blocking(move || detect_status(&url_clone, &serp_key))
         .await
         .map_err(|e| format!("Thread error: {e}"))?;

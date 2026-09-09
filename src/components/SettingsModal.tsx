@@ -6,7 +6,14 @@ import type { ThemePreference } from "../lib/theme";
 import { BOARD_VIEWS, type BoardView } from "../lib/jobs/boardViewPreference";
 import { exportJobsAsCsv, exportJobsAsJson } from "../lib/export/exportBundle";
 import { googleOauthGetClientId, googleOauthSetClientId } from "../lib/tauriApi";
+import type { LlmProvider } from "../features/extraction/extractJobInfo";
+import { SecretKeyField } from "./SecretKeyField";
 import { en } from "../i18n/en";
+
+function parseLlmProvider(value: string): LlmProvider {
+  if (value === "mistral" || value === "gemini" || value === "scaleway_deepseek") return value;
+  return "scaleway_deepseek";
+}
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "system", label: en.app.themeSystem },
@@ -31,16 +38,7 @@ export function SettingsModal({ open, onClose }: Props) {
     jobs,
     llmProvider,
     setLlmProvider,
-    geminiApiKey,
-    setGeminiApiKey,
-    mistralApiKey,
-    setMistralApiKey,
-    serpApiKey,
-    setSerpApiKey,
-    braveSearchApiKey,
-    setBraveSearchApiKey,
-    googleAccessToken,
-    setGoogleAccessToken,
+    refreshManualGoogleTokenStatus,
     googleOauthConnected,
     refreshGoogleOauthStatus,
     connectGoogleCalendar,
@@ -191,48 +189,38 @@ export function SettingsModal({ open, onClose }: Props) {
               {en.app.aiExtractionProvider}
               <select
                 value={llmProvider}
-                onChange={(e) => setLlmProvider(e.target.value === "mistral" ? "mistral" : "gemini")}
+                onChange={(e) => setLlmProvider(parseLlmProvider(e.target.value))}
               >
+                <option value="scaleway_deepseek">{en.app.aiExtractionProviderScaleway}</option>
                 <option value="gemini">{en.app.aiExtractionProviderGemini}</option>
                 <option value="mistral">{en.app.aiExtractionProviderMistral}</option>
               </select>
             </label>
-            <label>
-              {llmProvider === "gemini" ? en.app.geminiKey : en.app.mistralKey}
-              <input
-                value={llmProvider === "gemini" ? geminiApiKey : mistralApiKey}
-                onChange={(e) =>
-                  llmProvider === "gemini"
-                    ? setGeminiApiKey(e.target.value)
-                    : setMistralApiKey(e.target.value)
-                }
-                placeholder={
-                  llmProvider === "gemini" ? en.app.geminiPlaceholder : en.app.mistralPlaceholder
-                }
-                autoComplete="off"
-              />
-            </label>
-
-            <label>
-              {en.app.serpApiKey}
-              <input
-                value={serpApiKey}
-                onChange={(e) => setSerpApiKey(e.target.value)}
-                placeholder={en.app.serpApiPlaceholder}
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </label>
-            <label>
-              {en.app.braveSearchApiKey}
-              <input
-                value={braveSearchApiKey}
-                onChange={(e) => setBraveSearchApiKey(e.target.value)}
-                placeholder={en.app.braveSearchApiPlaceholder}
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </label>
+            <SecretKeyField
+              provider="scaleway"
+              label={en.app.scalewayKey}
+              placeholder={en.app.scalewayPlaceholder}
+            />
+            <SecretKeyField
+              provider="gemini"
+              label={en.app.geminiKey}
+              placeholder={en.app.geminiPlaceholder}
+            />
+            <SecretKeyField
+              provider="mistral"
+              label={en.app.mistralKey}
+              placeholder={en.app.mistralPlaceholder}
+            />
+            <SecretKeyField
+              provider="serpapi"
+              label={en.app.serpApiKey}
+              placeholder={en.app.serpApiPlaceholder}
+            />
+            <SecretKeyField
+              provider="brave"
+              label={en.app.braveSearchApiKey}
+              placeholder={en.app.braveSearchApiPlaceholder}
+            />
             <p className="muted settingsHint">{en.app.jobSearchProviderHint}</p>
 
             <div className="settingsGoogleBlock">
@@ -288,15 +276,12 @@ export function SettingsModal({ open, onClose }: Props) {
               {advancedOpen && (
                 <div className="settingsAdvancedBody">
                   <p className="muted settingsHint">{en.app.googleAdvancedHelp}</p>
-                  <label>
-                    {en.app.googleToken}
-                    <input
-                      value={googleAccessToken}
-                      onChange={(e) => setGoogleAccessToken(e.target.value)}
-                      placeholder={en.app.googlePlaceholder}
-                      autoComplete="off"
-                    />
-                  </label>
+                  <SecretKeyField
+                    provider="google_access_token"
+                    label={en.app.googleToken}
+                    placeholder={en.app.googlePlaceholder}
+                    onStatusChange={() => void refreshManualGoogleTokenStatus()}
+                  />
                 </div>
               )}
             </div>

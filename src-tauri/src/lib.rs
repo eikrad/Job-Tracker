@@ -3,7 +3,9 @@ mod db;
 mod google_oauth;
 mod job_search;
 mod listing_check;
+mod llm;
 mod migrations;
+mod net;
 mod secrets;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -40,6 +42,7 @@ pub fn run() {
             secrets::llm_key_set,
             secrets::llm_key_status,
             secrets::llm_key_clear,
+            llm::client::extract_job_info,
             calendar::google_calendar_create_event,
             google_oauth::google_oauth_get_client_id,
             google_oauth::google_oauth_set_client_id,

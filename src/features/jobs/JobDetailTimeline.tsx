@@ -12,7 +12,6 @@ type Props = {
   onDeleteJob: (jobId: number) => Promise<void>;
   onViewDetails: (jobId: number) => void;
   onListingStatusChecked: (jobId: number, status: string) => void;
-  serpApiKey?: string;
 };
 
 export const JobDetailTimeline = memo(function JobDetailTimeline({
@@ -20,7 +19,6 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
   onDeleteJob,
   onViewDetails,
   onListingStatusChecked,
-  serpApiKey,
 }: Props) {
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
@@ -40,7 +38,7 @@ export const JobDetailTimeline = memo(function JobDetailTimeline({
     setChecking(true);
     setCheckError(null);
     try {
-      const status = await checkListingStatus(selected.id, selected.url, serpApiKey);
+      const status = await checkListingStatus(selected.id, selected.url);
       console.log("[listing-check] result:", status);
       onListingStatusChecked(selected.id, status);
     } catch (e) {

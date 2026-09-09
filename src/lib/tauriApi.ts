@@ -149,16 +149,12 @@ export async function fetchJobSearchResults(params: {
   keywords: string[];
   location?: string | null;
   region?: string | null;
-  serpApiKey?: string | null;
-  braveSearchApiKey?: string | null;
 }): Promise<JobSearchResult[]> {
   return invoke<JobSearchResult[]>("fetch_job_search_results", {
     platform: params.platform,
     keywords: params.keywords,
     location: params.location ?? null,
     region: params.region ?? null,
-    serpApiKey: params.serpApiKey ?? null,
-    braveSearchApiKey: params.braveSearchApiKey ?? null,
   });
 }
 
@@ -167,16 +163,12 @@ export async function fetchJobSearchResultsBundle(params: {
   location?: string | null;
   region?: string | null;
   platforms: string[];
-  serpApiKey?: string | null;
-  braveSearchApiKey?: string | null;
 }): Promise<JobSearchResultsBundle> {
   return invoke<JobSearchResultsBundle>("fetch_job_search_bundle", {
     keywords: params.keywords,
     location: params.location ?? null,
     region: params.region ?? null,
     platforms: params.platforms,
-    serpApiKey: params.serpApiKey ?? null,
-    braveSearchApiKey: params.braveSearchApiKey ?? null,
   });
 }
 
@@ -205,9 +197,8 @@ export async function fetchJobSearchResultPageText(url: string): Promise<string>
 export async function checkListingStatus(
   jobId: number,
   url: string,
-  serpApiKey?: string | null,
 ): Promise<"active" | "closed" | "archived" | "unreachable"> {
-  return invoke("check_listing_status", { jobId, url, serpApiKey: serpApiKey ?? null });
+  return invoke("check_listing_status", { jobId, url });
 }
 
 export async function googleCalendarCreateEvent(params: {
