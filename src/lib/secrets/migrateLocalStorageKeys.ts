@@ -1,3 +1,4 @@
+import { readStoredString, removeStoredKey } from "../storage/localStoragePref";
 import { llmKeySet, llmKeyStatus } from "../tauriApi";
 
 /** localStorage keys that hold secrets (migrated to the OS keyring). */
@@ -31,8 +32,8 @@ export async function migrateLocalStorageSecrets(
     status: StatusFn;
   }>,
 ): Promise<SecretMigrationResult> {
-  const getItem = deps?.getItem ?? ((k: string) => localStorage.getItem(k));
-  const removeItem = deps?.removeItem ?? ((k: string) => localStorage.removeItem(k));
+  const getItem = deps?.getItem ?? readStoredString;
+  const removeItem = deps?.removeItem ?? removeStoredKey;
   const setKey = deps?.setKey ?? llmKeySet;
   const status = deps?.status ?? llmKeyStatus;
 

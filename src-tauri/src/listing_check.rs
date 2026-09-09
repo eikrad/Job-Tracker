@@ -193,10 +193,7 @@ pub async fn check_listing_status(
 
     // reqwest::blocking cannot run on the Tokio async runtime thread — use spawn_blocking
     let url_clone = url.clone();
-    let serp_key = crate::secrets::get_secret("serpapi")
-        .ok()
-        .flatten()
-        .unwrap_or_default();
+    let serp_key = crate::secrets::get_secret_or_default("serpapi");
     let status = tauri::async_runtime::spawn_blocking(move || detect_status(&url_clone, &serp_key))
         .await
         .map_err(|e| format!("Thread error: {e}"))?;

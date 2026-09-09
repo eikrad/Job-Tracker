@@ -615,13 +615,6 @@ pub fn get_location_suggestions(app: tauri::AppHandle) -> Result<Vec<String>, St
     Ok(cities)
 }
 
-fn resolve_search_api_key(provider: &str) -> String {
-    crate::secrets::get_secret(provider)
-        .ok()
-        .flatten()
-        .unwrap_or_default()
-}
-
 #[tauri::command]
 pub fn fetch_job_search_results(
     platform: String,
@@ -631,8 +624,8 @@ pub fn fetch_job_search_results(
 ) -> Result<Vec<JobSearchResult>, String> {
     let loc = location.unwrap_or_default();
     let reg = region.unwrap_or_else(|| "dk".to_string());
-    let serp_key = resolve_search_api_key("serpapi");
-    let brave_key = resolve_search_api_key("brave");
+    let serp_key = crate::secrets::get_secret_or_default("serpapi");
+    let brave_key = crate::secrets::get_secret_or_default("brave");
     if serp_key.trim().is_empty() && brave_key.trim().is_empty() {
         return Err(
             "Missing search API keys. Add SerpAPI and/or Brave Search API key in Settings."
@@ -671,8 +664,8 @@ pub fn fetch_job_search_bundle(
             .filter(|p| is_supported_platform(p))
             .collect()
     };
-    let serp_key = resolve_search_api_key("serpapi");
-    let brave_key = resolve_search_api_key("brave");
+    let serp_key = crate::secrets::get_secret_or_default("serpapi");
+    let brave_key = crate::secrets::get_secret_or_default("brave");
     if serp_key.trim().is_empty() && brave_key.trim().is_empty() {
         return Err(
             "Missing search API keys. Add SerpAPI and/or Brave Search API key in Settings."

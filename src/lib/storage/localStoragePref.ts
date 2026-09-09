@@ -29,6 +29,15 @@ export function writeStoredString(key: string, value: string): void {
   }
 }
 
+export function removeStoredKey(key: string): void {
+  if (!storageAvailable()) return;
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* ignore private mode */
+  }
+}
+
 export function readStoredJson(key: string): unknown | null {
   const raw = readStoredString(key);
   if (raw == null) return null;

@@ -211,22 +211,20 @@ fn try_keyring_probe() -> Result<(), String> {
     Ok(())
 }
 
-static APP_STORE: OnceLock<Mutex<Option<Box<dyn SecretStore>>>> = OnceLock::new();
-
-fn store_slot() -> &'static Mutex<Option<Box<dyn SecretStore>>> {
-    APP_STORE.get_or_init(|| Mutex::new(None))
-}
+/// Chosen once at startup. Not a `Mutex` — backend I/O must not serialize behind a
+/// global lock, since every provider lookup would otherwise queue on one keyring call.
+static APP_STORE: OnceLock<Box<dyn SecretStore>> = OnceLock::new();
 
 pub fn init_app_store(app: &AppHandle) -> Result<(), String> {
     let store = open_store(app)?;
-    *store_slot().lock().map_err(|e| e.to_string())? = Some(store);
+    // Already initialized is not an error; the first backend choice wins.
+    let _ = APP_STORE.set(store);
     Ok(())
 }
 
 fn with_store<R>(f: impl FnOnce(&dyn SecretStore) -> Result<R, String>) -> Result<R, String> {
-    let guard = store_slot().lock().map_err(|e| e.to_string())?;
-    let store = guard
-        .as_ref()
+    let store = APP_STORE
+        .get()
         .ok_or_else(|| "Secret store not initialized".to_string())?;
     f(store.as_ref())
 }
@@ -234,6 +232,11 @@ fn with_store<R>(f: impl FnOnce(&dyn SecretStore) -> Result<R, String>) -> Resul
 /// Rust-side read (never exposed to the frontend).
 pub fn get_secret(provider: &str) -> Result<Option<String>, String> {
     with_store(|s| s.get(provider))
+}
+
+/// Read a secret, treating "absent" and "store unavailable" alike as empty.
+pub fn get_secret_or_default(provider: &str) -> String {
+    get_secret(provider).ok().flatten().unwrap_or_default()
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]

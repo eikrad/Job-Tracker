@@ -1,13 +1,28 @@
 //! Versioned SQLite migrations driven by `PRAGMA user_version`.
 //!
-//! Baseline detection (H7): when `user_version` is 0, probe for the `jobs` table.
-//! Present ⇒ stamp the baseline version without re-running DDL.
-//! Absent ⇒ run `m0001` fully.
+//! To add a migration: write an idempotent `fn(&Connection) -> Result<(), String>`
+//! and append a [`Migration`] to [`MIGRATIONS`]. [`LATEST_VERSION`] follows.
+//!
+//! Installs predating `user_version` read as version 0 while already holding the
+//! baseline schema (H7). Rather than probing the schema to distinguish them, every
+//! migration is written to be idempotent, so re-applying `m0001` to such a database
+//! is a no-op and fresh/existing installs converge on the same schema.
 
 use rusqlite::{Connection, OptionalExtension};
 
+/// One forward-only schema step. `up` must be idempotent.
+struct Migration {
+    version: i32,
+    up: fn(&Connection) -> Result<(), String>,
+}
+
+const MIGRATIONS: &[Migration] = &[Migration {
+    version: 1,
+    up: m0001_baseline,
+}];
+
 /// Latest schema version applied by this module.
-pub const LATEST_VERSION: i32 = 1;
+pub const LATEST_VERSION: i32 = MIGRATIONS[MIGRATIONS.len() - 1].version;
 
 const BASELINE_DDL: &str = r#"
 CREATE TABLE IF NOT EXISTS jobs (
@@ -201,33 +216,24 @@ fn m0001_baseline(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
-/// Apply all pending migrations. Idempotent.
+/// Apply every migration newer than the database's `user_version`.
+///
+/// Each step runs in its own transaction and stamps `user_version` on commit, so a
+/// failure leaves the database at the last successfully applied version.
 pub fn run(conn: &mut Connection) -> Result<(), String> {
     let version = user_version(conn)?;
-
-    if version == 0 {
-        if table_exists(conn, "jobs")? {
-            // Existing install predating user_version: bring columns current, then stamp.
-            add_missing_jobs_columns(conn)?;
-            migrate_pdf_path_to_documents(conn)?;
-            set_user_version(conn, LATEST_VERSION)?;
-            return Ok(());
-        }
-        let tx = conn.transaction().map_err(|e| e.to_string())?;
-        m0001_baseline(&tx)?;
-        tx.pragma_update(None, "user_version", LATEST_VERSION)
-            .map_err(|e| e.to_string())?;
-        tx.commit().map_err(|e| e.to_string())?;
-        return Ok(());
-    }
-
     if version > LATEST_VERSION {
         return Err(format!(
             "Database user_version {version} is newer than supported {LATEST_VERSION}"
         ));
     }
 
-    // Future migrations: for v in (version+1)..=LATEST { ... }
+    for migration in MIGRATIONS.iter().filter(|m| m.version > version) {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        (migration.up)(&tx)?;
+        set_user_version(&tx, migration.version)?;
+        tx.commit().map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -240,47 +246,39 @@ pub fn vacuum_into(conn: &Connection, dest: &std::path::Path) -> Result<(), Stri
         std::fs::remove_file(dest).map_err(|e| e.to_string())?;
     }
     let dest_str = dest.to_str().ok_or_else(|| "Backup path is not UTF-8".to_string())?;
-    conn.execute(&format!("VACUUM INTO '{}'", dest_str.replace('\'', "''")), [])
+    conn.execute("VACUUM INTO ?1", [dest_str])
         .map_err(|e| format!("VACUUM INTO failed: {e}"))?;
     Ok(())
-}
-
-/// Parse job column names from the TypeScript schema mirror file.
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn parse_schema_ts_job_columns(schema_ts: &str) -> Result<Vec<String>, String> {
-    let start = schema_ts
-        .find("jobs:")
-        .ok_or_else(|| "schema.ts: missing jobs: key".to_string())?;
-    let after = &schema_ts[start..];
-    let bracket = after
-        .find('[')
-        .ok_or_else(|| "schema.ts: missing jobs array".to_string())?;
-    let rest = &after[bracket + 1..];
-    let end = rest
-        .find(']')
-        .ok_or_else(|| "schema.ts: unclosed jobs array".to_string())?;
-    let body = &rest[..end];
-    let mut cols = Vec::new();
-    for part in body.split(',') {
-        let t = part.trim();
-        if t.is_empty() {
-            continue;
-        }
-        let name = t.trim_matches('"').trim_matches('\'').trim();
-        if !name.is_empty() {
-            cols.push(name.to_string());
-        }
-    }
-    if cols.is_empty() {
-        return Err("schema.ts: jobs array empty".into());
-    }
-    Ok(cols)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    /// Parse job column names out of the TypeScript schema mirror file.
+    fn parse_schema_ts_job_columns(schema_ts: &str) -> Result<Vec<String>, String> {
+        let start = schema_ts
+            .find("jobs:")
+            .ok_or_else(|| "schema.ts: missing jobs: key".to_string())?;
+        let after = &schema_ts[start..];
+        let bracket = after
+            .find('[')
+            .ok_or_else(|| "schema.ts: missing jobs array".to_string())?;
+        let rest = &after[bracket + 1..];
+        let end = rest
+            .find(']')
+            .ok_or_else(|| "schema.ts: unclosed jobs array".to_string())?;
+        let cols: Vec<String> = rest[..end]
+            .split(',')
+            .map(|part| part.trim().trim_matches(['"', '\'']).trim().to_string())
+            .filter(|name| !name.is_empty())
+            .collect();
+        if cols.is_empty() {
+            return Err("schema.ts: jobs array empty".into());
+        }
+        Ok(cols)
+    }
 
     fn open_mem() -> Connection {
         Connection::open_in_memory().expect("mem db")
@@ -391,6 +389,48 @@ mod tests {
             missing.is_empty(),
             "schema.ts missing jobs columns: {missing:?}"
         );
+    }
+
+    #[test]
+    fn migration_versions_are_contiguous_and_ascending() {
+        for (index, migration) in MIGRATIONS.iter().enumerate() {
+            assert_eq!(
+                migration.version,
+                index as i32 + 1,
+                "MIGRATIONS must be ordered and start at 1 with no gaps, \
+                 otherwise run() silently skips a step"
+            );
+        }
+        assert_eq!(LATEST_VERSION, MIGRATIONS.len() as i32);
+    }
+
+    /// Opt-in check against a copy of a real install, since fixtures can only model the
+    /// schema we *think* shipped. Run with:
+    /// `JOBTRACKER_REAL_DB=/path/to/copy.db cargo test --ignored migrates_a_real_database`
+    #[test]
+    #[ignore = "set JOBTRACKER_REAL_DB to a copy of a real database"]
+    fn migrates_a_real_database_copy() {
+        let path = std::env::var("JOBTRACKER_REAL_DB").expect("JOBTRACKER_REAL_DB not set");
+        let mut conn = Connection::open(&path).unwrap();
+        let count = |c: &Connection| -> i64 {
+            c.query_row("SELECT COUNT(*) FROM jobs", [], |r| r.get(0)).unwrap()
+        };
+        let before = count(&conn);
+
+        ensure_wal(&conn).unwrap();
+        apply_connection_pragmas(&conn).unwrap();
+        run(&mut conn).unwrap();
+
+        assert_eq!(user_version(&conn).unwrap(), LATEST_VERSION);
+        assert_eq!(count(&conn), before, "migration must not lose or duplicate jobs");
+        let cols: BTreeSet<_> = jobs_column_names(&conn).unwrap().into_iter().collect();
+        assert!(cols.contains("listing_status"));
+        assert!(cols.contains("listing_checked_at"));
+
+        run(&mut conn).unwrap();
+        assert_eq!(count(&conn), before);
+        let cols_again: BTreeSet<_> = jobs_column_names(&conn).unwrap().into_iter().collect();
+        assert_eq!(cols, cols_again, "second run must change nothing");
     }
 
     #[test]

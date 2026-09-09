@@ -12,142 +12,46 @@ const PARSE_JSON_ERROR = "Could not parse JSON from the model response.";
 const DESKTOP_REQUIRED =
   "AI extraction requires the desktop app (`npm run tauri:dev`), not browser-only Vite.";
 
-function buildExtractionPrompt(rawText: string): string {
-  return `Extract structured job information from the text below.
-Input can be Danish, German, or English.
-Return strict JSON with keys:
-company, title, url, deadline, interview_date, start_date, tags, detected_language, notes,
-contact_name, contact_email, contact_phone,
-workplace_street, workplace_city, workplace_postal_code,
-work_mode (one of: Remote, Hybrid, On-site, or omit if unknown),
-salary_range (free text as stated in the ad, or omit if not mentioned),
-contract_type (one of: Permanent, Fixed-term, Freelance, Internship, or omit if unknown),
-reference_number (job reference/ID if mentioned, else omit),
-source (where the job was posted if mentioned, else omit)
-Dates as YYYY-MM-DD when known.
-Use English field values when possible for normalized output.
+/**
+ * Job fields the extractor may fill. Rust (`llm::normalize`) owns prompt wording, key
+ * aliasing and value normalization; this list is only the IPC trust boundary, turning
+ * an untyped payload into `Partial<NewJob>`.
+ *
+ * `priority` is deliberately absent — it is manual-only and must never come from an LLM.
+ */
+const EXTRACTABLE_FIELDS = [
+  "company",
+  "title",
+  "url",
+  "deadline",
+  "interview_date",
+  "start_date",
+  "tags",
+  "detected_language",
+  "notes",
+  "contact_name",
+  "contact_email",
+  "contact_phone",
+  "workplace_street",
+  "workplace_city",
+  "workplace_postal_code",
+  "work_mode",
+  "salary_range",
+  "contract_type",
+  "reference_number",
+  "source",
+] as const satisfies readonly (keyof NewJob)[];
 
-Text:
-${rawText}`;
-}
-
-// Keep prompt builder exported for tests that assert shape indirectly via normalize.
-export { buildExtractionPrompt };
-
-function parseRawJsonObject(text: string): Record<string, unknown> | null {
-  const trimmed = text.trim();
-  const unfenced = trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "");
-  for (const candidate of [unfenced, trimmed]) {
-    try {
-      const v = JSON.parse(candidate) as unknown;
-      if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
-    } catch {
-      /* try next */
+/** Keep known, non-empty string fields; drop everything else. */
+export function toJobPartial(raw: Record<string, unknown>): Partial<NewJob> {
+  const out: Partial<NewJob> = {};
+  for (const field of EXTRACTABLE_FIELDS) {
+    const value = raw[field];
+    if (typeof value === "string" && value.trim()) {
+      out[field] = value.trim();
     }
   }
-  return null;
-}
-
-function strField(raw: Record<string, unknown>, keys: string[]): string | undefined {
-  for (const k of keys) {
-    const v = raw[k];
-    if (typeof v === "string" && v.trim()) return v.trim();
-  }
-  return undefined;
-}
-
-const VALID_WORK_MODES: Record<string, string> = {
-  remote: "Remote",
-  hybrid: "Hybrid",
-  "on-site": "On-site",
-  onsite: "On-site",
-  "on site": "On-site",
-  office: "On-site",
-};
-
-function normalizeWorkMode(raw: string | undefined): string | undefined {
-  if (!raw) return undefined;
-  return VALID_WORK_MODES[raw.toLowerCase().trim()] ?? undefined;
-}
-
-/**
- * Map messy LLM JSON (alternate key casings, a few aliases) into Partial<NewJob>.
- */
-export function normalizeLlmJobPartial(raw: Record<string, unknown>): Partial<NewJob> {
-  const out: Partial<NewJob> = {};
-  const company = strField(raw, ["company", "Company", "employer", "Employer", "organization"]);
-  if (company) out.company = company;
-  const title = strField(raw, ["title", "Title", "role", "Role", "job_title", "position"]);
-  if (title) out.title = title;
-  const url = strField(raw, ["url", "URL", "link", "job_url", "apply_url"]);
-  if (url) out.url = url;
-  const deadline = strField(raw, ["deadline", "Deadline", "closing_date", "apply_by"]);
-  if (deadline) out.deadline = deadline;
-  const interview_date = strField(raw, [
-    "interview_date",
-    "interviewDate",
-    "InterviewDate",
-    "interviews",
-    "interview",
-    "assessment_date",
-  ]);
-  if (interview_date) out.interview_date = interview_date;
-  const start_date = strField(raw, [
-    "start_date",
-    "startDate",
-    "StartDate",
-    "position_start",
-    "role_start",
-    "contract_start",
-  ]);
-  if (start_date) out.start_date = start_date;
-  let tags = strField(raw, ["tags", "Tags", "keywords"]);
-  const tagsArr = raw.tags;
-  if (!tags && Array.isArray(tagsArr)) {
-    const joined = tagsArr.filter((x) => typeof x === "string").join(", ");
-    if (joined.trim()) tags = joined.trim();
-  }
-  if (tags) out.tags = tags;
-  const detected_language = strField(raw, [
-    "detected_language",
-    "DetectedLanguage",
-    "language",
-    "Language",
-  ]);
-  if (detected_language) out.detected_language = detected_language;
-  const notes = strField(raw, ["notes", "Notes", "summary"]);
-  if (notes) out.notes = notes;
-  const contact_name = strField(raw, ["contact_name", "contactName", "contact"]);
-  if (contact_name) out.contact_name = contact_name;
-  const contact_email = strField(raw, ["contact_email", "contactEmail", "email"]);
-  if (contact_email) out.contact_email = contact_email;
-  const contact_phone = strField(raw, ["contact_phone", "contactPhone", "phone"]);
-  if (contact_phone) out.contact_phone = contact_phone;
-  const workplace_street = strField(raw, ["workplace_street", "street", "address"]);
-  if (workplace_street) out.workplace_street = workplace_street;
-  const workplace_city = strField(raw, ["workplace_city", "city"]);
-  if (workplace_city) out.workplace_city = workplace_city;
-  const workplace_postal_code = strField(raw, ["workplace_postal_code", "postalCode", "postal_code", "zip"]);
-  if (workplace_postal_code) out.workplace_postal_code = workplace_postal_code;
-  const work_mode = normalizeWorkMode(strField(raw, ["work_mode", "workMode", "location_type"]));
-  if (work_mode) out.work_mode = work_mode;
-  const salary_range = strField(raw, ["salary_range", "salaryRange", "salary", "compensation"]);
-  if (salary_range) out.salary_range = salary_range;
-  const contract_type = strField(raw, ["contract_type", "contractType", "employment_type", "contract"]);
-  if (contract_type) out.contract_type = contract_type;
-  // priority is intentionally excluded — manual only, never set from LLM output
-  const reference_number = strField(raw, ["reference_number", "referenceNumber", "ref", "job_ref", "job_id"]);
-  if (reference_number) out.reference_number = reference_number;
-  const source = strField(raw, ["source", "Source", "job_source", "platform"]);
-  if (source) out.source = source;
   return out;
-}
-
-/** Parse model output; tolerate optional markdown fences and normalize keys. */
-export function parsePartialNewJobFromLlmText(text: string): Partial<NewJob> {
-  const raw = parseRawJsonObject(text);
-  if (!raw) return {};
-  return normalizeLlmJobPartial(raw);
 }
 
 type RustExtractResponse = {
@@ -174,7 +78,7 @@ export async function extractJobInfo(
     if (!res.ok) {
       return { ok: false, error: res.error ?? "Extraction failed." };
     }
-    const partial = normalizeLlmJobPartial(res.partial ?? {});
+    const partial = toJobPartial(res.partial ?? {});
     return Object.keys(partial).length === 0
       ? { ok: false, error: PARSE_JSON_ERROR }
       : { ok: true, partial };

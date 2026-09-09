@@ -57,6 +57,10 @@ export function SettingsModal({ open, onClose }: Props) {
   const [googleClientId, setGoogleClientId] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
+  // This dialog is mounted for the whole session. Defer its body until first open so the
+  // SecretKeyFields don't each fire a keyring round-trip on every app launch.
+  const [hasOpened, setHasOpened] = useState(false);
+  if (open && !hasOpened) setHasOpened(true);
 
   useEffect(() => {
     const el = dialogRef.current;
@@ -115,6 +119,12 @@ export function SettingsModal({ open, onClose }: Props) {
     } catch (e) {
       window.alert(String(e));
     }
+  }
+
+  // Never opened this session: render the shell only, so none of the SecretKeyFields
+  // below mount and hit the keyring.
+  if (!hasOpened) {
+    return <dialog ref={dialogRef} className="settingsDialog" />;
   }
 
   return (

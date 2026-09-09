@@ -17,15 +17,6 @@ impl LlmProvider {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::ScalewayDeepseek => "scaleway_deepseek",
-            Self::Mistral => "mistral",
-            Self::Gemini => "gemini",
-        }
-    }
-
     pub fn secret_provider(self) -> &'static str {
         match self {
             Self::ScalewayDeepseek => "scaleway",
@@ -51,37 +42,42 @@ pub enum JsonMode {
     ResponseMimeType,
 }
 
+/// Owned rather than `&'static str` so the endpoint can be redirected — by tests to a
+/// local stub, and by the Settings override that PR B adds.
 #[derive(Debug, Clone)]
 pub struct ProviderSpec {
-    #[allow(dead_code)]
-    pub id: &'static str,
-    pub base_url: &'static str,
-    pub model_id: &'static str,
+    pub base_url: String,
+    pub model_id: String,
     pub auth: AuthStyle,
     pub json_mode: JsonMode,
+}
+
+impl ProviderSpec {
+    #[cfg(test)]
+    pub fn with_base_url(mut self, base_url: &str) -> Self {
+        self.base_url = base_url.to_string();
+        self
+    }
 }
 
 pub fn provider_spec(provider: LlmProvider) -> ProviderSpec {
     match provider {
         LlmProvider::ScalewayDeepseek => ProviderSpec {
-            id: "scaleway_deepseek",
-            base_url: "https://api.scaleway.ai/v1",
+            base_url: "https://api.scaleway.ai/v1".into(),
             // Default from Scaleway catalogue (2026-09); overridable later in Settings.
-            model_id: "deepseek-v4-flash-0731",
+            model_id: "deepseek-v4-flash-0731".into(),
             auth: AuthStyle::Bearer,
             json_mode: JsonMode::Schema,
         },
         LlmProvider::Mistral => ProviderSpec {
-            id: "mistral",
-            base_url: "https://api.mistral.ai/v1",
-            model_id: "mistral-small-latest",
+            base_url: "https://api.mistral.ai/v1".into(),
+            model_id: "mistral-small-latest".into(),
             auth: AuthStyle::Bearer,
             json_mode: JsonMode::JsonObject,
         },
         LlmProvider::Gemini => ProviderSpec {
-            id: "gemini",
-            base_url: "https://generativelanguage.googleapis.com/v1beta",
-            model_id: "gemini-2.0-flash",
+            base_url: "https://generativelanguage.googleapis.com/v1beta".into(),
+            model_id: "gemini-2.0-flash".into(),
             auth: AuthStyle::Header("x-goog-api-key"),
             json_mode: JsonMode::ResponseMimeType,
         },

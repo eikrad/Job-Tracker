@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { extractJobInfo, normalizeLlmJobPartial, parsePartialNewJobFromLlmText } from "./extractJobInfo";
+import { extractJobInfo, toJobPartial } from "./extractJobInfo";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -7,36 +7,28 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 
-describe("parsePartialNewJobFromLlmText", () => {
-  it("parses plain JSON", () => {
-    const out = parsePartialNewJobFromLlmText('{"company":"Acme","title":"Dev"}');
-    expect(out).toEqual({ company: "Acme", title: "Dev" });
+describe("toJobPartial", () => {
+  it("keeps known string fields", () => {
+    expect(toJobPartial({ company: "Acme", title: "Dev" })).toEqual({
+      company: "Acme",
+      title: "Dev",
+    });
   });
 
-  it("strips markdown fences", () => {
-    const out = parsePartialNewJobFromLlmText('```json\n{"company":"X"}\n```');
-    expect(out).toEqual({ company: "X" });
+  it("trims values and drops blank ones", () => {
+    expect(toJobPartial({ company: "  Acme  ", title: "   " })).toEqual({ company: "Acme" });
   });
 
-  it("returns {} on invalid JSON", () => {
-    expect(parsePartialNewJobFromLlmText("not json")).toEqual({});
-  });
-
-  it("normalizes Company and Title casings", () => {
-    const out = parsePartialNewJobFromLlmText('{"Company":"Acme GmbH","Title":"Dev"}');
-    expect(out).toEqual({ company: "Acme GmbH", title: "Dev" });
-  });
-});
-
-describe("normalizeLlmJobPartial", () => {
-  it("maps employer alias to company", () => {
-    expect(normalizeLlmJobPartial({ employer: "X" })).toEqual({ company: "X" });
-  });
-
-  it("does not map priority (manual only)", () => {
-    const result = normalizeLlmJobPartial({ priority: 2, company: "Acme" });
+  it("drops priority — manual only, never from an LLM", () => {
+    const result = toJobPartial({ priority: 2, company: "Acme" });
     expect(result).not.toHaveProperty("priority");
     expect(result.company).toBe("Acme");
+  });
+
+  it("drops unknown keys and non-string values", () => {
+    expect(toJobPartial({ company: "Acme", nonsense: "x", tags: ["a", "b"] })).toEqual({
+      company: "Acme",
+    });
   });
 });
 
@@ -61,6 +53,14 @@ describe("extractJobInfo", () => {
     });
   });
 
+  it("reports a parse failure when nothing usable came back", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({ ok: true, partial: { unknown: "x" } });
+    await expect(extractJobInfo("text", "mistral")).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Could not parse JSON"),
+    });
+  });
+
   it("surfaces Rust error", async () => {
     vi.mocked(invoke).mockResolvedValueOnce({
       ok: false,
@@ -70,6 +70,14 @@ describe("extractJobInfo", () => {
     expect(out).toEqual({
       ok: false,
       error: "Add an API key in Settings (Job Tracker).",
+    });
+  });
+
+  it("explains that extraction needs the desktop app when Tauri is absent", async () => {
+    vi.mocked(invoke).mockRejectedValueOnce(new Error("invoke is not available"));
+    await expect(extractJobInfo("text", "gemini")).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining("desktop app"),
     });
   });
 });

@@ -20,36 +20,29 @@ const MAX_BODY_BYTES: usize = 2 * 1024 * 1024; // 2 MiB
 
 const API_HOSTS: &[&str] = &["serpapi.com", "api.search.brave.com"];
 
-#[cfg(test)]
-thread_local! {
-    static ALLOW_LOOPBACK_FOR_TESTS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+/// Which destinations an untrusted fetch may reach.
+///
+/// The only reason this is configurable is that the test suite serves stubs on
+/// loopback, which production must always reject. Passing it explicitly keeps the
+/// guard itself free of `cfg(test)` branches.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FetchPolicy {
+    pub allow_loopback: bool,
 }
 
-#[cfg(test)]
-pub(crate) fn allow_loopback_for_tests(allow: bool) {
-    ALLOW_LOOPBACK_FOR_TESTS.with(|c| c.set(allow));
-}
-
-fn loopback_allowed() -> bool {
-    #[cfg(test)]
-    {
-        ALLOW_LOOPBACK_FOR_TESTS.with(|c| c.get())
-    }
-    #[cfg(not(test))]
-    {
-        false
-    }
-}
-
-/// Shared timeouts / user-agent for trusted API hosts. Caller attaches auth.
-pub fn api_client() -> Result<Client, String> {
+fn build_client(redirect: Policy) -> Result<Client, String> {
     Client::builder()
         .user_agent(USER_AGENT)
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(TOTAL_TIMEOUT)
-        .redirect(Policy::limited(5))
+        .redirect(redirect)
         .build()
         .map_err(|e| e.to_string())
+}
+
+/// Shared timeouts / user-agent for trusted API hosts. Caller attaches auth.
+pub fn api_client() -> Result<Client, String> {
+    build_client(Policy::limited(MAX_REDIRECTS))
 }
 
 /// Reject URLs whose host is not an allowlisted API endpoint.
@@ -66,8 +59,8 @@ pub fn assert_api_host(url: &str) -> Result<(), String> {
     }
 }
 
-fn is_forbidden_ipv4(ip: Ipv4Addr) -> bool {
-    if loopback_allowed() && ip.is_loopback() {
+fn is_forbidden_ipv4(ip: Ipv4Addr, policy: FetchPolicy) -> bool {
+    if policy.allow_loopback && ip.is_loopback() {
         return false;
     }
     let o = ip.octets();
@@ -81,8 +74,8 @@ fn is_forbidden_ipv4(ip: Ipv4Addr) -> bool {
         || cgnat
 }
 
-fn is_forbidden_ipv6(ip: Ipv6Addr) -> bool {
-    if loopback_allowed() && ip.is_loopback() {
+fn is_forbidden_ipv6(ip: Ipv6Addr, policy: FetchPolicy) -> bool {
+    if policy.allow_loopback && ip.is_loopback() {
         return false;
     }
     if ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() {
@@ -99,20 +92,20 @@ fn is_forbidden_ipv6(ip: Ipv6Addr) -> bool {
     }
     // IPv4-mapped
     if let Some(v4) = ip.to_ipv4_mapped() {
-        return is_forbidden_ipv4(v4);
+        return is_forbidden_ipv4(v4, policy);
     }
     false
 }
 
-pub fn is_forbidden_ip(ip: IpAddr) -> bool {
+pub fn is_forbidden_ip(ip: IpAddr, policy: FetchPolicy) -> bool {
     match ip {
-        IpAddr::V4(v4) => is_forbidden_ipv4(v4),
-        IpAddr::V6(v6) => is_forbidden_ipv6(v6),
+        IpAddr::V4(v4) => is_forbidden_ipv4(v4, policy),
+        IpAddr::V6(v6) => is_forbidden_ipv6(v6, policy),
     }
 }
 
 /// Scheme + DNS resolve + private/loopback IP checks (spec §6.3).
-pub fn validate_url_for_untrusted_fetch(url: &str) -> Result<url::Url, String> {
+pub fn validate_url_for_untrusted_fetch(url: &str, policy: FetchPolicy) -> Result<url::Url, String> {
     let parsed = url::Url::parse(url).map_err(|e| format!("Invalid URL: {e}"))?;
     match parsed.scheme() {
         "http" | "https" => {}
@@ -124,13 +117,13 @@ pub fn validate_url_for_untrusted_fetch(url: &str) -> Result<url::Url, String> {
 
     match host {
         url::Host::Ipv4(ip) => {
-            if is_forbidden_ip(IpAddr::V4(ip)) {
+            if is_forbidden_ip(IpAddr::V4(ip), policy) {
                 return Err(format!("Forbidden IP address: {ip}"));
             }
             Ok(parsed)
         }
         url::Host::Ipv6(ip) => {
-            if is_forbidden_ip(IpAddr::V6(ip)) {
+            if is_forbidden_ip(IpAddr::V6(ip), policy) {
                 return Err(format!("Forbidden IP address: {ip}"));
             }
             Ok(parsed)
@@ -143,7 +136,7 @@ pub fn validate_url_for_untrusted_fetch(url: &str) -> Result<url::Url, String> {
             let mut saw_any = false;
             for addr in addrs {
                 saw_any = true;
-                if is_forbidden_ip(addr.ip()) {
+                if is_forbidden_ip(addr.ip(), policy) {
                     return Err(format!("Forbidden IP address for {domain}: {}", addr.ip()));
                 }
             }
@@ -190,20 +183,15 @@ pub struct UntrustedFetchResult {
     pub body: String,
 }
 
-fn untrusted_client() -> Result<Client, String> {
-    Client::builder()
-        .user_agent(USER_AGENT)
-        .connect_timeout(CONNECT_TIMEOUT)
-        .timeout(TOTAL_TIMEOUT)
-        .redirect(Policy::none()) // we follow manually to re-validate each hop
-        .build()
-        .map_err(|e| e.to_string())
-}
-
 /// Fetch an attacker-influenced URL with SSRF guards. No auth, no cookies.
 pub fn fetch_untrusted(url: &str) -> Result<UntrustedFetchResult, String> {
-    let client = untrusted_client()?;
-    let mut current = validate_url_for_untrusted_fetch(url)?.to_string();
+    fetch_untrusted_with(url, FetchPolicy::default())
+}
+
+fn fetch_untrusted_with(url: &str, policy: FetchPolicy) -> Result<UntrustedFetchResult, String> {
+    // Redirects are followed manually so every hop is re-validated.
+    let client = build_client(Policy::none())?;
+    let mut current = validate_url_for_untrusted_fetch(url, policy)?.to_string();
 
     for hop in 0..=MAX_REDIRECTS {
         let res = client
@@ -228,7 +216,7 @@ pub fn fetch_untrusted(url: &str) -> Result<UntrustedFetchResult, String> {
                 .or_else(|| url::Url::parse(loc).ok())
                 .ok_or_else(|| format!("Invalid redirect Location: {loc}"))?;
             // No scheme downgrade to non-http(s); validate target (re-check private IPs).
-            current = validate_url_for_untrusted_fetch(next.as_str())?.to_string();
+            current = validate_url_for_untrusted_fetch(next.as_str(), policy)?.to_string();
             continue;
         }
 
@@ -257,48 +245,67 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpListener;
-    use std::sync::atomic::{AtomicU16, Ordering};
     use std::thread;
+
+    /// Production policy: loopback is never reachable.
+    fn validate(url: &str) -> Result<url::Url, String> {
+        validate_url_for_untrusted_fetch(url, FetchPolicy::default())
+    }
+
+    /// Test-only policy, so stub servers on 127.0.0.1 are reachable.
+    const STUB: FetchPolicy = FetchPolicy {
+        allow_loopback: true,
+    };
 
     #[test]
     fn rejects_file_scheme() {
-        let err = validate_url_for_untrusted_fetch("file:///etc/passwd").unwrap_err();
+        let err = validate("file:///etc/passwd").unwrap_err();
         assert!(err.contains("Scheme"), "{err}");
     }
 
     #[test]
     fn rejects_ftp_scheme() {
-        let err = validate_url_for_untrusted_fetch("ftp://example.com/x").unwrap_err();
+        let err = validate("ftp://example.com/x").unwrap_err();
         assert!(err.contains("Scheme"), "{err}");
     }
 
     #[test]
     fn rejects_loopback_literal() {
-        let err = validate_url_for_untrusted_fetch("http://127.0.0.1/").unwrap_err();
+        let err = validate("http://127.0.0.1/").unwrap_err();
         assert!(err.contains("Forbidden"), "{err}");
     }
 
     #[test]
     fn rejects_metadata_link_local() {
-        let err = validate_url_for_untrusted_fetch("http://169.254.169.254/latest/meta-data/").unwrap_err();
+        let err = validate("http://169.254.169.254/latest/meta-data/").unwrap_err();
         assert!(err.contains("Forbidden"), "{err}");
     }
 
     #[test]
     fn rejects_ipv6_loopback() {
-        let err = validate_url_for_untrusted_fetch("http://[::1]/").unwrap_err();
+        let err = validate("http://[::1]/").unwrap_err();
         assert!(err.contains("Forbidden"), "{err}");
     }
 
     #[test]
     fn rejects_rfc1918() {
-        let err = validate_url_for_untrusted_fetch("http://10.0.0.1/").unwrap_err();
+        let err = validate("http://10.0.0.1/").unwrap_err();
         assert!(err.contains("Forbidden"), "{err}");
     }
 
     #[test]
     fn rejects_cgnat() {
-        assert!(is_forbidden_ip(IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))));
+        let ip = IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1));
+        assert!(is_forbidden_ip(ip, FetchPolicy::default()));
+    }
+
+    #[test]
+    fn loopback_stays_forbidden_under_the_default_policy() {
+        assert!(is_forbidden_ip(
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            FetchPolicy::default()
+        ));
+        assert!(!is_forbidden_ip(IpAddr::V4(Ipv4Addr::LOCALHOST), STUB));
     }
 
     #[test]
@@ -317,10 +324,8 @@ mod tests {
     }
 
     fn spawn_http_server(handler: fn(&str) -> Vec<u8>) -> (u16, thread::JoinHandle<()>) {
-        static PORT: AtomicU16 = AtomicU16::new(0);
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        PORT.store(port, Ordering::SeqCst);
         let handle = thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
                 let mut buf = [0u8; 1024];
@@ -335,35 +340,28 @@ mod tests {
 
     #[test]
     fn rejects_redirect_to_private() {
-        allow_loopback_for_tests(true);
         let (port, join) = spawn_http_server(|_| {
             b"HTTP/1.1 302 Found\r\nLocation: http://169.254.169.254/\r\nContent-Length: 0\r\n\r\n"
                 .to_vec()
         });
-        let url = format!("http://127.0.0.1:{port}/");
-        let err = fetch_untrusted(&url).unwrap_err();
-        allow_loopback_for_tests(false);
+        let err = fetch_untrusted_with(&format!("http://127.0.0.1:{port}/"), STUB).unwrap_err();
         let _ = join.join();
         assert!(err.contains("Forbidden") || err.contains("169.254"), "{err}");
     }
 
     #[test]
     fn rejects_non_text_content_type() {
-        allow_loopback_for_tests(true);
         let (port, join) = spawn_http_server(|_| {
             b"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: 3\r\n\r\nbin"
                 .to_vec()
         });
-        let url = format!("http://127.0.0.1:{port}/");
-        let err = fetch_untrusted(&url).unwrap_err();
-        allow_loopback_for_tests(false);
+        let err = fetch_untrusted_with(&format!("http://127.0.0.1:{port}/"), STUB).unwrap_err();
         let _ = join.join();
         assert!(err.contains("Content-Type"), "{err}");
     }
 
     #[test]
     fn rejects_oversized_body() {
-        allow_loopback_for_tests(true);
         let (port, join) = spawn_http_server(|_| {
             let payload = vec![b'a'; MAX_BODY_BYTES + 64];
             let header = format!(
@@ -374,24 +372,25 @@ mod tests {
             out.extend_from_slice(&payload);
             out
         });
-        let url = format!("http://127.0.0.1:{port}/");
-        let err = fetch_untrusted(&url).unwrap_err();
-        allow_loopback_for_tests(false);
+        let err = fetch_untrusted_with(&format!("http://127.0.0.1:{port}/"), STUB).unwrap_err();
         let _ = join.join();
         assert!(err.contains("exceeds"), "{err}");
     }
 
     #[test]
     fn fetch_ok_text() {
-        allow_loopback_for_tests(true);
         let (port, join) = spawn_http_server(|_| {
             b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 5\r\n\r\nhello".to_vec()
         });
-        let url = format!("http://127.0.0.1:{port}/");
-        let res = fetch_untrusted(&url).unwrap();
-        allow_loopback_for_tests(false);
+        let res = fetch_untrusted_with(&format!("http://127.0.0.1:{port}/"), STUB).unwrap();
         let _ = join.join();
         assert_eq!(res.body, "hello");
         assert_eq!(res.status, 200);
+    }
+
+    #[test]
+    fn public_fetch_entry_point_refuses_loopback() {
+        let err = fetch_untrusted("http://127.0.0.1:9/").unwrap_err();
+        assert!(err.contains("Forbidden"), "{err}");
     }
 }

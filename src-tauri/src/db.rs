@@ -109,8 +109,13 @@ fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 pub(crate) fn connection(app: &tauri::AppHandle) -> Result<Connection, String> {
     let path = db_path(app)?;
     let conn = Connection::open(path).map_err(|e| format!("DB open failed: {e}"))?;
-    // WAL is a persistent DB property; set once (safe to repeat).
-    crate::migrations::ensure_wal(&conn)?;
+    // WAL is a persistent DB property, and setting it takes a write lock — do it once
+    // per process rather than on every command's connection.
+    static WAL_SET: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    if WAL_SET.get().is_none() {
+        crate::migrations::ensure_wal(&conn)?;
+        let _ = WAL_SET.set(());
+    }
     // These are per-connection and must be applied every time.
     crate::migrations::apply_connection_pragmas(&conn)?;
     Ok(conn)

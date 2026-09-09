@@ -40,20 +40,16 @@ export function SecretKeyField({ provider, label, placeholder, onStatusChange }:
     }
   }
 
-  async function onReplace() {
-    const key = draft.trim();
-    if (!key) {
-      setMessage(en.app.secretKeyEmpty);
-      return;
-    }
+  /** Run a store mutation, then re-read status so the UI reflects what actually stuck. */
+  async function runStoreAction(action: () => Promise<void>, successMessage: string) {
     setBusy(true);
     setMessage(null);
     try {
-      await llmKeySet(provider, key);
+      await action();
       setDraft("");
       await refresh();
       onStatusChange?.();
-      setMessage(en.app.secretKeySaved);
+      setMessage(successMessage);
     } catch (e) {
       setMessage(String(e));
     } finally {
@@ -61,21 +57,18 @@ export function SecretKeyField({ provider, label, placeholder, onStatusChange }:
     }
   }
 
+  async function onReplace() {
+    const key = draft.trim();
+    if (!key) {
+      setMessage(en.app.secretKeyEmpty);
+      return;
+    }
+    await runStoreAction(() => llmKeySet(provider, key), en.app.secretKeySaved);
+  }
+
   async function onRemove() {
     if (!window.confirm(en.app.secretKeyRemoveConfirm)) return;
-    setBusy(true);
-    setMessage(null);
-    try {
-      await llmKeyClear(provider);
-      setDraft("");
-      await refresh();
-      onStatusChange?.();
-      setMessage(en.app.secretKeyRemoved);
-    } catch (e) {
-      setMessage(String(e));
-    } finally {
-      setBusy(false);
-    }
+    await runStoreAction(() => llmKeyClear(provider), en.app.secretKeyRemoved);
   }
 
   const configured = status?.configured ?? false;
