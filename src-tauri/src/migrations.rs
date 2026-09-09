@@ -16,10 +16,20 @@ struct Migration {
     up: fn(&Connection) -> Result<(), String>,
 }
 
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    up: m0001_baseline,
-}];
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        up: m0001_baseline,
+    },
+    Migration {
+        version: 2,
+        up: m0002_mail_scan_core,
+    },
+    Migration {
+        version: 3,
+        up: m0003_mail_scan_indices,
+    },
+];
 
 /// Latest schema version applied by this module.
 pub const LATEST_VERSION: i32 = MIGRATIONS[MIGRATIONS.len() - 1].version;
@@ -213,6 +223,151 @@ fn m0001_baseline(conn: &Connection) -> Result<(), String> {
         .map_err(|e| format!("m0001 DDL failed: {e}"))?;
     add_missing_jobs_columns(conn)?;
     migrate_pdf_path_to_documents(conn)?;
+    Ok(())
+}
+
+const MAIL_SCAN_CORE_DDL: &str = r#"
+CREATE TABLE IF NOT EXISTS mail_scan_runs (
+  run_id        TEXT PRIMARY KEY,
+  trigger       TEXT NOT NULL DEFAULT 'manual',
+  status        TEXT NOT NULL CHECK (status IN ('running','completed','cancelled','failed')),
+  started_at    TEXT NOT NULL,
+  finished_at   TEXT,
+  stats_json    TEXT NOT NULL DEFAULT '{}',
+  error_code    TEXT,
+  error_summary TEXT,
+  sidecar_version TEXT,
+  model_id      TEXT,
+  profile_short_hash TEXT,
+  profile_full_hash  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS mail_fingerprints (
+  fingerprint_id TEXT PRIMARY KEY,
+  strong_key     TEXT UNIQUE,
+  weak_key       TEXT NOT NULL,
+  first_seen_at  TEXT NOT NULL,
+  last_seen_at   TEXT NOT NULL,
+  seen_count     INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS mail_fingerprint_aliases (
+  alias_id       TEXT PRIMARY KEY,
+  fingerprint_id TEXT NOT NULL REFERENCES mail_fingerprints(fingerprint_id) ON DELETE CASCADE,
+  created_at     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS mail_match_inbox (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  fingerprint_id    TEXT NOT NULL REFERENCES mail_fingerprints(fingerprint_id) ON DELETE CASCADE,
+  kind              TEXT NOT NULL CHECK (kind IN ('new','update_suggestion')),
+  status            TEXT NOT NULL CHECK (status IN ('pending','accepted','dismissed','superseded')),
+  job_id            INTEGER REFERENCES jobs(id) ON DELETE CASCADE,
+  score             INTEGER CHECK (score BETWEEN 0 AND 10),
+  score_reason      TEXT,
+  score_state       TEXT NOT NULL CHECK (score_state IN ('ok','invalid','skipped')),
+  suspicious        INTEGER NOT NULL DEFAULT 0,
+  near_duplicate_of TEXT REFERENCES mail_fingerprints(fingerprint_id),
+  draft_json        TEXT NOT NULL,
+  enrichment_state  TEXT NOT NULL CHECK (enrichment_state IN ('complete','partial','failed','skipped')),
+  enrichment_error  TEXT,
+  source_board      TEXT,
+  message_id        TEXT,
+  message_date      TEXT,
+  listing_url       TEXT,
+  base_job_updated_at TEXT,
+  first_run_id      TEXT NOT NULL REFERENCES mail_scan_runs(run_id),
+  last_run_id       TEXT NOT NULL REFERENCES mail_scan_runs(run_id),
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL,
+  title             TEXT GENERATED ALWAYS AS (json_extract(draft_json,'$.title')) VIRTUAL,
+  company           TEXT GENERATED ALWAYS AS (json_extract(draft_json,'$.company')) VIRTUAL
+);
+
+CREATE TABLE IF NOT EXISTS mail_match_dismissals (
+  fingerprint_id TEXT PRIMARY KEY REFERENCES mail_fingerprints(fingerprint_id) ON DELETE CASCADE,
+  scope          TEXT NOT NULL DEFAULT 'listing',
+  reason         TEXT,
+  dismissed_at   TEXT NOT NULL,
+  dismissed_run  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS mail_scored_sightings (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  fingerprint_id      TEXT NOT NULL REFERENCES mail_fingerprints(fingerprint_id) ON DELETE CASCADE,
+  pass                INTEGER NOT NULL CHECK (pass IN (1,2)),
+  score               INTEGER,
+  reason              TEXT,
+  profile_hash        TEXT NOT NULL,
+  prompt_version      TEXT NOT NULL,
+  model_id            TEXT NOT NULL,
+  listing_content_hash TEXT NOT NULL,
+  outcome             TEXT NOT NULL CHECK (outcome IN ('inbox','under_cutoff','flagged_irrelevant','error')),
+  scored_at           TEXT NOT NULL,
+  run_id              TEXT NOT NULL REFERENCES mail_scan_runs(run_id)
+);
+
+CREATE TABLE IF NOT EXISTS mail_source_cursors (
+  source_id       TEXT PRIMARY KEY,
+  path            TEXT NOT NULL,
+  kind            TEXT NOT NULL,
+  size            INTEGER,
+  mtime_ns        INTEGER,
+  offset          INTEGER,
+  sentinel_hash   TEXT,
+  last_message_id TEXT,
+  updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS job_field_provenance (
+  job_id     INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  field      TEXT NOT NULL,
+  source     TEXT NOT NULL,
+  run_id     TEXT,
+  set_at     TEXT NOT NULL,
+  PRIMARY KEY (job_id, field, set_at)
+);
+"#;
+
+const MAIL_SCAN_JOB_COLUMNS: &[(&str, &str)] = &[
+    ("mail_score", "INTEGER"),
+    ("mail_score_reason", "TEXT"),
+    ("mail_scored_at", "TEXT"),
+];
+
+fn add_mail_score_columns(conn: &Connection) -> Result<(), String> {
+    let cols = jobs_column_names(conn)?;
+    for (col, col_type) in MAIL_SCAN_JOB_COLUMNS {
+        if !cols.iter().any(|c| c == col) {
+            conn.execute(&format!("ALTER TABLE jobs ADD COLUMN {col} {col_type}"), [])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn m0002_mail_scan_core(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(MAIL_SCAN_CORE_DDL)
+        .map_err(|e| format!("m0002 DDL failed: {e}"))?;
+    add_mail_score_columns(conn)?;
+    Ok(())
+}
+
+const MAIL_SCAN_INDEX_DDL: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_mail_fp_weak ON mail_fingerprints(weak_key);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mmi_one_pending
+  ON mail_match_inbox(fingerprint_id, kind) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_mmi_pending ON mail_match_inbox(status, score DESC, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mmi_job ON mail_match_inbox(job_id) WHERE job_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sighting_cache
+  ON mail_scored_sightings(listing_content_hash, pass, profile_hash, prompt_version, model_id);
+CREATE INDEX IF NOT EXISTS idx_sighting_fp ON mail_scored_sightings(fingerprint_id, pass, scored_at DESC);
+CREATE INDEX IF NOT EXISTS idx_runs_started ON mail_scan_runs(started_at DESC);
+"#;
+
+fn m0003_mail_scan_indices(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(MAIL_SCAN_INDEX_DDL)
+        .map_err(|e| format!("m0003 DDL failed: {e}"))?;
     Ok(())
 }
 
@@ -426,11 +581,77 @@ mod tests {
         let cols: BTreeSet<_> = jobs_column_names(&conn).unwrap().into_iter().collect();
         assert!(cols.contains("listing_status"));
         assert!(cols.contains("listing_checked_at"));
+        assert!(cols.contains("mail_score"));
 
         run(&mut conn).unwrap();
         assert_eq!(count(&conn), before);
         let cols_again: BTreeSet<_> = jobs_column_names(&conn).unwrap().into_iter().collect();
         assert_eq!(cols, cols_again, "second run must change nothing");
+    }
+
+    #[test]
+    fn m0002_creates_mail_tables_and_is_idempotent() {
+        let mut conn = open_mem();
+        run(&mut conn).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), LATEST_VERSION);
+        for table in [
+            "mail_scan_runs",
+            "mail_fingerprints",
+            "mail_fingerprint_aliases",
+            "mail_match_inbox",
+            "mail_match_dismissals",
+            "mail_scored_sightings",
+            "mail_source_cursors",
+            "job_field_provenance",
+        ] {
+            assert!(table_exists(&conn, table).unwrap(), "missing {table}");
+        }
+        let cols: BTreeSet<_> = jobs_column_names(&conn).unwrap().into_iter().collect();
+        assert!(cols.contains("mail_score"));
+        assert!(cols.contains("mail_score_reason"));
+        assert!(cols.contains("mail_scored_at"));
+
+        // Re-running must be a no-op (user_version already at latest).
+        run(&mut conn).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), LATEST_VERSION);
+    }
+
+    #[test]
+    fn partial_unique_index_allows_accepted_plus_one_pending() {
+        let mut conn = open_mem();
+        apply_connection_pragmas(&conn).unwrap();
+        run(&mut conn).unwrap();
+
+        let now = "2026-09-09T12:00:00Z";
+        conn.execute(
+            "INSERT INTO mail_scan_runs (run_id, status, started_at) VALUES ('run1', 'running', ?1)",
+            [now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO mail_fingerprints (fingerprint_id, strong_key, weak_key, first_seen_at, last_seen_at)
+             VALUES ('indeed:abc', 'indeed:abc', 'acme|dev|kbh', ?1, ?1)",
+            [now],
+        )
+        .unwrap();
+
+        let insert = |status: &str| {
+            conn.execute(
+                "INSERT INTO mail_match_inbox (
+                    fingerprint_id, kind, status, score_state, draft_json,
+                    enrichment_state, first_run_id, last_run_id, created_at, updated_at
+                 ) VALUES ('indeed:abc', 'new', ?1, 'skipped', '{}', 'skipped', 'run1', 'run1', ?2, ?2)",
+                rusqlite::params![status, now],
+            )
+        };
+
+        insert("pending").unwrap();
+        insert("accepted").unwrap();
+        let second_pending = insert("pending");
+        assert!(
+            second_pending.is_err(),
+            "second pending row must violate idx_mmi_one_pending"
+        );
     }
 
     #[test]

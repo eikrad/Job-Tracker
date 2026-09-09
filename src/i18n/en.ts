@@ -69,6 +69,10 @@ export const en = {
     llmOverrideSave: "Save overrides",
     llmOverrideSaved: "Overrides saved.",
     llmOverrideReset: "Reset to defaults",
+    mailScanDevHeading: "Mail scan (dev)",
+    mailScanDevHint:
+      "Local Thunderbird folder scan — off by default. No LLM calls in this build.",
+    mailScanEnabledLabel: "Enable mail scan API",
     secretMigrationWarning: (details: string) =>
       `Some API keys could not be moved into the keyring and remain in browser storage for now:\n\n${details}`,
     serpApiKey: "API key (SerpAPI)",

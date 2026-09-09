@@ -4,6 +4,7 @@ mod google_oauth;
 mod job_search;
 mod listing_check;
 mod llm;
+mod mail_scan;
 mod migrations;
 mod net;
 mod secrets;
@@ -11,6 +12,8 @@ mod secrets;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(mail_scan::MailScanFlag::default())
+        .manage(mail_scan::MailScanRuntime::default())
         .setup(|app| {
             if let Err(e) = secrets::init_app_store(app.handle()) {
                 log::warn!("Secret store init failed: {}", secrets::redact(&e));
@@ -60,6 +63,10 @@ pub fn run() {
             job_search::fetch_job_search_result_page_text,
             job_search::open_url_in_browser,
             listing_check::check_listing_status,
+            mail_scan::mail_scan_get_enabled,
+            mail_scan::mail_scan_set_enabled,
+            mail_scan::mail_scan_start,
+            mail_scan::mail_scan_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
