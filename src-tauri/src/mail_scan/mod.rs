@@ -9,10 +9,12 @@ pub mod protocol;
 pub mod scoring;
 pub mod spawn;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use rusqlite::OptionalExtension;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
@@ -24,8 +26,11 @@ use self::persist::{
     RunStats,
 };
 use self::protocol::{read_event_line, Event, ProtocolError, MAX_LINE_BYTES};
-use self::scoring::StubScorer;
-use self::spawn::{spawn_scan, SpawnedScan};
+use self::scoring::{ListingScorer, StubScorer};
+use self::spawn::{spawn_scan, watch_cancel_escalation, SpawnedScan};
+
+/// Extractor names shipped with the sidecar (keep in sync with Python DEFAULT_EXTRACTORS).
+pub const DEFAULT_EXTRACTORS: &[&str] = &["indeed", "generic"];
 
 /// Dev-only gate. Default off so PR B stays invisible.
 #[derive(Clone)]
@@ -55,6 +60,15 @@ pub struct MailScanProgress {
     pub status: String,
 }
 
+struct DriveState {
+    stats: RunStats,
+    status: String,
+    error_code: Option<String>,
+    error_summary: Option<String>,
+    /// source_id → (path, kind) for cursor commits
+    sources: HashMap<String, (String, String)>,
+}
+
 fn new_run_id() -> String {
     use rand::RngExt;
     let mut rng = rand::rng();
@@ -70,6 +84,147 @@ fn sidecar_python() -> PathBuf {
     std::env::var_os("JOBTRACKER_MAIL_SCAN_PYTHON")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("python3"))
+}
+
+fn load_cursor_json(
+    conn: &rusqlite::Connection,
+    source_id: &str,
+) -> Result<Option<serde_json::Value>, String> {
+    type CursorRow = (i64, i64, i64, Option<String>, Option<String>);
+    let row: Option<CursorRow> = conn
+        .query_row(
+            "SELECT size, mtime_ns, offset, last_message_id, sentinel_hash
+             FROM mail_source_cursors WHERE source_id = ?1",
+            rusqlite::params![source_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    Ok(row.map(|(size, mtime_ns, offset, last_message_id, sentinel_hash)| {
+        serde_json::json!({
+            "size": size,
+            "mtime_ns": mtime_ns,
+            "offset": offset,
+            "last_message_id": last_message_id,
+            "sentinel_hash": sentinel_hash,
+        })
+    }))
+}
+
+/// Apply one protocol event to DB/stats. Returns false when the run should stop.
+fn apply_event(
+    conn: &mut rusqlite::Connection,
+    run_id: &str,
+    event: Event,
+    scorer: &dyn ListingScorer,
+    state: &mut DriveState,
+) -> Result<bool, String> {
+    match event {
+        Event::Unknown { t } => {
+            log::info!("mail scan: skipping unknown event t={t}");
+            Ok(true)
+        }
+        Event::Started(ev) => {
+            if ev.protocol != 1 {
+                state.status = "failed".into();
+                state.error_code = Some("E_PROTOCOL_MISMATCH".into());
+                state.error_summary = Some(format!(
+                    "protocol mismatch: sidecar={}, expected=1",
+                    ev.protocol
+                ));
+                return Ok(false);
+            }
+            Ok(true)
+        }
+        Event::Listing(listing) => match persist_listing(conn, run_id, listing.as_ref(), scorer) {
+            Ok(PersistOutcome::Committed) => {
+                state.stats.listings_committed += 1;
+                Ok(true)
+            }
+            Ok(PersistOutcome::SuppressedByDismissal) => {
+                state.stats.suppressed_by_dismissal += 1;
+                Ok(true)
+            }
+            Err(e) => {
+                state.status = "failed".into();
+                state.error_code = Some("E_PERSIST".into());
+                state.error_summary = Some(redact(&e));
+                Ok(false)
+            }
+        },
+        Event::SourceFinished(ev) => {
+            let (path, kind) = state
+                .sources
+                .get(&ev.source)
+                .cloned()
+                .unwrap_or_else(|| (String::new(), String::from("mbox")));
+            let _ = upsert_source_cursor(
+                conn,
+                &ev.source,
+                &path,
+                &kind,
+                ev.cursor.size as i64,
+                ev.cursor.mtime_ns as i64,
+                ev.cursor.offset as i64,
+                ev.cursor.last_message_id.as_deref(),
+                ev.cursor.sentinel_hash.as_deref(),
+            );
+            state.stats.messages_parsed = state
+                .stats
+                .messages_parsed
+                .saturating_add(ev.messages_read);
+            Ok(true)
+        }
+        Event::SourceStarted(_) | Event::Warning(_) => Ok(true),
+        Event::Finished(ev) => {
+            state.stats.messages_seen = ev.messages_total;
+            if ev.cancelled.unwrap_or(false) {
+                state.status = "cancelled".into();
+            }
+            Ok(true)
+        }
+    }
+}
+
+fn consume_reader<R: std::io::Read>(
+    conn: &mut rusqlite::Connection,
+    run_id: &str,
+    reader: &mut R,
+    scorer: &dyn ListingScorer,
+    state: &mut DriveState,
+    mut on_tick: impl FnMut(&mut rusqlite::Connection, &DriveState),
+) -> Result<(), String> {
+    let mut line_buf: Vec<u8> = Vec::with_capacity(4096);
+    loop {
+        match read_event_line(reader, &mut line_buf, MAX_LINE_BYTES) {
+            Ok(None) => break,
+            Ok(Some(event)) => {
+                if !apply_event(conn, run_id, event, scorer, state)? {
+                    break;
+                }
+            }
+            Err(ProtocolError::Oversize) => {
+                state.status = "failed".into();
+                state.error_code = Some("E_PROTOCOL_OVERSIZE".into());
+                state.error_summary = Some("NDJSON line exceeded 256 KiB".into());
+                break;
+            }
+            Err(ProtocolError::Malformed(detail)) => {
+                state.status = "failed".into();
+                state.error_code = Some("E_PROTOCOL".into());
+                state.error_summary = Some(redact(&detail));
+                break;
+            }
+            Err(ProtocolError::Io(e)) => {
+                state.status = "failed".into();
+                state.error_code = Some("E_IO".into());
+                state.error_summary = Some(redact(&e));
+                break;
+            }
+        }
+        on_tick(conn, state);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -123,16 +278,24 @@ pub fn mail_scan_start(
     let mut conn = db::connection(&app)?;
     start_run(&mut conn, &run_id)?;
 
-    let config = serde_json::json!({
-        "protocol": 1,
-        "run_id": run_id,
-        "sources": request.sources.iter().map(|s| serde_json::json!({
+    let mut source_meta = HashMap::new();
+    let mut sources_json = Vec::new();
+    for s in &request.sources {
+        source_meta.insert(s.id.clone(), (s.path.clone(), s.kind.clone()));
+        let cursor = load_cursor_json(&conn, &s.id)?;
+        sources_json.push(serde_json::json!({
             "id": s.id,
             "kind": s.kind,
             "path": s.path,
-            "cursor": null,
-        })).collect::<Vec<_>>(),
-        "extractors": ["indeed", "generic"],
+            "cursor": cursor,
+        }));
+    }
+
+    let config = serde_json::json!({
+        "protocol": 1,
+        "run_id": run_id,
+        "sources": sources_json,
+        "extractors": DEFAULT_EXTRACTORS,
         "limits": {
             "max_messages_per_source": 5000,
             "max_message_bytes": 2_097_152,
@@ -163,7 +326,7 @@ pub fn mail_scan_start(
     let runtime2 = runtime.inner.clone();
     let run_id2 = run_id.clone();
     std::thread::spawn(move || {
-        let result = drive_scan(&app2, &run_id2, &mut child, &cancel_file);
+        let result = drive_scan(&app2, &run_id2, &mut child, &cancel_file, source_meta);
         let mut guard = runtime2.lock().unwrap_or_else(|e| e.into_inner());
         *guard = None;
         if let Err(e) = result {
@@ -194,226 +357,119 @@ fn drive_scan(
     app: &AppHandle,
     run_id: &str,
     child: &mut SpawnedScan,
-    _cancel_file: &Path,
+    cancel_file: &Path,
+    sources: HashMap<String, (String, String)>,
 ) -> Result<(), String> {
     let mut conn = db::connection(app)?;
     let scorer = StubScorer;
-    let mut stats = RunStats::default();
+    let mut state = DriveState {
+        stats: RunStats::default(),
+        status: "completed".into(),
+        error_code: None,
+        error_summary: None,
+        sources,
+    };
     let mut last_emit = std::time::Instant::now()
         .checked_sub(std::time::Duration::from_secs(1))
         .unwrap_or_else(std::time::Instant::now);
-    let mut status = "completed".to_string();
-    let mut error_code: Option<String> = None;
-    let mut error_summary: Option<String> = None;
+
+    let child_handle = child.child_handle();
+    let cancel_watch = cancel_file.to_path_buf();
+    std::thread::spawn(move || watch_cancel_escalation(child_handle, cancel_watch));
 
     let stdout = child
         .stdout
         .as_mut()
         .ok_or_else(|| "sidecar stdout missing".to_string())?;
 
-    let mut line_buf: Vec<u8> = Vec::with_capacity(4096);
-    loop {
-        match read_event_line(stdout, &mut line_buf, MAX_LINE_BYTES) {
-            Ok(None) => break,
-            Ok(Some(Event::Unknown { t })) => {
-                log::info!("mail scan: skipping unknown event t={t}");
-            }
-            Ok(Some(Event::Started(ev))) => {
-                if ev.protocol != 1 {
-                    status = "failed".into();
-                    error_code = Some("E_PROTOCOL_MISMATCH".into());
-                    error_summary = Some(format!(
-                        "protocol mismatch: sidecar={}, expected=1",
-                        ev.protocol
-                    ));
-                    break;
-                }
-            }
-            Ok(Some(Event::Listing(listing))) => {
-                match persist_listing(&mut conn, run_id, listing.as_ref(), &scorer) {
-                    Ok(PersistOutcome::Committed) => {
-                        stats.listings_committed += 1;
-                    }
-                    Ok(PersistOutcome::SuppressedByDismissal) => {
-                        stats.suppressed_by_dismissal += 1;
-                    }
-                    Err(e) => {
-                        status = "failed".into();
-                        error_code = Some("E_PERSIST".into());
-                        error_summary = Some(redact(&e));
-                        break;
-                    }
-                }
-            }
-            Ok(Some(Event::SourceFinished(ev))) => {
-                let _ = upsert_source_cursor(
-                    &mut conn,
-                    &ev.source,
-                    "",
-                    "mbox",
-                    ev.cursor.size as i64,
-                    ev.cursor.mtime_ns as i64,
-                    ev.cursor.offset as i64,
-                    ev.cursor.last_message_id.as_deref(),
-                    ev.cursor.sentinel_hash.as_deref(),
+    consume_reader(
+        &mut conn,
+        run_id,
+        stdout,
+        &scorer,
+        &mut state,
+        |conn, st| {
+            if last_emit.elapsed() >= std::time::Duration::from_millis(250) {
+                let _ = update_run_stats(conn, run_id, &st.stats);
+                let _ = app.emit(
+                    "mail-scan://progress",
+                    MailScanProgress {
+                        run_id: run_id.to_string(),
+                        listings_committed: st.stats.listings_committed,
+                        messages_seen: st.stats.messages_seen,
+                        status: "running".into(),
+                    },
                 );
-                stats.messages_parsed = stats.messages_parsed.saturating_add(ev.messages_read);
+                last_emit = std::time::Instant::now();
             }
-            Ok(Some(Event::SourceStarted(_))) | Ok(Some(Event::Warning(_))) => {}
-            Ok(Some(Event::Finished(ev))) => {
-                stats.messages_seen = ev.messages_total;
-                if ev.cancelled.unwrap_or(false) {
-                    status = "cancelled".into();
-                }
-            }
-            Err(ProtocolError::Oversize) => {
-                status = "failed".into();
-                error_code = Some("E_PROTOCOL_OVERSIZE".into());
-                error_summary = Some("NDJSON line exceeded 256 KiB".into());
-                break;
-            }
-            Err(ProtocolError::Malformed(detail)) => {
-                status = "failed".into();
-                error_code = Some("E_PROTOCOL".into());
-                error_summary = Some(redact(&detail));
-                break;
-            }
-            Err(ProtocolError::Io(e)) => {
-                status = "failed".into();
-                error_code = Some("E_IO".into());
-                error_summary = Some(redact(&e));
-                break;
-            }
-        }
-
-        if last_emit.elapsed() >= std::time::Duration::from_millis(250) {
-            let _ = update_run_stats(&mut conn, run_id, &stats);
-            let _ = app.emit(
-                "mail-scan://progress",
-                MailScanProgress {
-                    run_id: run_id.to_string(),
-                    listings_committed: stats.listings_committed,
-                    messages_seen: stats.messages_seen,
-                    status: "running".into(),
-                },
-            );
-            last_emit = std::time::Instant::now();
-        }
-    }
+        },
+    )?;
 
     let exit = child.wait();
     match exit {
         Ok(Some(10)) => {
-            if status == "completed" {
-                status = "cancelled".into();
+            if state.status == "completed" {
+                state.status = "cancelled".into();
             }
         }
         Ok(Some(0)) => {}
-        Ok(Some(code)) if status == "completed" => {
-            status = "failed".into();
-            error_code = error_code.or(Some(format!("E_EXIT_{code}")));
+        Ok(Some(code)) if state.status == "completed" => {
+            state.status = "failed".into();
+            state.error_code = state.error_code.or(Some(format!("E_EXIT_{code}")));
         }
         Ok(None) | Err(_) => {
-            if status == "completed" {
-                status = "failed".into();
-                error_code = error_code.or(Some("E_CHILD".into()));
+            if state.status == "completed" {
+                state.status = "failed".into();
+                state.error_code = state.error_code.or(Some("E_CHILD".into()));
             }
         }
         Ok(Some(_)) => {}
     }
 
-    let _ = update_run_stats(&mut conn, run_id, &stats);
+    let _ = update_run_stats(&mut conn, run_id, &state.stats);
     finish_run(
         &mut conn,
         run_id,
-        &status,
-        error_code.as_deref(),
-        error_summary.as_deref(),
+        &state.status,
+        state.error_code.as_deref(),
+        state.error_summary.as_deref(),
     )?;
     let _ = app.emit(
         "mail-scan://progress",
         MailScanProgress {
             run_id: run_id.to_string(),
-            listings_committed: stats.listings_committed,
-            messages_seen: stats.messages_seen,
-            status: status.clone(),
+            listings_committed: state.stats.listings_committed,
+            messages_seen: state.stats.messages_seen,
+            status: state.status.clone(),
         },
     );
     Ok(())
 }
 
-/// Process an in-memory NDJSON stream (tests / crash-safety harness).
+/// Process an in-memory NDJSON stream via the same dispatcher as production.
 #[cfg(test)]
 pub fn consume_event_stream<R: std::io::Read>(
     conn: &mut rusqlite::Connection,
     run_id: &str,
-    reader: R,
-    scorer: &dyn scoring::ListingScorer,
+    mut reader: R,
+    scorer: &dyn ListingScorer,
 ) -> Result<RunStats, String> {
-    use std::io::BufRead;
     start_run(conn, run_id)?;
-    let mut stats = RunStats::default();
-    let mut status = "completed".to_string();
-    let mut error_code: Option<String> = None;
-    let mut error_summary: Option<String> = None;
-
-    let mut buffered = std::io::BufReader::new(reader);
-    let mut line = String::new();
-    loop {
-        line.clear();
-        let n = buffered.read_line(&mut line).map_err(|e| e.to_string())?;
-        if n == 0 {
-            break;
-        }
-        if line.len() > MAX_LINE_BYTES {
-            status = "failed".into();
-            error_code = Some("E_PROTOCOL_OVERSIZE".into());
-            break;
-        }
-        let trimmed = line.trim_end_matches(['\r', '\n']);
-        if trimmed.is_empty() {
-            continue;
-        }
-        match protocol::parse_event_line(trimmed) {
-            Ok(Event::Listing(listing)) => {
-                match persist_listing(conn, run_id, listing.as_ref(), scorer)? {
-                    PersistOutcome::Committed => stats.listings_committed += 1,
-                    PersistOutcome::SuppressedByDismissal => stats.suppressed_by_dismissal += 1,
-                }
-            }
-            Ok(Event::SourceFinished(ev)) => {
-                stats.messages_parsed =
-                    stats.messages_parsed.saturating_add(ev.messages_read);
-            }
-            Ok(Event::Finished(ev)) => {
-                stats.messages_seen = ev.messages_total;
-                if ev.cancelled.unwrap_or(false) {
-                    status = "cancelled".into();
-                }
-            }
-            Ok(Event::Unknown { .. }) | Ok(_) => {}
-            Err(ProtocolError::Malformed(detail)) => {
-                status = "failed".into();
-                error_code = Some("E_PROTOCOL".into());
-                error_summary = Some(detail);
-                break;
-            }
-            Err(e) => {
-                status = "failed".into();
-                error_code = Some("E_PROTOCOL".into());
-                error_summary = Some(e.to_string());
-                break;
-            }
-        }
-    }
-
-    update_run_stats(conn, run_id, &stats)?;
+    let mut state = DriveState {
+        stats: RunStats::default(),
+        status: "completed".into(),
+        error_code: None,
+        error_summary: None,
+        sources: HashMap::new(),
+    };
+    consume_reader(conn, run_id, &mut reader, scorer, &mut state, |_, _| {})?;
+    update_run_stats(conn, run_id, &state.stats)?;
     finish_run(
         conn,
         run_id,
-        &status,
-        error_code.as_deref(),
-        error_summary.as_deref(),
+        &state.status,
+        state.error_code.as_deref(),
+        state.error_summary.as_deref(),
     )?;
-    Ok(stats)
+    Ok(state.stats)
 }

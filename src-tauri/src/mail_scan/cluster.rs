@@ -32,7 +32,7 @@ pub fn upsert_cluster(
         _ => weak_id.clone(),
     };
 
-    // Promotion: weak-only cluster gains a strong key.
+    // Promotion: weak-only cluster gains a strong key (§5.1 rule 4).
     if let Some(s) = strong.filter(|s| !s.is_empty()) {
         let weak_row: Option<(String, Option<String>)> = conn
             .query_row(
@@ -50,6 +50,23 @@ pub fn upsert_cluster(
             }
         }
     }
+
+    // Weak sighting after an existing strong cluster with the same weak key → join it (§5.1 rule 4).
+    let target_id = if strong.filter(|s| !s.is_empty()).is_none() {
+        let existing_strong: Option<String> = conn
+            .query_row(
+                "SELECT fingerprint_id FROM mail_fingerprints
+                 WHERE weak_key = ?1 AND strong_key IS NOT NULL
+                 ORDER BY first_seen_at ASC LIMIT 1",
+                params![weak],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        existing_strong.unwrap_or(target_id)
+    } else {
+        target_id
+    };
 
     // Upsert the target cluster row.
     conn.execute(
@@ -234,6 +251,25 @@ mod tests {
         assert_ne!(a, b);
         assert!(near_a.is_none() || near_b.is_some());
         assert_eq!(near_b.as_deref(), Some("indeed:a"));
+    }
+
+    #[test]
+    fn weak_after_strong_joins_existing_cluster() {
+        let conn = setup();
+        let now = "t";
+        let (strong_id, _) =
+            upsert_cluster(&conn, Some("indeed:first"), "same|role|", now).unwrap();
+        let (joined, near) = upsert_cluster(&conn, None, "same|role|", now).unwrap();
+        assert_eq!(joined, strong_id);
+        assert!(near.is_none());
+        let weak_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM mail_fingerprints WHERE fingerprint_id LIKE 'weak:%'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(weak_rows, 0);
     }
 
     #[test]

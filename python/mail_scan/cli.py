@@ -14,6 +14,7 @@ from mail_scan.exit_codes import (
     EXIT_OK,
     EXIT_UNREADABLE,
 )
+from mail_scan.extractors.base import DEFAULT_EXTRACTORS
 from mail_scan.scan import run_scan
 
 SUPPORTED_PROTOCOL = 1
@@ -30,7 +31,7 @@ def probe(protocol: int) -> int:
         "t": "capabilities",
         "protocol": SUPPORTED_PROTOCOL,
         "sidecar_version": __version__,
-        "extractors": ["indeed", "generic"],
+        "extractors": list(DEFAULT_EXTRACTORS),
         "source_kinds": ["mbox", "maildir"],
     }
     sys.stdout.write(

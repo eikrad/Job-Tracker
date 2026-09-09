@@ -2,6 +2,8 @@
 
 #![allow(dead_code)] // Used by tests now; persist/clustering wiring lands with dismissals/cursors.
 
+use unicode_normalization::UnicodeNormalization;
+
 pub fn normalize_text(value: &str) -> String {
     let mut text = strip_diacritics(value);
     text = text.to_lowercase();
@@ -21,7 +23,7 @@ pub fn normalize_text(value: &str) -> String {
 
 fn strip_diacritics(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
-    for c in input.chars() {
+    for c in input.nfkd() {
         match c {
             'ø' | 'Ø' => out.push('o'),
             'å' | 'Å' => out.push('a'),
@@ -30,8 +32,8 @@ fn strip_diacritics(input: &str) -> String {
             'ü' | 'Ü' => out.push('u'),
             'æ' | 'Æ' => out.push_str("ae"),
             'ß' => out.push_str("ss"),
-            // Common combining leftovers after NFKD-style maps above.
             '\u{0300}'..='\u{036f}' => {}
+            other if unicode_normalization::char::is_combining_mark(other) => {}
             other => out.push(other),
         }
     }

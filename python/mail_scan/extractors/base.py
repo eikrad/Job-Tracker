@@ -7,14 +7,16 @@ from mail_scan.extractors.indeed import extract_indeed
 from mail_scan.extractors.types import ExtractedListing
 from mail_scan.sources import MailMessage
 
-__all__ = ["ExtractedListing", "extract_listings"]
+__all__ = ["DEFAULT_EXTRACTORS", "ExtractedListing", "extract_listings"]
+
+DEFAULT_EXTRACTORS = ["indeed", "generic"]
 
 
 def extract_listings(
     message: MailMessage,
     enabled: list[str],
 ) -> list[ExtractedListing]:
-    order = enabled or ["indeed", "generic"]
+    order = enabled or list(DEFAULT_EXTRACTORS)
     for name in order:
         if name == "indeed":
             found = extract_indeed(message)
@@ -24,5 +26,5 @@ def extract_listings(
             found = extract_generic(message)
             if found:
                 return found
-        # jobindex / linkedin land in B3
+        # jobindex / linkedin land in later PRs
     return []

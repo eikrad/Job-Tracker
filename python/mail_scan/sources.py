@@ -141,9 +141,10 @@ def _iter_mbox_bytes(
 ) -> Iterator[tuple[bytes, int, bytes]]:
     """Yield (raw_message, end_offset, from_line).
 
-    A message is emitted when closed by the next ``From `` line, or at EOF only if the
-    trailing buffer ends with ``\\n`` (complete last line). A mid-write truncated
-    message without a final newline is skipped and its bytes are not consumed.
+    A message is emitted only when closed by the next ``From `` line. Trailing
+    bytes at EOF are never consumed — Thunderbird may still be writing them
+    (spec §5.5). Static fixtures should end with a sentinel ``From `` line so the
+    last real message is closed.
     """
     with path.open("rb") as handle:
         if start_offset:
@@ -154,8 +155,6 @@ def _iter_mbox_bytes(
         while True:
             line = handle.readline()
             if not line:
-                if buf and bytes(buf).endswith(b"\n"):
-                    yield bytes(buf), start + len(buf), from_line
                 return
             if line.startswith(b"From "):
                 if buf:
@@ -263,28 +262,7 @@ def iter_maildir(
     if not path.is_dir():
         raise FileNotFoundError(f"maildir not found: {path}")
 
-    _ = stored_cursor
-    box = mailbox.Maildir(path, create=False)
-    last_id: list[str | None] = [None]
-
-    def generator() -> Iterator[MailMessage]:
-        count = 0
-        try:
-            for key in sorted(box.keys()):
-                if count >= max_messages:
-                    break
-                msg = box.get_message(key)
-                raw = msg.as_bytes()
-                if len(raw) > max_message_bytes:
-                    continue
-                mail = _to_mail_message(msg, len(raw), max_body_chars)
-                last_id[0] = mail.message_id or last_id[0]
-                count += 1
-                yield mail
-        finally:
-            box.close()
-
-    def finalize() -> SourceCursor:
+    def folder_meta() -> tuple[int, int]:
         st = path.stat()
         mtime_ns = getattr(st, "st_mtime_ns", int(st.st_mtime * 1_000_000_000))
         total = 0
@@ -294,6 +272,66 @@ def iter_maildir(
                 for child in d.iterdir():
                     if child.is_file():
                         total += child.stat().st_size
+        return total, mtime_ns
+
+    cursor_reset = False
+    reset_reason: str | None = None
+    skip_after_id: str | None = None
+
+    if stored_cursor is not None:
+        total, mtime_ns = folder_meta()
+        if total < stored_cursor.size or mtime_ns < stored_cursor.mtime_ns:
+            cursor_reset = True
+            reset_reason = "size_or_mtime_regression"
+        elif stored_cursor.last_message_id:
+            skip_after_id = stored_cursor.last_message_id
+
+    box = mailbox.Maildir(path, create=False)
+    if skip_after_id and not cursor_reset:
+        try:
+            present = False
+            for key in box:
+                msg = box.get_message(key)
+                mid = (msg.get("Message-ID") or msg.get("Message-Id") or "").strip()
+                if mid == skip_after_id:
+                    present = True
+                    break
+            if not present:
+                cursor_reset = True
+                reset_reason = "maildir_anchor_missing"
+                skip_after_id = None
+        except (OSError, mailbox.Error):
+            cursor_reset = True
+            reset_reason = "maildir_unreadable"
+            skip_after_id = None
+
+    last_id: list[str | None] = [None]
+    resume_id = None if cursor_reset else skip_after_id
+
+    def generator() -> Iterator[MailMessage]:
+        count = 0
+        past_cursor = resume_id is None
+        try:
+            for key in sorted(box):
+                if count >= max_messages:
+                    break
+                msg = box.get_message(key)
+                raw = msg.as_bytes()
+                if len(raw) > max_message_bytes:
+                    continue
+                mail = _to_mail_message(msg, len(raw), max_body_chars)
+                if not past_cursor:
+                    if mail.message_id == resume_id:
+                        past_cursor = True
+                    continue
+                last_id[0] = mail.message_id or last_id[0]
+                count += 1
+                yield mail
+        finally:
+            box.close()
+
+    def finalize() -> SourceCursor:
+        total, mtime_ns = folder_meta()
         return SourceCursor(
             size=total,
             mtime_ns=mtime_ns,
@@ -305,8 +343,8 @@ def iter_maildir(
     return OpenResult(
         messages=generator(),
         finalize=finalize,
-        cursor_reset=False,
-        reset_reason=None,
+        cursor_reset=cursor_reset,
+        reset_reason=reset_reason,
     )
 
 

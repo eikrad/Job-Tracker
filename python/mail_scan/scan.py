@@ -9,9 +9,9 @@ from typing import Any, TextIO
 from mail_scan import __version__
 from mail_scan.events import emit_event, log_warn
 from mail_scan.exit_codes import EXIT_CANCELLED, EXIT_OK
-from mail_scan.extractors.base import extract_listings
+from mail_scan.extractors.base import DEFAULT_EXTRACTORS, extract_listings
 from mail_scan.fingerprint import fingerprint
-from mail_scan.sources import open_source
+from mail_scan.sources import SourceCursor, open_source
 
 
 def _cancel_requested(cancel_file: str | None) -> bool:
@@ -48,7 +48,7 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
     started = time.monotonic()
     sources = cfg["sources"]
     limits = cfg["limits"]
-    extractors = list(cfg.get("extractors") or ["indeed", "generic"])
+    extractors = list(cfg.get("extractors") or DEFAULT_EXTRACTORS)
     cancel_file = cfg.get("cancel_file")
     # Hard floor; older mail skipped when message_date is comparable (B3 deepens).
     since = cfg.get("since")
@@ -181,7 +181,7 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
         cursor = finalize()
         # Prefer last message id observed in this run.
         if last_message_id:
-            cursor = type(cursor)(
+            cursor = SourceCursor(
                 size=cursor.size,
                 mtime_ns=cursor.mtime_ns,
                 offset=cursor.offset,

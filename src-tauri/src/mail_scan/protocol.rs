@@ -36,9 +36,8 @@ pub enum Event {
     Unknown { t: String },
 }
 
-// Two-step parse: peek `t`, then deserialize the matching payload.
-
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StartedEvent {
     pub protocol: u32,
     pub run_id: String,
@@ -47,12 +46,14 @@ pub struct StartedEvent {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SourceStartedEvent {
     pub source: String,
     pub estimated_messages: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ListingEvent {
     pub source: String,
     pub message_id: String,
@@ -71,18 +72,21 @@ pub struct ListingEvent {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExternalRef {
     pub board: String,
     pub id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FingerprintKeys {
     pub strong: Option<String>,
     pub weak: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SourceFinishedEvent {
     pub source: String,
     pub messages_read: u32,
@@ -92,6 +96,7 @@ pub struct SourceFinishedEvent {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CursorEvent {
     pub size: u64,
     pub mtime_ns: u64,
@@ -101,6 +106,7 @@ pub struct CursorEvent {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WarningEvent {
     pub code: String,
     pub source: Option<String>,
@@ -109,6 +115,7 @@ pub struct WarningEvent {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FinishedEvent {
     pub listings_total: u32,
     pub messages_total: u32,
@@ -121,29 +128,26 @@ struct TypePeek {
     t: String,
 }
 
+fn parse_payload<T: for<'de> Deserialize<'de>>(line: &str) -> Result<T, ProtocolError> {
+    let mut value: serde_json::Value =
+        serde_json::from_str(line).map_err(|e| ProtocolError::Malformed(e.to_string()))?;
+    if let Some(obj) = value.as_object_mut() {
+        obj.remove("t");
+    }
+    serde_json::from_value(value).map_err(|e| ProtocolError::Malformed(e.to_string()))
+}
+
 /// Parse one NDJSON object. Unknown `t` → [`Event::Unknown`].
 pub fn parse_event_line(line: &str) -> Result<Event, ProtocolError> {
     let peek: TypePeek =
         serde_json::from_str(line).map_err(|e| ProtocolError::Malformed(e.to_string()))?;
     match peek.t.as_str() {
-        "started" => Ok(Event::Started(
-            serde_json::from_str(line).map_err(|e| ProtocolError::Malformed(e.to_string()))?,
-        )),
-        "source_started" => Ok(Event::SourceStarted(
-            serde_json::from_str(line).map_err(|e| ProtocolError::Malformed(e.to_string()))?,
-        )),
-        "listing" => Ok(Event::Listing(Box::new(
-            serde_json::from_str(line).map_err(|e| ProtocolError::Malformed(e.to_string()))?,
-        ))),
-        "source_finished" => Ok(Event::SourceFinished(
-            serde_json::from_str(line).map_err(|e| ProtocolError::Malformed(e.to_string()))?,
-        )),
-        "warning" => Ok(Event::Warning(
-            serde_json::from_str(line).map_err(|e| ProtocolError::Malformed(e.to_string()))?,
-        )),
-        "finished" => Ok(Event::Finished(
-            serde_json::from_str(line).map_err(|e| ProtocolError::Malformed(e.to_string()))?,
-        )),
+        "started" => Ok(Event::Started(parse_payload(line)?)),
+        "source_started" => Ok(Event::SourceStarted(parse_payload(line)?)),
+        "listing" => Ok(Event::Listing(Box::new(parse_payload(line)?))),
+        "source_finished" => Ok(Event::SourceFinished(parse_payload(line)?)),
+        "warning" => Ok(Event::Warning(parse_payload(line)?)),
+        "finished" => Ok(Event::Finished(parse_payload(line)?)),
         other => Ok(Event::Unknown {
             t: other.to_string(),
         }),
@@ -151,50 +155,56 @@ pub fn parse_event_line(line: &str) -> Result<Event, ProtocolError> {
 }
 
 /// Read one line with a hard byte cap (does not buffer an oversize line).
+/// Blank lines are skipped. `Ok(None)` only on true EOF.
 pub fn read_event_line<R: Read>(
     reader: &mut R,
     buf: &mut Vec<u8>,
     max_bytes: usize,
 ) -> Result<Option<Event>, ProtocolError> {
-    buf.clear();
-    let mut byte = [0u8; 1];
     loop {
-        match reader.read(&mut byte) {
-            Ok(0) => {
-                if buf.is_empty() {
-                    return Ok(None);
-                }
-                break;
-            }
-            Ok(_) => {
-                if byte[0] == b'\n' {
+        buf.clear();
+        let mut hit_eof = false;
+        let mut byte = [0u8; 1];
+        loop {
+            match reader.read(&mut byte) {
+                Ok(0) => {
+                    hit_eof = true;
                     break;
                 }
-                if buf.len() >= max_bytes {
-                    // Drain until newline or EOF without retaining the rest.
-                    loop {
-                        match reader.read(&mut byte) {
-                            Ok(0) => break,
-                            Ok(_) if byte[0] == b'\n' => break,
-                            Ok(_) => continue,
-                            Err(e) => return Err(ProtocolError::Io(e.to_string())),
-                        }
+                Ok(_) => {
+                    if byte[0] == b'\n' {
+                        break;
                     }
-                    return Err(ProtocolError::Oversize);
+                    if buf.len() >= max_bytes {
+                        // Drain until newline or EOF without retaining the rest.
+                        loop {
+                            match reader.read(&mut byte) {
+                                Ok(0) => break,
+                                Ok(_) if byte[0] == b'\n' => break,
+                                Ok(_) => continue,
+                                Err(e) => return Err(ProtocolError::Io(e.to_string())),
+                            }
+                        }
+                        return Err(ProtocolError::Oversize);
+                    }
+                    buf.push(byte[0]);
                 }
-                buf.push(byte[0]);
+                Err(e) => return Err(ProtocolError::Io(e.to_string())),
             }
-            Err(e) => return Err(ProtocolError::Io(e.to_string())),
         }
+        if buf.last() == Some(&b'\r') {
+            buf.pop();
+        }
+        if buf.is_empty() {
+            if hit_eof {
+                return Ok(None);
+            }
+            continue; // blank line
+        }
+        let line =
+            std::str::from_utf8(buf).map_err(|e| ProtocolError::Malformed(e.to_string()))?;
+        return parse_event_line(line).map(Some);
     }
-    if buf.last() == Some(&b'\r') {
-        buf.pop();
-    }
-    if buf.is_empty() {
-        return Ok(None);
-    }
-    let line = std::str::from_utf8(buf).map_err(|e| ProtocolError::Malformed(e.to_string()))?;
-    parse_event_line(line).map(Some)
 }
 
 #[cfg(test)]
@@ -214,6 +224,15 @@ mod tests {
     #[test]
     fn malformed_known_event_aborts() {
         let err = parse_event_line(r#"{"t":"listing","source":1}"#).unwrap_err();
+        assert!(matches!(err, ProtocolError::Malformed(_)));
+    }
+
+    #[test]
+    fn unknown_field_on_known_event_aborts() {
+        let err = parse_event_line(
+            r#"{"t":"started","protocol":1,"run_id":"r1","sidecar_version":"1.0.0","sources":1,"extra":true}"#,
+        )
+        .unwrap_err();
         assert!(matches!(err, ProtocolError::Malformed(_)));
     }
 

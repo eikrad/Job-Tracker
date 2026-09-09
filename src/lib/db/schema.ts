@@ -22,6 +22,7 @@ export const schema = {
   mail_fingerprints: [
     "fingerprint_id", "strong_key", "weak_key", "first_seen_at", "last_seen_at", "seen_count",
   ],
+  mail_fingerprint_aliases: ["alias_id", "fingerprint_id", "created_at"],
   mail_match_inbox: [
     "id", "fingerprint_id", "kind", "status", "job_id", "score", "score_reason",
     "score_state", "suspicious", "near_duplicate_of", "draft_json", "enrichment_state",
@@ -31,8 +32,13 @@ export const schema = {
   mail_match_dismissals: [
     "fingerprint_id", "scope", "reason", "dismissed_at", "dismissed_run",
   ],
+  mail_scored_sightings: [
+    "id", "fingerprint_id", "pass", "score", "reason", "profile_hash",
+    "prompt_version", "model_id", "listing_content_hash", "outcome", "scored_at", "run_id",
+  ],
   mail_source_cursors: [
     "source_id", "path", "kind", "size", "mtime_ns", "offset",
     "sentinel_hash", "last_message_id", "updated_at",
   ],
+  job_field_provenance: ["job_id", "field", "source", "run_id", "set_at"],
 };

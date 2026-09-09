@@ -25,12 +25,12 @@ def _limits() -> dict:
 
 
 def test_incomplete_trailing_message_not_consumed(tmp_path: Path):
-    # Message without a terminating newline — still being written.
+    # Open message at EOF (no following From) is not consumed — live-tail safe.
     path = tmp_path / "live.mbox"
     path.write_bytes(
         b"From a@x Sat Sep 07 06:12:00 2026\n"
         b"From: a@x\nSubject: hi\nMessage-ID: <a@x>\n\n"
-        b"body without final newline"
+        b"body with trailing newline\n"
     )
     opened = open_source("mbox", path, stored_cursor=None, **_limits())
     msgs = list(opened.messages)
@@ -62,9 +62,18 @@ def test_resume_reads_only_new_tail(tmp_path: Path):
     assert list(second.messages) == []
     assert second.finalize().offset == cursor.offset
 
-    # Append one complete new message.
+    # Drop unconsumed sentinel bytes, then append one complete message + closer.
+    # Refresh size/mtime on the stored cursor so truncate isn't treated as regression.
+    path.write_bytes(path.read_bytes()[: cursor.offset])
+    st = path.stat()
+    mtime_ns = getattr(st, "st_mtime_ns", int(st.st_mtime * 1_000_000_000))
+    stored = {
+        **cursor.as_dict(),
+        "size": st.st_size,
+        "mtime_ns": mtime_ns,
+    }
     extra = (
-        b"\nFrom new@x Mon Sep 09 08:00:00 2026\n"
+        b"From new@x Mon Sep 09 08:00:00 2026\n"
         b"From: new@x\nTo: seeker@example.com\n"
         b"Subject: 1 new job\n"
         b"Date: Mon, 09 Sep 2026 08:00:00 +0000\n"
@@ -73,6 +82,7 @@ def test_resume_reads_only_new_tail(tmp_path: Path):
         b"Content-Type: text/plain; charset=utf-8\n\n"
         b"Platform Engineer - NewCo - Oslo\n"
         b"https://no.indeed.com/viewjob?jk=newjob00112233\n"
+        b"\nFrom mail-scan-sentinel@localhost Mon Sep 09 08:00:01 2026\n"
     )
     with path.open("ab") as handle:
         handle.write(extra)
@@ -80,7 +90,7 @@ def test_resume_reads_only_new_tail(tmp_path: Path):
     third = open_source(
         "mbox",
         path,
-        stored_cursor=cursor.as_dict(),
+        stored_cursor=stored,
         **_limits(),
     )
     assert third.cursor_reset is False

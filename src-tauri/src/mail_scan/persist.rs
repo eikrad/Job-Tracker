@@ -121,29 +121,13 @@ pub fn persist_listing(
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let (fp_id, near) = upsert_cluster(&tx, strong, weak, &now)?;
+    let dismissed = is_dismissed(&tx, &fp_id)?;
 
-    if is_dismissed(&tx, &fp_id)? {
-        tx.execute(
-            "INSERT INTO mail_scored_sightings (
-                fingerprint_id, pass, score, reason, profile_hash, prompt_version,
-                model_id, listing_content_hash, outcome, scored_at, run_id
-             ) VALUES (?1, 1, ?2, ?3, 'stub', 'stub-v0', 'stub', ?4, 'under_cutoff', ?5, ?6)
-             ON CONFLICT(listing_content_hash, pass, profile_hash, prompt_version, model_id)
-             DO NOTHING",
-            params![
-                &fp_id,
-                score.score,
-                &score.reason,
-                content_hash(listing),
-                &now,
-                run_id
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-        tx.commit().map_err(|e| e.to_string())?;
-        return Ok(PersistOutcome::SuppressedByDismissal);
-    }
-
+    let outcome = if dismissed {
+        "under_cutoff"
+    } else {
+        score.outcome
+    };
     tx.execute(
         "INSERT INTO mail_scored_sightings (
             fingerprint_id, pass, score, reason, profile_hash, prompt_version,
@@ -156,12 +140,17 @@ pub fn persist_listing(
             score.score,
             &score.reason,
             content_hash(listing),
-            score.outcome,
+            outcome,
             &now,
             run_id
         ],
     )
     .map_err(|e| e.to_string())?;
+
+    if dismissed {
+        tx.commit().map_err(|e| e.to_string())?;
+        return Ok(PersistOutcome::SuppressedByDismissal);
+    }
 
     let draft = json!({
         "title": listing.title,

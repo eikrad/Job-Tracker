@@ -527,6 +527,27 @@ mod tests {
     }
 
     #[test]
+    fn schema_ts_mirror_lists_mail_tables() {
+        let schema_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/lib/db/schema.ts");
+        let schema_ts = std::fs::read_to_string(schema_path).expect("read schema.ts");
+        for table in [
+            "mail_scan_runs",
+            "mail_fingerprints",
+            "mail_fingerprint_aliases",
+            "mail_match_inbox",
+            "mail_match_dismissals",
+            "mail_scored_sightings",
+            "mail_source_cursors",
+            "job_field_provenance",
+        ] {
+            assert!(
+                schema_ts.contains(&format!("{table}:")),
+                "schema.ts missing table key {table}"
+            );
+        }
+    }
+
+    #[test]
     fn schema_ts_mirror_lists_every_jobs_column() {
         let mut conn = open_mem();
         run(&mut conn).unwrap();
