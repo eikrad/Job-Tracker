@@ -2,6 +2,7 @@
 //!
 //! Behind `mailScanEnabled` (default off). Scoring/enrichment are stubbed until PR C.
 
+pub mod fingerprint;
 pub mod persist;
 pub mod protocol;
 pub mod scoring;
