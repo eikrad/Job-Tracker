@@ -196,7 +196,7 @@ All data lives in the OS app data directory — nothing is stored in the repo.
 | Theme preference | Browser local storage | React UI |
 | Google OAuth refresh token | OS credential store | Tauri / OS keychain |
 | LLM provider preference | Browser local storage (name only, not the key) | React UI |
-| Board column names | SQLite | Rust |
+| Board column names | Browser local storage (`statuses` key) | React UI |
 
 ### SQLite tables
 

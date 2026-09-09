@@ -85,7 +85,7 @@ Equivalent piecemeal:
 
 ```bash
 npm run lint && npm run test && npm run build
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
 uv sync && npm run py:lint && npm run py:test
 ```
