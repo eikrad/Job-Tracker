@@ -16,6 +16,9 @@ vi.mock("../lib/tauriApi", () => ({
   importJobs: vi.fn(),
   updateJob: vi.fn(),
   updateJobStatus: vi.fn(),
+  llmKeySet: vi.fn().mockResolvedValue(undefined),
+  llmKeyStatus: vi.fn().mockResolvedValue({ configured: false, backend: "memory" }),
+  llmKeyClear: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("useJobTrackerState", () => {

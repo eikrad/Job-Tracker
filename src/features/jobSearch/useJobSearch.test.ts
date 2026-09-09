@@ -18,8 +18,6 @@ vi.mock("../../lib/tauriApi", () => ({
 // ── Mock JobTrackerContext so the hook doesn't need a provider ─────────────
 vi.mock("../../context/JobTrackerContext", () => ({
   useJobTracker: () => ({
-    serpApiKey: "",
-    braveSearchApiKey: "",
     onSubmit: vi.fn(),
   }),
 }));
@@ -297,8 +295,6 @@ describe("search", () => {
     expect(fetchJobSearchResultsBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         platforms: expect.arrayContaining(["jobindex", "thehub"]),
-        serpApiKey: null,
-        braveSearchApiKey: null,
       }),
     );
   });

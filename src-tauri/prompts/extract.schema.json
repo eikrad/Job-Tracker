@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "company": { "type": "string" },
+    "title": { "type": "string" },
+    "url": { "type": "string" },
+    "deadline": { "type": "string" },
+    "interview_date": { "type": "string" },
+    "start_date": { "type": "string" },
+    "tags": { "type": "string" },
+    "detected_language": { "type": "string" },
+    "notes": { "type": "string" },
+    "contact_name": { "type": "string" },
+    "contact_email": { "type": "string" },
+    "contact_phone": { "type": "string" },
+    "workplace_street": { "type": "string" },
+    "workplace_city": { "type": "string" },
+    "workplace_postal_code": { "type": "string" },
+    "work_mode": { "type": "string" },
+    "salary_range": { "type": "string" },
+    "contract_type": { "type": "string" },
+    "reference_number": { "type": "string" },
+    "source": { "type": "string" }
+  }
+}

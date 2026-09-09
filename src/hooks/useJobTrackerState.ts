@@ -10,6 +10,7 @@ import {
   importJobs,
   initDb,
   listJobs,
+  llmKeyStatus,
   updateJob,
   updateJobStatus,
   type GoogleCalendarDateKind,
@@ -27,10 +28,12 @@ import {
   type BoardView,
 } from "../lib/jobs/boardViewPreference";
 import { loadJobSearchQuery, saveJobSearchQuery } from "../lib/jobs/jobSearchQuery";
+import { migrateLocalStorageSecrets } from "../lib/secrets/migrateLocalStorageKeys";
 
 function readLlmProvider(): LlmProvider {
   const p = localStorage.getItem("llmProvider");
-  return p === "mistral" ? "mistral" : "gemini";
+  if (p === "mistral" || p === "gemini" || p === "scaleway_deepseek") return p;
+  return "scaleway_deepseek";
 }
 
 export type JobTrackerStateOptions = {
@@ -56,15 +59,7 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
     saveJobSearchQuery(next);
   }, []);
   const [llmProvider, setLlmProvider] = useState<LlmProvider>(readLlmProvider);
-  const [geminiApiKey, setGeminiApiKey] = useState(localStorage.getItem("geminiApiKey") ?? "");
-  const [mistralApiKey, setMistralApiKey] = useState(localStorage.getItem("mistralApiKey") ?? "");
-  const [serpApiKey, setSerpApiKey] = useState(localStorage.getItem("serpApiKey") ?? "");
-  const [braveSearchApiKey, setBraveSearchApiKey] = useState(
-    localStorage.getItem("braveSearchApiKey") ?? "",
-  );
-  const [googleAccessToken, setGoogleAccessToken] = useState(
-    localStorage.getItem("googleAccessToken") ?? "",
-  );
+  const [hasManualGoogleToken, setHasManualGoogleToken] = useState(false);
   const [googleOauthConnected, setGoogleOauthConnected] = useState(false);
   const [statuses, setStatuses] = useState<string[]>(() => {
     const saved = JSON.parse(
@@ -93,31 +88,32 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
     }
   }, []);
 
+  const refreshManualGoogleTokenStatus = useCallback(async () => {
+    try {
+      const s = await llmKeyStatus("google_access_token");
+      setHasManualGoogleToken(s.configured);
+    } catch {
+      setHasManualGoogleToken(false);
+    }
+  }, []);
+
   useEffect(() => {
     void initDb().then(() => {
       void refresh();
       void refreshGoogleOauthStatus();
+      void migrateLocalStorageSecrets().then((result) => {
+        if (result.warnings.length > 0) {
+          console.warn("Secret migration warnings:", result.warnings.join("; "));
+          window.alert(en.app.secretMigrationWarning(result.warnings.join("\n")));
+        }
+        void refreshManualGoogleTokenStatus();
+      });
     });
-  }, [refresh, refreshGoogleOauthStatus]);
+  }, [refresh, refreshGoogleOauthStatus, refreshManualGoogleTokenStatus]);
 
   useEffect(() => {
     localStorage.setItem("llmProvider", llmProvider);
   }, [llmProvider]);
-  useEffect(() => {
-    localStorage.setItem("geminiApiKey", geminiApiKey);
-  }, [geminiApiKey]);
-  useEffect(() => {
-    localStorage.setItem("mistralApiKey", mistralApiKey);
-  }, [mistralApiKey]);
-  useEffect(() => {
-    localStorage.setItem("serpApiKey", serpApiKey);
-  }, [serpApiKey]);
-  useEffect(() => {
-    localStorage.setItem("braveSearchApiKey", braveSearchApiKey);
-  }, [braveSearchApiKey]);
-  useEffect(() => {
-    localStorage.setItem("googleAccessToken", googleAccessToken);
-  }, [googleAccessToken]);
   useEffect(() => {
     localStorage.setItem("statuses", JSON.stringify(statuses));
   }, [statuses]);
@@ -223,9 +219,8 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
   );
 
   const onExtract = useCallback(
-    (rawText: string) =>
-      extractJobInfo(rawText, llmProvider, llmProvider === "gemini" ? geminiApiKey : mistralApiKey),
-    [llmProvider, geminiApiKey, mistralApiKey],
+    (rawText: string) => extractJobInfo(rawText, llmProvider),
+    [llmProvider],
   );
 
   const renameStatus = useCallback((index: number, value: string) => {
@@ -262,14 +257,13 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
 
   const createGoogleCalendarEvent = useCallback(
     async (jobId: number, dateKind: GoogleCalendarDateKind): Promise<string> => {
-      const manual = googleAccessToken.trim();
       return googleCalendarCreateEvent({
         jobId,
         dateKind,
-        accessToken: manual || null,
+        accessToken: null,
       });
     },
-    [googleAccessToken],
+    [],
   );
 
   return {
@@ -284,16 +278,8 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
     setJobSearchQuery,
     llmProvider,
     setLlmProvider,
-    geminiApiKey,
-    setGeminiApiKey,
-    mistralApiKey,
-    setMistralApiKey,
-    serpApiKey,
-    setSerpApiKey,
-    braveSearchApiKey,
-    setBraveSearchApiKey,
-    googleAccessToken,
-    setGoogleAccessToken,
+    hasManualGoogleToken,
+    refreshManualGoogleTokenStatus,
     googleOauthConnected,
     refreshGoogleOauthStatus,
     connectGoogleCalendar,

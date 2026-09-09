@@ -8,6 +8,7 @@ export const schema = {
     "workplace_street", "workplace_city", "workplace_postal_code",
     "work_mode", "salary_range", "contract_type",
     "priority", "reference_number", "source",
+    "listing_status", "listing_checked_at",
     "pdf_path", "created_at", "updated_at",
   ],
   status_history: ["id", "job_id", "from_status", "to_status", "changed_at"],

@@ -22,13 +22,13 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Ruff lint
-        run: ruff check tests
+        run: ruff check tests python
 
       - name: Black format check
-        run: black --check tests
+        run: black --check tests python
 
       - name: isort check
-        run: isort --check-only tests
+        run: isort --check-only tests python
 
       - name: pytest
         run: pytest -q
