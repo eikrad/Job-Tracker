@@ -73,8 +73,8 @@
 - [ ] **Step 4:** remove the `mailScanEnabled` flag; docs in `README.md`, `docs/architecture.md`, `CONTRIBUTING.md` (sidecar build step); note that day-to-day Jobmails use is retired.
 - [ ] **Step 5:** manual E2E (§9.6) with real mbox samples **outside the repo**: full scan; cancel and resume; kill the app mid-scan and restart; revoke the key mid-scan (expect a clean `failed`); run offline (expect `E_LLM_UNAVAILABLE`, no partial garbage).
 - [ ] **Step 6:** `npm run verify` green with the Rust half actually executed; TODO grep clean; `git grep` finds no key, no profile content, no personal mail.
-- [ ] **Step 7:** commit.
-
+- [ ] **Step 7:** bump app version 0.3.0 → 0.4.0 in `package.json` and `src-tauri/Cargo.toml` (keep them identical).
+- [ ] **Step 8:** commit.
 ---
 
 ## Spec coverage
