@@ -40,7 +40,7 @@ Emergency skip (avoid if possible): `HUSKY=0 git commit …`
 | Command | Purpose |
 |--------|---------|
 | `npm run tauri:dev` | Full desktop app (SQLite, native APIs). **Use this for most feature work.** |
-| `npm run dev` | Vite only in the browser — UI-only; no Tauri commands or DB. |
+| `npm run dev` | Vite only in the browser — UI-only; no Tauri commands or DB. **AI extraction and keyring secrets require `tauri:dev`.** |
 | `npm run tauri:build` | Release build (artifacts under `src-tauri/target/release/`). |
 
 ## Tauri release bundles (Linux, AppImage)

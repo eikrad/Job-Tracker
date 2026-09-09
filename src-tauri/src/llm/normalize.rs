@@ -207,7 +207,7 @@ mod tests {
             .unwrap()
             .clone();
         let out = normalize_llm_job_partial(&raw);
-        assert!(out.get("priority").is_none());
+        assert!(!out.contains_key("priority"));
         assert_eq!(out.get("company").and_then(|v| v.as_str()), Some("Acme"));
     }
 

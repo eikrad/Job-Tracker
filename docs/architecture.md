@@ -10,11 +10,13 @@ Job Tracker is a desktop application built with **Tauri v2** (Rust native shell)
 
 ```mermaid
 graph TD
-    UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC commands| RUST[Rust backend<br>Tauri v2]
+    UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC| RUST[Rust backend<br>Tauri v2]
     RUST -->|rusqlite| DB[(SQLite<br>jobs · status_history · job_documents)]
     RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
-    UI -->|HTTPS, browser fetch| AI[AI text extraction<br>Gemini / Mistral]
-    RUST -->|HTTPS| SEARCH[Job search & listing check<br>SerpAPI + Brave fallback]
+    RUST -->|OS keyring / 0600 file| KEYS[API keys<br>LLM · SerpAPI · Brave]
+    RUST -->|HTTPS via llm client| AI[AI text extraction<br>Scaleway / Gemini / Mistral]
+    RUST -->|HTTPS api_client| SEARCH[Job search<br>SerpAPI + Brave]
+    RUST -->|HTTPS fetch_untrusted| LIST[Listing page fetch<br>SSRF-hardened]
     RUST -->|OAuth 2 PKCE + HTTPS| GCAL[Google Calendar API<br>create events]
 ```
 
@@ -29,8 +31,8 @@ graph TD
 | Desktop shell | Tauri v2 (Rust) |
 | Database | SQLite via rusqlite |
 | Drag-and-drop | dnd-kit |
-| AI extraction | Google Gemini / Mistral (user-supplied key) |
-| Job search & listing check | SerpAPI (primary) + Brave Search API (fallback) |
+| AI extraction | Scaleway DeepSeek (default), Google Gemini, Mistral — keys in OS keyring; calls in Rust |
+| Job search & listing check | SerpAPI (primary) + Brave Search API (fallback); listing URLs via `fetch_untrusted` |
 | Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
 | Theme | "Breath" light/dark palette (KDE/Manjaro); OS-aware via `prefers-color-scheme`, togglable in the header (`src/lib/theme.ts`, `src/hooks/useTheme.ts`) |
 | Testing | Vitest (frontend), cargo test (Rust), pytest (Python scripts) |
@@ -45,8 +47,8 @@ src/                    — React + TypeScript UI
   features/             — Feature-scoped modules
     capture/            — Paste-URL capture: fetch listing text, AI-extract, and triage in a Capture Inbox (+ browser handoff link)
     deadlines/          — Deadline tracking logic
-    extraction/         — AI text extraction (Gemini / Mistral)
-    jobSearch/          — Job search providers (SerpAPI, Brave)
+    extraction/         — AI text extraction (invokes Rust; normalizes fields in TS)
+    jobSearch/          — Job search UI (keys stay in keyring)
     jobs/                — Core job CRUD and state
     reminders/           — Reminder support
   components/           — Shared UI components
@@ -116,37 +118,52 @@ flowchart TD
 
 ### AI-assisted extraction
 
+Job-form **Extract** calls the Tauri command `extract_job_info`. Rust loads the selected provider’s key from the OS keyring (or `0600` file fallback), calls Scaleway / Gemini / Mistral, and returns structured fields. The webview never sees the key. Browser-only `npm run dev` cannot extract — use `npm run tauri:dev`.
+
 ```mermaid
 flowchart TD
-    A([User pastes job description text]) --> B[UI sends text to AI provider]
-    B --> C{Provider selected}
-    C -->|Gemini| D[Google AI API]
-    C -->|Mistral| E[Mistral API]
-    D --> F[Structured job fields returned]
-    E --> F
-    F --> G[UI pre-fills Add Job form]
-    G --> H([User reviews and saves])
+    A([User pastes job description text]) --> B[UI invokes extract_job_info]
+    B --> C[Rust reads key from keyring]
+    C --> D{Provider selected}
+    D -->|Scaleway| E[Scaleway DeepSeek]
+    D -->|Gemini| F[Google AI API]
+    D -->|Mistral| G[Mistral API]
+    E --> H[Structured job fields]
+    F --> H
+    G --> H
+    H --> I[UI pre-fills Add Job form]
+    I --> J([User reviews and saves])
 ```
+
+`priority` is never taken from model output (manual only).
+
+### Outbound HTTP helpers
+
+| Helper | Use when | Guards |
+|--------|----------|--------|
+| `net::fetch_untrusted` | Attacker-influenced listing / enrichment URLs | http(s) only; reject private/loopback IPs; re-check after each redirect; 2 MiB body cap; text/HTML/JSON content types; no auth |
+| `net::api_client` | Hardcoded SerpAPI / Brave hosts | Host allowlist; auth headers allowed |
 
 ### Job search
 
 ```mermaid
 flowchart TD
     A([User searches on Jobindex / Indeed / LinkedIn / The Hub]) --> B[UI calls job search feature]
-    B --> C{SerpAPI key set?}
-    C -->|yes| D[SerpAPI query]
-    C -->|no| E[Brave Search API query]
-    D --> F{Results usable?}
-    F -->|no| E
-    E --> G[Results returned]
-    F -->|yes| G
-    G --> H[Search result cards shown]
-    H --> I([User saves with Add as Interesting])
+    B --> C[Rust loads SerpAPI/Brave keys from keyring]
+    C --> D{SerpAPI configured?}
+    D -->|yes| E[SerpAPI query via api_client]
+    D -->|no| F[Brave Search via api_client]
+    E --> G{Results usable?}
+    G -->|no| F
+    F --> H[Results returned]
+    G -->|yes| H
+    H --> I[Search result cards shown]
+    I --> J([User saves with Add as Interesting])
 ```
 
 ### Listing status check
 
-A one-click freshness check per saved job, implemented in `src-tauri/src/listing_check.rs` (`check_listing_status` command) and surfaced by the **Check listing** button on the job detail page (`JobDetailTimeline.tsx`). Rust fetches the job's stored URL directly and classifies it as `active`, `closed`, `archived`, or `unreachable`; for sources that block automated requests (e.g. Indeed), it instead resolves the listing via SerpAPI. The result and timestamp are written to the `jobs.listing_status` / `jobs.listing_checked_at` columns.
+A one-click freshness check per saved job, implemented in `src-tauri/src/listing_check.rs` (`check_listing_status` command) and surfaced by the **Check listing** button on the job detail page (`JobDetailTimeline.tsx`). Rust fetches the job's stored URL via `fetch_untrusted` and classifies it as `active`, `closed`, `archived`, or `unreachable`; for sources that block automated requests (e.g. Indeed), it instead resolves the listing via SerpAPI (`api_client`). The result and timestamp are written to the `jobs.listing_status` / `jobs.listing_checked_at` columns.
 
 ### Google Calendar event creation
 
@@ -173,9 +190,10 @@ All data lives in the OS app data directory — nothing is stored in the repo.
 | Status change history | SQLite `status_history` table | Rust via rusqlite |
 | Per-job document metadata (CV, cover letter, other) | SQLite `job_documents` table | Rust via rusqlite |
 | Uploaded PDFs | OS file system | Rust file commands |
-| API keys (AI, search) | Browser local storage | React UI |
+| API keys (AI, search, manual Google token) | OS keyring (fallback: `0600` file in app data) | Rust `secrets` module; Settings shows configured / Replace / Remove only |
 | Theme preference | Browser local storage | React UI |
 | Google OAuth refresh token | OS credential store | Tauri / OS keychain |
+| LLM provider preference | Browser local storage (name only, not the key) | React UI |
 | Board column names | SQLite | Rust |
 
 ### SQLite tables

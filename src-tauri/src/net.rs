@@ -33,7 +33,7 @@ pub(crate) fn allow_loopback_for_tests(allow: bool) {
 fn loopback_allowed() -> bool {
     #[cfg(test)]
     {
-        return ALLOW_LOOPBACK_FOR_TESTS.with(|c| c.get());
+        ALLOW_LOOPBACK_FOR_TESTS.with(|c| c.get())
     }
     #[cfg(not(test))]
     {
@@ -127,13 +127,13 @@ pub fn validate_url_for_untrusted_fetch(url: &str) -> Result<url::Url, String> {
             if is_forbidden_ip(IpAddr::V4(ip)) {
                 return Err(format!("Forbidden IP address: {ip}"));
             }
-            return Ok(parsed);
+            Ok(parsed)
         }
         url::Host::Ipv6(ip) => {
             if is_forbidden_ip(IpAddr::V6(ip)) {
                 return Err(format!("Forbidden IP address: {ip}"));
             }
-            return Ok(parsed);
+            Ok(parsed)
         }
         url::Host::Domain(domain) => {
             let port = parsed.port_or_known_default().unwrap_or(80);
