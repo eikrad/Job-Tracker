@@ -27,6 +27,7 @@ import {
   type BoardView,
 } from "../lib/jobs/boardViewPreference";
 import { loadJobSearchQuery, saveJobSearchQuery } from "../lib/jobs/jobSearchQuery";
+import { migrateLocalStorageSecrets } from "../lib/secrets/migrateLocalStorageKeys";
 
 function readLlmProvider(): LlmProvider {
   const p = localStorage.getItem("llmProvider");
@@ -97,6 +98,11 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
     void initDb().then(() => {
       void refresh();
       void refreshGoogleOauthStatus();
+      void migrateLocalStorageSecrets().then((result) => {
+        if (result.warnings.length > 0) {
+          console.warn("Secret migration warnings:", result.warnings.join("; "));
+        }
+      });
     });
   }, [refresh, refreshGoogleOauthStatus]);
 

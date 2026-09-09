@@ -68,6 +68,20 @@ export async function openDocument(path: string): Promise<void> {
   return invoke("open_document", { path });
 }
 
+export type LlmKeyStatus = { configured: boolean; backend: string };
+
+export async function llmKeySet(provider: string, key: string): Promise<void> {
+  return invoke("llm_key_set", { provider, key });
+}
+
+export async function llmKeyStatus(provider: string): Promise<LlmKeyStatus> {
+  return invoke<LlmKeyStatus>("llm_key_status", { provider });
+}
+
+export async function llmKeyClear(provider: string): Promise<void> {
+  return invoke("llm_key_clear", { provider });
+}
+
 export type GoogleCalendarDateKind = "apply" | "interview" | "start";
 
 export async function googleOauthGetClientId(): Promise<string> {
