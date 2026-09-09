@@ -10,7 +10,7 @@ use tauri::{AppHandle, Manager};
 
 const KEYRING_USER: &str = "api_key";
 
-/// Providers whose secrets live in this store (including Google access token — H5).
+/// Providers whose secrets live in this store (including Google OAuth tokens — H5).
 pub const PROVIDERS: &[&str] = &[
     "gemini",
     "mistral",
@@ -18,6 +18,7 @@ pub const PROVIDERS: &[&str] = &[
     "serpapi",
     "brave",
     "google_access_token",
+    "google_refresh_token",
 ];
 
 fn validate_provider(provider: &str) -> Result<(), String> {
@@ -239,6 +240,16 @@ pub fn get_secret_or_default(provider: &str) -> String {
     get_secret(provider).ok().flatten().unwrap_or_default()
 }
 
+/// Rust-side write (never exposed to the frontend).
+pub fn set_secret(provider: &str, value: &str) -> Result<(), String> {
+    with_store(|s| s.set(provider, value))
+}
+
+/// Rust-side delete (never exposed to the frontend).
+pub fn clear_secret(provider: &str) -> Result<(), String> {
+    with_store(|s| s.clear(provider))
+}
+
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct KeyStatus {
@@ -329,6 +340,19 @@ mod tests {
         assert!(json.contains("backend"));
         assert!(!json.contains("super-secret"));
         assert!(!json.contains("key-material"));
+    }
+
+    #[test]
+    fn google_oauth_tokens_are_known_providers() {
+        // google_oauth.rs stores the refresh token under this exact name.
+        let store = MemoryStore::default();
+        store.set("google_refresh_token", "1//refresh").unwrap();
+        assert_eq!(
+            store.get("google_refresh_token").unwrap().as_deref(),
+            Some("1//refresh")
+        );
+        assert!(validate_provider("google_access_token").is_ok());
+        assert!(validate_provider("google_oauth_token").is_err());
     }
 
     #[test]

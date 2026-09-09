@@ -1,0 +1,819 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "indeed-jk",
+      "input": {
+        "company": "Netcompany",
+        "title": "Senior Data Engineer",
+        "location": "København",
+        "url": "https://dk.indeed.com/viewjob?jk=9f2c1abdeadbeef",
+        "board": "indeed",
+        "external_id": "9f2c1abdeadbeef"
+      },
+      "expected_strong": "indeed:9f2c1abdeadbeef",
+      "expected_weak": "netcompany|senior data engineer|kobenhavn",
+      "expected_cluster": "indeed:9f2c1abdeadbeef"
+    },
+    {
+      "id": "diacritics-aa",
+      "input": {
+        "company": "Ålborg ApS",
+        "title": "Udvikler",
+        "location": "Århus",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "alborg|udvikler|arhus",
+      "expected_cluster": "weak:alborg|udvikler|arhus"
+    },
+    {
+      "id": "diacritics-ae",
+      "input": {
+        "company": "Mälar AB",
+        "title": "Utvecklare",
+        "location": "Göteborg",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "malar|utvecklare|goteborg",
+      "expected_cluster": "weak:malar|utvecklare|goteborg"
+    },
+    {
+      "id": "diacritics-oe",
+      "input": {
+        "company": "Ørsted A/S",
+        "title": "Engineer",
+        "location": "København",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "orsted|engineer|kobenhavn",
+      "expected_cluster": "weak:orsted|engineer|kobenhavn"
+    },
+    {
+      "id": "legal-gmbh",
+      "input": {
+        "company": "Example GmbH",
+        "title": "Backend Dev",
+        "location": "Berlin",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "example|backend dev|berlin",
+      "expected_cluster": "weak:example|backend dev|berlin"
+    },
+    {
+      "id": "legal-aps",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Frontend",
+        "location": "Aarhus",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|frontend|aarhus",
+      "expected_cluster": "weak:acme|frontend|aarhus"
+    },
+    {
+      "id": "legal-as",
+      "input": {
+        "company": "Nordic A/S",
+        "title": "Analyst",
+        "location": "Odense",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "nordic|analyst|odense",
+      "expected_cluster": "weak:nordic|analyst|odense"
+    },
+    {
+      "id": "legal-ltd",
+      "input": {
+        "company": "Widgets Ltd",
+        "title": "PM",
+        "location": "London",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "widgets|pm|london",
+      "expected_cluster": "weak:widgets|pm|london"
+    },
+    {
+      "id": "legal-inc",
+      "input": {
+        "company": "Widgets Inc",
+        "title": "PM",
+        "location": "NYC",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "widgets|pm|nyc",
+      "expected_cluster": "weak:widgets|pm|nyc"
+    },
+    {
+      "id": "gender-mwd",
+      "input": {
+        "company": "Acme",
+        "title": "Engineer (m/w/d)",
+        "location": "Berlin",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|engineer|berlin",
+      "expected_cluster": "weak:acme|engineer|berlin"
+    },
+    {
+      "id": "gender-mfd",
+      "input": {
+        "company": "Acme",
+        "title": "Engineer (m/f/d)",
+        "location": "Berlin",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|engineer|berlin",
+      "expected_cluster": "weak:acme|engineer|berlin"
+    },
+    {
+      "id": "remote-suffix",
+      "input": {
+        "company": "Acme",
+        "title": "Engineer - remote",
+        "location": "Berlin",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|engineer|berlin",
+      "expected_cluster": "weak:acme|engineer|berlin"
+    },
+    {
+      "id": "remote-en-dash",
+      "input": {
+        "company": "Acme",
+        "title": "Engineer – remote",
+        "location": "Berlin",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|engineer|berlin",
+      "expected_cluster": "weak:acme|engineer|berlin"
+    },
+    {
+      "id": "utm-strip",
+      "input": {
+        "company": "Acme",
+        "title": "Dev",
+        "location": "Kbh",
+        "url": "https://jobs.example.com/a?utm_source=x&utm_medium=y&id=1",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://jobs.example.com/a?id=1",
+      "expected_weak": "acme|dev|kbh",
+      "expected_cluster": "url:https://jobs.example.com/a?id=1"
+    },
+    {
+      "id": "gclid-strip",
+      "input": {
+        "company": "Acme",
+        "title": "Dev",
+        "location": "Kbh",
+        "url": "https://jobs.example.com/a?gclid=abc&id=1",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://jobs.example.com/a?id=1",
+      "expected_weak": "acme|dev|kbh",
+      "expected_cluster": "url:https://jobs.example.com/a?id=1"
+    },
+    {
+      "id": "www-strip",
+      "input": {
+        "company": "Acme",
+        "title": "Dev",
+        "location": "Kbh",
+        "url": "https://www.example.com/jobs/1/",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://example.com/jobs/1",
+      "expected_weak": "acme|dev|kbh",
+      "expected_cluster": "url:https://example.com/jobs/1"
+    },
+    {
+      "id": "fragment-drop",
+      "input": {
+        "company": "Acme",
+        "title": "Dev",
+        "location": "Kbh",
+        "url": "https://example.com/jobs/1#section",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://example.com/jobs/1",
+      "expected_weak": "acme|dev|kbh",
+      "expected_cluster": "url:https://example.com/jobs/1"
+    },
+    {
+      "id": "indeed-rc-clk",
+      "input": {
+        "company": "Acme",
+        "title": "Dev",
+        "location": "Kbh",
+        "url": "https://dk.indeed.com/rc/clk?jk=feedface001122&from=email",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://dk.indeed.com/viewjob?jk=feedface001122",
+      "expected_weak": "acme|dev|kbh",
+      "expected_cluster": "url:https://dk.indeed.com/viewjob?jk=feedface001122"
+    },
+    {
+      "id": "near-dup-cph",
+      "input": {
+        "company": "BigConsult",
+        "title": "Software Engineer",
+        "location": "",
+        "url": "https://example.com/cph",
+        "board": "indeed",
+        "external_id": "cph1"
+      },
+      "expected_strong": "indeed:cph1",
+      "expected_weak": "bigconsult|software engineer|",
+      "expected_cluster": "indeed:cph1",
+      "near_duplicate_group": "bigconsult-swe"
+    },
+    {
+      "id": "near-dup-aar",
+      "input": {
+        "company": "BigConsult",
+        "title": "Software Engineer",
+        "location": "",
+        "url": "https://example.com/aar",
+        "board": "indeed",
+        "external_id": "aar1"
+      },
+      "expected_strong": "indeed:aar1",
+      "expected_weak": "bigconsult|software engineer|",
+      "expected_cluster": "indeed:aar1",
+      "near_duplicate_group": "bigconsult-swe"
+    },
+    {
+      "id": "weak-only-same-a",
+      "input": {
+        "company": "Solo",
+        "title": "Designer",
+        "location": "Malmö",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "solo|designer|malmo",
+      "expected_cluster": "weak:solo|designer|malmo"
+    },
+    {
+      "id": "weak-only-same-b",
+      "input": {
+        "company": "Solo",
+        "title": "Designer",
+        "location": "Malmö",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "solo|designer|malmo",
+      "expected_cluster": "weak:solo|designer|malmo"
+    },
+    {
+      "id": "case-fold",
+      "input": {
+        "company": "ACME APS",
+        "title": "SENIOR DEV",
+        "location": "KØBENHAVN",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|senior dev|kobenhavn",
+      "expected_cluster": "weak:acme|senior dev|kobenhavn"
+    },
+    {
+      "id": "punct-collapse",
+      "input": {
+        "company": "Acme, Inc.",
+        "title": "Full-Stack / Backend",
+        "location": "New York",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|full stack backend|new york",
+      "expected_cluster": "weak:acme|full stack backend|new york"
+    },
+    {
+      "id": "ivs-suffix",
+      "input": {
+        "company": "Tiny IVS",
+        "title": "Intern",
+        "location": "Roskilde",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "tiny|intern|roskilde",
+      "expected_cluster": "weak:tiny|intern|roskilde"
+    },
+    {
+      "id": "ab-suffix",
+      "input": {
+        "company": "North AB",
+        "title": "Säljare",
+        "location": "Stockholm",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "north|saljare|stockholm",
+      "expected_cluster": "weak:north|saljare|stockholm"
+    },
+    {
+      "id": "linkedin-id",
+      "input": {
+        "company": "Acme",
+        "title": "SWE",
+        "location": "Remote",
+        "url": "https://www.linkedin.com/jobs/view/123",
+        "board": "linkedin",
+        "external_id": "123"
+      },
+      "expected_strong": "linkedin:123",
+      "expected_weak": "acme|swe|remote",
+      "expected_cluster": "linkedin:123"
+    },
+    {
+      "id": "jobindex-id",
+      "input": {
+        "company": "Acme",
+        "title": "SWE",
+        "location": "Kbh",
+        "url": "https://www.jobindex.dk/jobannonces/456",
+        "board": "jobindex",
+        "external_id": "456"
+      },
+      "expected_strong": "jobindex:456",
+      "expected_weak": "acme|swe|kbh",
+      "expected_cluster": "jobindex:456"
+    },
+    {
+      "id": "trk-strip",
+      "input": {
+        "company": "Acme",
+        "title": "Dev",
+        "location": "Kbh",
+        "url": "https://example.com/j?trk=yes&keep=1",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://example.com/j?keep=1",
+      "expected_weak": "acme|dev|kbh",
+      "expected_cluster": "url:https://example.com/j?keep=1"
+    },
+    {
+      "id": "refid-strip",
+      "input": {
+        "company": "Acme",
+        "title": "Dev",
+        "location": "Kbh",
+        "url": "https://example.com/j?refId=zz&keep=1",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://example.com/j?keep=1",
+      "expected_weak": "acme|dev|kbh",
+      "expected_cluster": "url:https://example.com/j?keep=1"
+    },
+    {
+      "id": "fbclid-strip",
+      "input": {
+        "company": "Acme",
+        "title": "Dev",
+        "location": "Kbh",
+        "url": "https://example.com/j?fbclid=x&keep=1",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://example.com/j?keep=1",
+      "expected_weak": "acme|dev|kbh",
+      "expected_cluster": "url:https://example.com/j?keep=1"
+    },
+    {
+      "id": "vjk-strip",
+      "input": {
+        "company": "Acme",
+        "title": "Dev",
+        "location": "Kbh",
+        "url": "https://example.com/j?vjk=1&keep=1",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://example.com/j?keep=1",
+      "expected_weak": "acme|dev|kbh",
+      "expected_cluster": "url:https://example.com/j?keep=1"
+    },
+    {
+      "id": "from-strip",
+      "input": {
+        "company": "Acme",
+        "title": "Dev",
+        "location": "Kbh",
+        "url": "https://example.com/j?from=mail&keep=1",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://example.com/j?keep=1",
+      "expected_weak": "acme|dev|kbh",
+      "expected_cluster": "url:https://example.com/j?keep=1"
+    },
+    {
+      "id": "empty-company",
+      "input": {
+        "company": "",
+        "title": "Role",
+        "location": "City",
+        "url": "https://example.com/r",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://example.com/r",
+      "expected_weak": "|role|city",
+      "expected_cluster": "url:https://example.com/r"
+    },
+    {
+      "id": "whitespace-heavy",
+      "input": {
+        "company": "  Acme   ApS  ",
+        "title": "  Dev  ",
+        "location": "  Kbh  ",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|dev|kbh",
+      "expected_cluster": "weak:acme|dev|kbh"
+    },
+    {
+      "id": "scheme-lower",
+      "input": {
+        "company": "Acme",
+        "title": "Dev",
+        "location": "Kbh",
+        "url": "HTTPS://Example.COM/Path",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://example.com/Path",
+      "expected_weak": "acme|dev|kbh",
+      "expected_cluster": "url:https://example.com/Path"
+    },
+    {
+      "id": "city-variant-0",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "København",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|kobenhavn",
+      "expected_cluster": "weak:acme|software engineer|kobenhavn"
+    },
+    {
+      "id": "city-variant-1",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Aarhus",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|aarhus",
+      "expected_cluster": "weak:acme|software engineer|aarhus"
+    },
+    {
+      "id": "city-variant-2",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Odense",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|odense",
+      "expected_cluster": "weak:acme|software engineer|odense"
+    },
+    {
+      "id": "city-variant-3",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Aalborg",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|aalborg",
+      "expected_cluster": "weak:acme|software engineer|aalborg"
+    },
+    {
+      "id": "city-variant-4",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Esbjerg",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|esbjerg",
+      "expected_cluster": "weak:acme|software engineer|esbjerg"
+    },
+    {
+      "id": "city-variant-5",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Randers",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|randers",
+      "expected_cluster": "weak:acme|software engineer|randers"
+    },
+    {
+      "id": "city-variant-6",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Kolding",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|kolding",
+      "expected_cluster": "weak:acme|software engineer|kolding"
+    },
+    {
+      "id": "city-variant-7",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Horsens",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|horsens",
+      "expected_cluster": "weak:acme|software engineer|horsens"
+    },
+    {
+      "id": "city-variant-8",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Vejle",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|vejle",
+      "expected_cluster": "weak:acme|software engineer|vejle"
+    },
+    {
+      "id": "city-variant-9",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Roskilde",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|roskilde",
+      "expected_cluster": "weak:acme|software engineer|roskilde"
+    },
+    {
+      "id": "city-variant-10",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Helsingør",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|helsingor",
+      "expected_cluster": "weak:acme|software engineer|helsingor"
+    },
+    {
+      "id": "city-variant-11",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Herning",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|herning",
+      "expected_cluster": "weak:acme|software engineer|herning"
+    },
+    {
+      "id": "city-variant-12",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Silkeborg",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|silkeborg",
+      "expected_cluster": "weak:acme|software engineer|silkeborg"
+    },
+    {
+      "id": "city-variant-13",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Næstved",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|naestved",
+      "expected_cluster": "weak:acme|software engineer|naestved"
+    },
+    {
+      "id": "city-variant-14",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Fredericia",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|fredericia",
+      "expected_cluster": "weak:acme|software engineer|fredericia"
+    },
+    {
+      "id": "city-variant-15",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Viborg",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|viborg",
+      "expected_cluster": "weak:acme|software engineer|viborg"
+    },
+    {
+      "id": "city-variant-16",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Køge",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|koge",
+      "expected_cluster": "weak:acme|software engineer|koge"
+    },
+    {
+      "id": "city-variant-17",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Holstebro",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|holstebro",
+      "expected_cluster": "weak:acme|software engineer|holstebro"
+    },
+    {
+      "id": "city-variant-18",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Taastrup",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|taastrup",
+      "expected_cluster": "weak:acme|software engineer|taastrup"
+    },
+    {
+      "id": "city-variant-19",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Slagelse",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|slagelse",
+      "expected_cluster": "weak:acme|software engineer|slagelse"
+    },
+    {
+      "id": "city-variant-20",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Hillerød",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|hillerod",
+      "expected_cluster": "weak:acme|software engineer|hillerod"
+    },
+    {
+      "id": "city-variant-21",
+      "input": {
+        "company": "Acme ApS",
+        "title": "Software Engineer",
+        "location": "Sønderborg",
+        "url": "",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": null,
+      "expected_weak": "acme|software engineer|sonderborg",
+      "expected_cluster": "weak:acme|software engineer|sonderborg"
+    }
+  ]
+}

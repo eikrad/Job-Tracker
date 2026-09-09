@@ -1,2 +1,6 @@
-# Placeholder for the mail-scan Python sidecar package (PR B).
-# Kept so lint/format tools can include `python/` before code lands.
+# Mail-scan Python sidecar (`python -m mail_scan`).
+#
+# Contract: local mbox/maildir only — no network, no secrets, no DB path
+# (ADR 0004). Config on stdin; NDJSON events on stdout; logs on stderr.
+#
+# Dev: `PYTHONPATH=python python -m mail_scan probe --protocol 1`

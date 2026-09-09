@@ -1,4 +1,4 @@
-//! Google OAuth 2.0 (PKCE, loopback redirect) + refresh token in OS keyring.
+//! Google OAuth 2.0 (PKCE, loopback redirect) + refresh token in the secret store.
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::RngExt;
 use serde::Serialize;
@@ -13,8 +13,10 @@ use tauri::AppHandle;
 use tauri::Manager;
 use url::Url;
 
-const KEYRING_SERVICE: &str = "JobTracker-GoogleCalendar";
-const KEYRING_USER: &str = "oauth_refresh_token";
+const REFRESH_TOKEN_PROVIDER: &str = "google_refresh_token";
+/// Pre-`SecretStore` keyring location, read once and migrated (see [`read_refresh_token`]).
+const LEGACY_KEYRING_SERVICE: &str = "JobTracker-GoogleCalendar";
+const LEGACY_KEYRING_USER: &str = "oauth_refresh_token";
 const GOOGLE_AUTH: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN: &str = "https://oauth2.googleapis.com/token";
 const CALENDAR_SCOPE: &str = "https://www.googleapis.com/auth/calendar.events";
@@ -47,25 +49,36 @@ pub fn write_client_id(app: &AppHandle, client_id: String) -> Result<(), String>
     std::fs::write(&path, client_id.trim()).map_err(|e| e.to_string())
 }
 
-fn keyring_entry() -> Result<keyring::Entry, String> {
-    keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| e.to_string())
+/// Refresh token from the secret store, moving a pre-`SecretStore` keyring entry
+/// into the store on first access so existing installs stay signed in.
+fn read_refresh_token() -> Result<Option<String>, String> {
+    if let Some(token) = crate::secrets::get_secret(REFRESH_TOKEN_PROVIDER)? {
+        return Ok(Some(token));
+    }
+    migrate_legacy_refresh_token()
 }
 
-pub fn has_refresh_token() -> bool {
-    keyring_entry()
-        .map(|e| e.get_password().map(|p| !p.is_empty()).unwrap_or(false))
-        .unwrap_or(false)
+/// Best-effort read of the old keyring entry; a missing secret service is simply
+/// "nothing to migrate", not a failure.
+fn migrate_legacy_refresh_token() -> Result<Option<String>, String> {
+    let Some(entry) = legacy_keyring_entry() else {
+        return Ok(None);
+    };
+    let token = match entry.get_password() {
+        Ok(t) => t.trim().to_string(),
+        Err(_) => return Ok(None),
+    };
+    if token.is_empty() {
+        return Ok(None);
+    }
+    crate::secrets::set_secret(REFRESH_TOKEN_PROVIDER, &token)?;
+    // Only drop the old copy once the new one is safely written.
+    let _ = entry.delete_credential();
+    Ok(Some(token))
 }
 
-pub fn store_refresh_token(token: &str) -> Result<(), String> {
-    let e = keyring_entry()?;
-    e.set_password(token).map_err(|e| e.to_string())
-}
-
-pub fn delete_refresh_token() -> Result<(), String> {
-    let e = keyring_entry()?;
-    let _ = e.delete_credential();
-    Ok(())
+fn legacy_keyring_entry() -> Option<keyring::Entry> {
+    keyring::Entry::new(LEGACY_KEYRING_SERVICE, LEGACY_KEYRING_USER).ok()
 }
 
 fn gen_code_verifier() -> String {
@@ -223,13 +236,9 @@ pub fn resolve_calendar_access_token(
         }
     }
     let client_id = read_client_id(app)?;
-    let entry = keyring_entry()?;
-    let refresh = entry
-    .get_password()
-    .map_err(|_| "Not signed in to Google. Use Settings → Connect Google, or paste an access token (Advanced).".to_string())?;
-    if refresh.trim().is_empty() {
-        return Err("Not signed in to Google.".to_string());
-    }
+    let refresh = read_refresh_token()
+    .map_err(|e| format!("Cannot read Google credentials: {}", crate::secrets::redact(&e)))?
+    .ok_or_else(|| "Not signed in to Google. Use Settings → Connect Google, or paste an access token (Advanced).".to_string())?;
     access_token_from_refresh(&client_id, refresh.trim())
 }
 
@@ -256,13 +265,18 @@ pub fn google_oauth_set_client_id(app: AppHandle, client_id: String) -> Result<(
 #[tauri::command]
 pub fn google_oauth_status() -> Result<GoogleOauthStatus, String> {
     Ok(GoogleOauthStatus {
-        connected: has_refresh_token(),
+        // An unreadable store reads as "not connected", as it did before the migration.
+        connected: read_refresh_token().ok().flatten().is_some(),
     })
 }
 
 #[tauri::command]
 pub fn google_oauth_disconnect() -> Result<(), String> {
-    delete_refresh_token()
+    // Clear the legacy entry too, so a disconnect is not undone by the migration.
+    if let Some(entry) = legacy_keyring_entry() {
+        let _ = entry.delete_credential();
+    }
+    crate::secrets::clear_secret(REFRESH_TOKEN_PROVIDER)
 }
 
 #[tauri::command]
@@ -318,8 +332,7 @@ pub fn google_oauth_connect(app: AppHandle) -> Result<(), String> {
     let _ = handle.join();
 
     let refresh = exchange_code_for_tokens(&client_id, &redirect_uri, &code, &verifier)?;
-    store_refresh_token(&refresh)?;
-    Ok(())
+    crate::secrets::set_secret(REFRESH_TOKEN_PROVIDER, &refresh)
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────────────

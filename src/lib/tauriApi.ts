@@ -233,6 +233,28 @@ export async function checkListingStatus(
   return invoke("check_listing_status", { jobId, url });
 }
 
+export async function mailScanGetEnabled(): Promise<boolean> {
+  return invoke<boolean>("mail_scan_get_enabled");
+}
+
+export async function mailScanSetEnabled(enabled: boolean): Promise<void> {
+  return invoke("mail_scan_set_enabled", { enabled });
+}
+
+export async function mailScanStart(sources: Array<{
+  id: string;
+  kind: string;
+  path: string;
+}>): Promise<string> {
+  return invoke<string>("mail_scan_start", {
+    request: { sources },
+  });
+}
+
+export async function mailScanCancel(): Promise<void> {
+  return invoke("mail_scan_cancel");
+}
+
 export async function googleCalendarCreateEvent(params: {
   jobId: number;
   dateKind: GoogleCalendarDateKind;
