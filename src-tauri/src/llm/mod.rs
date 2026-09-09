@@ -2,4 +2,5 @@
 
 pub mod client;
 pub mod normalize;
+pub mod overrides;
 pub mod provider;

@@ -301,11 +301,34 @@ mod tests {
     }
 
     #[test]
-    fn extract_domain_works() {
-        assert_eq!(
-            extract_domain("https://www.linkedin.com/jobs/view/123"),
-            Some("www.linkedin.com".to_string())
-        );
-        assert_eq!(extract_domain("not-a-url"), None);
+    fn baseline_fixture_matches_classifier() {
+        #[derive(serde::Deserialize)]
+        struct Case {
+            id: String,
+            original_url: String,
+            final_url: String,
+            body_head: String,
+            expected: String,
+        }
+        let raw = include_str!("../fixtures/listing_status_baseline.json");
+        let cases: Vec<Case> = serde_json::from_str(raw).expect("baseline fixture");
+        assert!(cases.len() >= 7, "baseline should cover several boards");
+
+        for case in cases {
+            let got = if extract_domain(&case.original_url)
+                .unwrap_or_default()
+                .contains("indeed.com")
+            {
+                classify_indeed(&case.original_url, &case.final_url, &case.body_head)
+            } else {
+                classify_by_domain(&case.original_url, &case.final_url, &case.body_head)
+            };
+            assert_eq!(
+                got.as_str(),
+                case.expected.as_str(),
+                "baseline case {} drifted",
+                case.id
+            );
+        }
     }
 }

@@ -82,6 +82,38 @@ export async function llmKeyClear(provider: string): Promise<void> {
   return invoke("llm_key_clear", { provider });
 }
 
+export type LlmProviderOverride = {
+  baseUrl?: string | null;
+  modelId?: string | null;
+};
+
+export async function llmProviderOverrideGet(provider: string): Promise<LlmProviderOverride> {
+  return invoke<LlmProviderOverride>("llm_provider_override_get", { provider });
+}
+
+export async function llmProviderOverrideSet(
+  provider: string,
+  baseUrl: string | null,
+  modelId: string | null,
+): Promise<void> {
+  return invoke("llm_provider_override_set", {
+    provider,
+    baseUrl,
+    modelId,
+  });
+}
+
+export type LlmTestConnectionResult = {
+  ok: boolean;
+  modelId?: string;
+  detail?: string;
+  error?: string;
+};
+
+export async function llmTestConnection(provider: string): Promise<LlmTestConnectionResult> {
+  return invoke<LlmTestConnectionResult>("llm_test_connection", { provider });
+}
+
 export type GoogleCalendarDateKind = "apply" | "interview" | "start";
 
 export async function googleOauthGetClientId(): Promise<string> {

@@ -165,6 +165,8 @@ flowchart TD
 
 A one-click freshness check per saved job, implemented in `src-tauri/src/listing_check.rs` (`check_listing_status` command) and surfaced by the **Check listing** button on the job detail page (`JobDetailTimeline.tsx`). Rust fetches the job's stored URL via `fetch_untrusted` and classifies it as `active`, `closed`, `archived`, or `unreachable`; for sources that block automated requests (e.g. Indeed), it instead resolves the listing via SerpAPI (`api_client`). The result and timestamp are written to the `jobs.listing_status` / `jobs.listing_checked_at` columns.
 
+Classifier outcomes for representative boards are pinned in `src-tauri/fixtures/listing_status_baseline.json` (exercised by `listing_check` tests) so SSRF body/type caps cannot silently change status heuristics.
+
 ### Google Calendar event creation
 
 ```mermaid

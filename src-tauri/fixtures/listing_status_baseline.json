@@ -1,0 +1,74 @@
+[
+  {
+    "id": "linkedin_expired_url",
+    "original_url": "https://www.linkedin.com/jobs/view/123",
+    "final_url": "https://www.linkedin.com/jobs/view/123/expired",
+    "body_head": "",
+    "expected": "closed",
+    "note": "Classifier after fetch_untrusted; expired path segment (unchanged vs pre-SSRF heuristics)."
+  },
+  {
+    "id": "linkedin_body_closed",
+    "original_url": "https://www.linkedin.com/jobs/view/456",
+    "final_url": "https://www.linkedin.com/jobs/view/456",
+    "body_head": "no longer accepting applications",
+    "expected": "closed",
+    "note": "Body signal in first 4 KiB of text/html."
+  },
+  {
+    "id": "linkedin_active",
+    "original_url": "https://www.linkedin.com/jobs/view/789",
+    "final_url": "https://www.linkedin.com/jobs/view/789",
+    "body_head": "<title>Software Engineer at Acme</title>",
+    "expected": "active",
+    "note": "Clean LinkedIn view URL + title."
+  },
+  {
+    "id": "jobindex_archived",
+    "original_url": "https://www.jobindex.dk/job/123456",
+    "final_url": "https://www.jobindex.dk/job/arkiv/123456",
+    "body_head": "",
+    "expected": "archived",
+    "note": "Archive redirect path."
+  },
+  {
+    "id": "jobindex_active",
+    "original_url": "https://www.jobindex.dk/job/123456",
+    "final_url": "https://www.jobindex.dk/job/123456",
+    "body_head": "",
+    "expected": "active",
+    "note": "Normal Jobindex job URL."
+  },
+  {
+    "id": "generic_danish_filled",
+    "original_url": "https://example.com/jobs/42",
+    "final_url": "https://example.com/jobs/42",
+    "body_head": "stillingen er besat",
+    "expected": "closed",
+    "note": "Generic closed phrase; text/html body within 2 MiB cap."
+  },
+  {
+    "id": "generic_active",
+    "original_url": "https://example.com/jobs/42",
+    "final_url": "https://example.com/jobs/42",
+    "body_head": "<title>Software Engineer - Acme</title>",
+    "expected": "active",
+    "note": "Generic active listing."
+  },
+  {
+    "id": "indeed_redirect_away",
+    "original_url": "https://indeed.com/viewjob?jk=abc123",
+    "final_url": "https://indeed.com/jobs?q=developer",
+    "body_head": "",
+    "expected": "closed",
+    "note": "Indeed redirect-away heuristic (SerpAPI path in production; offline classifier baseline)."
+  },
+  {
+    "id": "indeed_same_job",
+    "original_url": "https://indeed.com/viewjob?jk=abc123",
+    "final_url": "https://indeed.com/viewjob?jk=abc123",
+    "body_head": "",
+    "expected": "active",
+    "note": "Indeed same job URL."
+  }
+]

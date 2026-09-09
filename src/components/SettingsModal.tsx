@@ -5,7 +5,7 @@ import { useTheme } from "../hooks/useTheme";
 import type { ThemePreference } from "../lib/theme";
 import { BOARD_VIEWS, type BoardView } from "../lib/jobs/boardViewPreference";
 import { exportJobsAsCsv, exportJobsAsJson } from "../lib/export/exportBundle";
-import { googleOauthGetClientId, googleOauthSetClientId } from "../lib/tauriApi";
+import { googleOauthGetClientId, googleOauthSetClientId, llmProviderOverrideGet, llmProviderOverrideSet, llmTestConnection } from "../lib/tauriApi";
 import type { LlmProvider } from "../features/extraction/extractJobInfo";
 import { SecretKeyField } from "./SecretKeyField";
 import { en } from "../i18n/en";
@@ -57,6 +57,11 @@ export function SettingsModal({ open, onClose }: Props) {
   const [googleClientId, setGoogleClientId] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
+  const [testBusy, setTestBusy] = useState(false);
+  const [testMessage, setTestMessage] = useState<string | null>(null);
+  const [overrideBaseUrl, setOverrideBaseUrl] = useState("");
+  const [overrideModelId, setOverrideModelId] = useState("");
+  const [overrideBusy, setOverrideBusy] = useState(false);
   // This dialog is mounted for the whole session. Defer its body until first open so the
   // SecretKeyFields don't each fire a keyring round-trip on every app launch.
   const [hasOpened, setHasOpened] = useState(false);
@@ -82,8 +87,63 @@ export function SettingsModal({ open, onClose }: Props) {
         setGoogleClientId("");
       }
       await refreshGoogleOauthStatus();
+      try {
+        const ov = await llmProviderOverrideGet(llmProvider);
+        setOverrideBaseUrl(ov.baseUrl ?? "");
+        setOverrideModelId(ov.modelId ?? "");
+      } catch {
+        setOverrideBaseUrl("");
+        setOverrideModelId("");
+      }
     })();
-  }, [open, refreshGoogleOauthStatus]);
+  }, [open, refreshGoogleOauthStatus, llmProvider]);
+
+  async function onTestConnection() {
+    setTestBusy(true);
+    setTestMessage(null);
+    try {
+      const res = await llmTestConnection(llmProvider);
+      if (res.ok) {
+        setTestMessage(en.app.llmTestConnectionOk(res.modelId ?? "?", res.detail ?? "OK"));
+      } else {
+        setTestMessage(en.app.llmTestConnectionFail(res.error ?? "Unknown error"));
+      }
+    } catch (e) {
+      setTestMessage(en.app.llmTestConnectionFail(String(e)));
+    } finally {
+      setTestBusy(false);
+    }
+  }
+
+  async function onSaveOverrides() {
+    setOverrideBusy(true);
+    try {
+      await llmProviderOverrideSet(
+        llmProvider,
+        overrideBaseUrl.trim() || null,
+        overrideModelId.trim() || null,
+      );
+      window.alert(en.app.llmOverrideSaved);
+    } catch (e) {
+      window.alert(String(e));
+    } finally {
+      setOverrideBusy(false);
+    }
+  }
+
+  async function onResetOverrides() {
+    setOverrideBusy(true);
+    try {
+      await llmProviderOverrideSet(llmProvider, null, null);
+      setOverrideBaseUrl("");
+      setOverrideModelId("");
+      window.alert(en.app.llmOverrideSaved);
+    } catch (e) {
+      window.alert(String(e));
+    } finally {
+      setOverrideBusy(false);
+    }
+  }
 
   async function saveGoogleClientId() {
     try {
@@ -206,6 +266,57 @@ export function SettingsModal({ open, onClose }: Props) {
                 <option value="mistral">{en.app.aiExtractionProviderMistral}</option>
               </select>
             </label>
+            <div className="row settingsGoogleActions">
+              <button
+                type="button"
+                className="btn btnSm btnPrimary"
+                disabled={testBusy}
+                onClick={() => void onTestConnection()}
+              >
+                {en.app.llmTestConnection}
+              </button>
+            </div>
+            {testMessage ? <p className="muted settingsHint">{testMessage}</p> : null}
+            <h4 className="settingsSubTitle">{en.app.llmOverrideHeading}</h4>
+            <p className="muted settingsHint">{en.app.llmOverrideHint}</p>
+            <label>
+              {en.app.llmOverrideBaseUrl}
+              <input
+                value={overrideBaseUrl}
+                onChange={(e) => setOverrideBaseUrl(e.target.value)}
+                placeholder="https://api.scaleway.ai/v1"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            <label>
+              {en.app.llmOverrideModelId}
+              <input
+                value={overrideModelId}
+                onChange={(e) => setOverrideModelId(e.target.value)}
+                placeholder="deepseek-v4-flash-0731"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            <div className="row settingsGoogleActions">
+              <button
+                type="button"
+                className="btn btnSm btnPrimary"
+                disabled={overrideBusy}
+                onClick={() => void onSaveOverrides()}
+              >
+                {en.app.llmOverrideSave}
+              </button>
+              <button
+                type="button"
+                className="btn btnSm btnGhost"
+                disabled={overrideBusy}
+                onClick={() => void onResetOverrides()}
+              >
+                {en.app.llmOverrideReset}
+              </button>
+            </div>
             <SecretKeyField
               provider="scaleway"
               label={en.app.scalewayKey}

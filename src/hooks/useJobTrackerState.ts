@@ -104,6 +104,7 @@ export function useJobTrackerState(options?: JobTrackerStateOptions) {
       void migrateLocalStorageSecrets().then((result) => {
         if (result.warnings.length > 0) {
           console.warn("Secret migration warnings:", result.warnings.join("; "));
+          window.alert(en.app.secretMigrationWarning(result.warnings.join("\n")));
         }
         void refreshManualGoogleTokenStatus();
       });

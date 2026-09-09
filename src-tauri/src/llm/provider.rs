@@ -58,6 +58,12 @@ impl ProviderSpec {
         self.base_url = base_url.to_string();
         self
     }
+
+    #[cfg(test)]
+    pub fn with_model_id(mut self, model_id: &str) -> Self {
+        self.model_id = model_id.to_string();
+        self
+    }
 }
 
 pub fn provider_spec(provider: LlmProvider) -> ProviderSpec {

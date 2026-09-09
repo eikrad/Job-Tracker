@@ -1,7 +1,7 @@
 //! HTTP calls to LLM providers using keys from the secret store.
 
 use super::normalize::parse_partial_new_job_from_llm_text;
-use super::provider::{provider_spec, AuthStyle, JsonMode, LlmProvider};
+use super::provider::{AuthStyle, JsonMode, LlmProvider};
 use crate::secrets::{self, redact};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -158,21 +158,177 @@ fn extract_with_spec(
     Ok(partial)
 }
 
-fn run_extract(provider: LlmProvider, raw_text: &str) -> Result<HashMap<String, Value>, String> {
+fn run_extract(
+    app: &tauri::AppHandle,
+    provider: LlmProvider,
+    raw_text: &str,
+) -> Result<HashMap<String, Value>, String> {
     let key = secrets::get_secret(provider.secret_provider())?
         .filter(|k| !k.trim().is_empty())
         .ok_or_else(|| "Add an API key in Settings (Job Tracker).".to_string())?;
-    extract_with_spec(&provider_spec(provider), &key, raw_text)
+    let spec = super::overrides::resolved_spec(app, provider)?;
+    extract_with_spec(&spec, &key, raw_text)
+}
+
+fn list_openai_models(spec: &super::provider::ProviderSpec, api_key: &str) -> Result<Vec<String>, String> {
+    let client = http_client()?;
+    let url = format!("{}/models", spec.base_url.trim_end_matches('/'));
+    let req = match spec.auth {
+        AuthStyle::Bearer => client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", api_key.trim())),
+        AuthStyle::Header(name) => client.get(&url).header(name, api_key.trim()),
+    };
+    let res = req.send().map_err(|e| redact(&e.to_string()))?;
+    let status = res.status().as_u16();
+    let text = res.text().map_err(|e| redact(&e.to_string()))?;
+    if !(200..300).contains(&status) {
+        return Err(map_status_error(status, &text));
+    }
+    let v: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let mut ids = Vec::new();
+    if let Some(arr) = v.get("data").and_then(|d| d.as_array()) {
+        for item in arr {
+            if let Some(id) = item.get("id").and_then(|x| x.as_str()) {
+                ids.push(id.to_string());
+            }
+        }
+    }
+    Ok(ids)
+}
+
+fn list_gemini_models(spec: &super::provider::ProviderSpec, api_key: &str) -> Result<Vec<String>, String> {
+    let client = http_client()?;
+    let url = format!("{}/models", spec.base_url.trim_end_matches('/'));
+    let auth_header = match spec.auth {
+        AuthStyle::Header(name) => name,
+        AuthStyle::Bearer => "x-goog-api-key",
+    };
+    let res = client
+        .get(&url)
+        .header(auth_header, api_key.trim())
+        .send()
+        .map_err(|e| redact(&e.to_string()))?;
+    let status = res.status().as_u16();
+    let text = res.text().map_err(|e| redact(&e.to_string()))?;
+    if !(200..300).contains(&status) {
+        return Err(map_status_error(status, &text));
+    }
+    let v: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let mut ids = Vec::new();
+    if let Some(arr) = v.get("models").and_then(|d| d.as_array()) {
+        for item in arr {
+            if let Some(name) = item.get("name").and_then(|x| x.as_str()) {
+                // Gemini returns "models/gemini-2.0-flash"
+                let short = name.strip_prefix("models/").unwrap_or(name);
+                ids.push(short.to_string());
+            }
+        }
+    }
+    Ok(ids)
+}
+
+fn test_connection_with_spec(
+    spec: &super::provider::ProviderSpec,
+    api_key: &str,
+) -> Result<(String, String), String> {
+    let ids = match spec.json_mode {
+        JsonMode::ResponseMimeType => list_gemini_models(spec, api_key)?,
+        JsonMode::Schema | JsonMode::JsonObject => list_openai_models(spec, api_key)?,
+    };
+    let configured = spec.model_id.clone();
+    let detail = if ids.iter().any(|id| id == &configured || id.ends_with(&configured)) {
+        format!("OK — model `{configured}` is listed by the provider.")
+    } else if ids.is_empty() {
+        format!("Catalogue reachable but empty; configured model is `{configured}`.")
+    } else {
+        format!(
+            "Catalogue reachable ({n} models); `{configured}` not listed — check the model id.",
+            n = ids.len()
+        )
+    };
+    Ok((configured, detail))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmTestConnectionResponse {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[tauri::command]
-pub fn extract_job_info(raw_text: String, provider: String) -> ExtractJobInfoResponse {
-    if raw_text.trim().is_empty() {
-        return ExtractJobInfoResponse {
+pub fn llm_test_connection(app: tauri::AppHandle, provider: String) -> LlmTestConnectionResponse {
+    let provider = match LlmProvider::parse(&provider) {
+        Ok(p) => p,
+        Err(e) => {
+            return LlmTestConnectionResponse {
+                ok: false,
+                model_id: None,
+                detail: None,
+                error: Some(e),
+            };
+        }
+    };
+    let key = match secrets::get_secret(provider.secret_provider()) {
+        Ok(Some(k)) if !k.trim().is_empty() => k,
+        Ok(_) => {
+            return LlmTestConnectionResponse {
+                ok: false,
+                model_id: None,
+                detail: None,
+                error: Some("Add an API key in Settings (Job Tracker).".into()),
+            };
+        }
+        Err(e) => {
+            return LlmTestConnectionResponse {
+                ok: false,
+                model_id: None,
+                detail: None,
+                error: Some(redact(&e)),
+            };
+        }
+    };
+    let spec = match super::overrides::resolved_spec(&app, provider) {
+        Ok(s) => s,
+        Err(e) => {
+            return LlmTestConnectionResponse {
+                ok: false,
+                model_id: None,
+                detail: None,
+                error: Some(redact(&e)),
+            };
+        }
+    };
+    match test_connection_with_spec(&spec, &key) {
+        Ok((model_id, detail)) => LlmTestConnectionResponse {
+            ok: true,
+            model_id: Some(model_id),
+            detail: Some(detail),
+            error: None,
+        },
+        Err(e) => LlmTestConnectionResponse {
             ok: false,
-            partial: None,
-            error: Some("Paste job ad text before extracting.".into()),
-        };
+            model_id: Some(spec.model_id),
+            detail: None,
+            error: Some(redact(&e)),
+        },
+    }
+}
+
+#[tauri::command]
+pub fn extract_job_info(
+    app: tauri::AppHandle,
+    raw_text: String,
+    provider: String,
+) -> ExtractJobInfoResponse {
+    if let Some(early) = reject_empty_raw_text(&raw_text) {
+        return early;
     }
     let provider = match LlmProvider::parse(&provider) {
         Ok(p) => p,
@@ -184,7 +340,7 @@ pub fn extract_job_info(raw_text: String, provider: String) -> ExtractJobInfoRes
             };
         }
     };
-    match run_extract(provider, &raw_text) {
+    match run_extract(&app, provider, &raw_text) {
         Ok(partial) => ExtractJobInfoResponse {
             ok: true,
             partial: Some(partial),
@@ -198,9 +354,22 @@ pub fn extract_job_info(raw_text: String, provider: String) -> ExtractJobInfoRes
     }
 }
 
+fn reject_empty_raw_text(raw_text: &str) -> Option<ExtractJobInfoResponse> {
+    if raw_text.trim().is_empty() {
+        Some(ExtractJobInfoResponse {
+            ok: false,
+            partial: None,
+            error: Some("Paste job ad text before extracting.".into()),
+        })
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::provider::provider_spec;
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::sync::mpsc;
@@ -245,9 +414,37 @@ mod tests {
 
     #[test]
     fn empty_text_error_shape() {
-        let r = extract_job_info(String::new(), "mistral".into());
+        let r = reject_empty_raw_text("").expect("empty input should be rejected");
         assert!(!r.ok);
         assert!(r.error.unwrap().contains("Paste job ad"));
+        assert!(reject_empty_raw_text("  hello  ").is_none());
+    }
+
+    #[test]
+    fn test_connection_reports_listed_model() {
+        let body = json!({ "data": [{ "id": "deepseek-v4-flash-0731" }, { "id": "other" }] }).to_string();
+        let (base_url, rx) = stub_provider("200 OK", &body);
+        let spec = provider_spec(LlmProvider::ScalewayDeepseek).with_base_url(&base_url);
+
+        let (model, detail) = test_connection_with_spec(&spec, "sk").unwrap();
+        let req = rx.recv().unwrap();
+
+        assert!(req.starts_with("GET /models"), "{req}");
+        assert!(req.contains("authorization: Bearer sk"), "{req}");
+        assert_eq!(model, "deepseek-v4-flash-0731");
+        assert!(detail.contains("listed"), "{detail}");
+    }
+
+    #[test]
+    fn test_connection_warns_when_model_missing_from_catalogue() {
+        let body = json!({ "data": [{ "id": "totally-different-model" }] }).to_string();
+        let (base_url, _rx) = stub_provider("200 OK", &body);
+        let spec = provider_spec(LlmProvider::Mistral)
+            .with_base_url(&base_url)
+            .with_model_id("mistral-small-latest");
+
+        let (_model, detail) = test_connection_with_spec(&spec, "sk").unwrap();
+        assert!(detail.contains("not listed"), "{detail}");
     }
 
     #[test]
