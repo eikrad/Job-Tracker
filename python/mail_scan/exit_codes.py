@@ -1,0 +1,7 @@
+"""Process exit codes (spec §4.1)."""
+
+EXIT_OK = 0
+EXIT_CANCELLED = 10
+EXIT_CONFIG = 20
+EXIT_UNREADABLE = 30
+EXIT_INTERNAL = 40

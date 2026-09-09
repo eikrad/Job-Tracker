@@ -11,6 +11,7 @@ dev = [
   "black>=26.5.1",
   "isort>=9.0.1",
   "ruff>=0.16.6",
+  "jsonschema>=4.23.0",
 ]
 
 [tool.black]
@@ -42,4 +43,21 @@ select = [
   "UP",
   "SIM",
   "RUF",
+  "TID",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# ADR 0004 network ban applies to the sidecar package only.
+"tests/**" = ["TID"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"socket".msg = "ADR 0004: mail_scan sidecar must not use the network"
+"http".msg = "ADR 0004: mail_scan sidecar must not use the network"
+"http.client".msg = "ADR 0004: mail_scan sidecar must not use the network"
+"urllib".msg = "ADR 0004: mail_scan sidecar must not use the network"
+"urllib.request".msg = "ADR 0004: mail_scan sidecar must not use the network"
+"urllib.error".msg = "ADR 0004: mail_scan sidecar must not use the network"
+"requests".msg = "ADR 0004: mail_scan sidecar must not use the network"
+"httpx".msg = "ADR 0004: mail_scan sidecar must not use the network"
+"smtplib".msg = "ADR 0004: mail_scan sidecar must not use the network"
+"ftplib".msg = "ADR 0004: mail_scan sidecar must not use the network"
