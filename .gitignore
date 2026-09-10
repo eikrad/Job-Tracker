@@ -23,3 +23,6 @@ src-tauri/target/
 .worktrees/
 .claude/worktrees/
 __pycache__/
+
+# PyInstaller work dir created by scripts/build-sidecar.sh
+/target/

@@ -699,7 +699,7 @@ Phases 1–3 are useful on their own even if the mail scan is deferred — a del
 | Item | Decision needed | Default if unanswered |
 |------|-----------------|-----------------------|
 | Scaleway DeepSeek model id | Resolve against `GET /v1/models`; base URL and API shape are verified (§8.1) | Registry override in Settings absorbs a wrong default |
-| Sidecar packaging | PyInstaller `externalBin` per platform vs. pinned `uv` project | PyInstaller one-dir sidecar for release, `uv run` in dev; probe reports which is in use |
+| Sidecar packaging | PyInstaller `externalBin` per platform vs. pinned `uv` project | **Resolved at implementation: PyInstaller *one-file*, not one-dir** — `externalBin` copies a single file, so a one-dir launcher arrives without its `_internal/` runtime and fails to start. `uv run` in dev; probe reports which is in use |
 | Windows Thunderbird profile discovery | Path layout differs from Linux | Manual folder picking always works; auto-detect is best-effort |
 | Batch size for pass-1 (§8.3) | Tune against real cost | 10, with per-listing fallback |
 | `since` default | 90 days | 90 days, configurable |

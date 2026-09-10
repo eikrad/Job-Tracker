@@ -9,6 +9,12 @@
 # Output:
 #   src-tauri/binaries/jobtracker-mail-scan-<target-triple>   (Tauri externalBin naming)
 #
+# One-file, not one-dir. A one-dir bundle resolves its `_internal/` directory relative
+# to the launcher, but Tauri's `externalBin` copies a *single file* next to the app
+# binary — so a one-dir launcher arrives without its runtime and dies with
+# "Failed to load Python shared library". One-file trades a little startup time for
+# being the shape the packaging mechanism actually accepts.
+#
 # It also prints the SHA-256, which the build must bake in as
 # JOBTRACKER_SIDECAR_SHA256 so a tampered or half-updated install refuses to run.
 
@@ -38,13 +44,10 @@ fi
 
 mkdir -p "$out_dir" "$work_dir"
 
-# One-dir rather than one-file: one-file unpacks to a temp directory on every launch,
-# which is slower and trips some endpoint-protection tools. One-dir is also easier to
-# hash meaningfully, because the launcher binary is stable.
 uv run --with pyinstaller pyinstaller \
   --noconfirm \
   --clean \
-  --onedir \
+  --onefile \
   --name "$name" \
   --distpath "$work_dir/dist" \
   --workpath "$work_dir/build" \
@@ -59,25 +62,28 @@ uv run --with pyinstaller pyinstaller \
   --hidden-import mail_scan.urls \
   python/mail_scan/__main__.py
 
-built="$work_dir/dist/$name/$name"
+built="$work_dir/dist/$name"
 if [[ ! -f "$built" ]]; then
   echo "error: PyInstaller did not produce $built" >&2
   exit 1
 fi
 
-# Sanity-check the frozen binary before shipping it: a sidecar that cannot answer
-# `probe` is one the app will reject at runtime anyway, and better to find out here.
-echo "==> Probing the frozen sidecar"
-"$built" probe --protocol 1 >/dev/null
-
 target="$out_dir/$name-$triple"
 cp "$built" "$target"
 chmod +x "$target"
 
-# Copy the one-dir support files next to the launcher.
-rm -rf "$out_dir/$name-support"
-cp -R "$work_dir/dist/$name" "$out_dir/$name-support"
-rm -f "$out_dir/$name-support/$name"
+# Probe the artifact we actually ship, from a scrubbed environment, in a directory
+# unrelated to the build tree. Probing the build-tree copy instead is how a broken
+# bundle ships green: it passes there because its runtime happens to sit next to it.
+echo "==> Probing the shipped sidecar with no Python on PATH"
+(
+  cd /
+  env -i PATH=/usr/bin:/bin HOME=/nonexistent \
+    "$repo_root/$target" probe --protocol 1 >/dev/null
+) || {
+  echo "error: the shipped sidecar cannot run standalone" >&2
+  exit 1
+}
 
 sha="$(sha256sum "$target" | awk '{print $1}')"
 

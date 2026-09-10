@@ -2,8 +2,10 @@
 //!
 //! Two modes, and `probe` reports which one is live:
 //!
-//! - **Release** — a PyInstaller one-dir bundle shipped as a Tauri `externalBin`. The
-//!   binary is spawned from an absolute path and its hash is checked against a value
+//! - **Release** — a single frozen PyInstaller binary shipped as a Tauri `externalBin`.
+//!   One-file rather than one-dir: `externalBin` copies one file, so a one-dir
+//!   launcher would arrive without the `_internal/` runtime it resolves beside itself.
+//!   The binary is spawned from an absolute path and its hash is checked against a value
 //!   baked in at build time, so a tampered or half-updated install refuses to run
 //!   rather than executing whatever is on disk.
 //! - **Dev** — `uv run --project <repo>` when a `uv` is on PATH, otherwise a system
@@ -25,7 +27,7 @@ pub const SIDECAR_SHA256: Option<&str> = option_env!("JOBTRACKER_SIDECAR_SHA256"
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase", tag = "mode")]
 pub enum SidecarMode {
-    /// Bundled one-dir binary, hash-pinned.
+    /// Bundled single-file binary, hash-pinned.
     Bundled { path: String, pinned: bool },
     /// `uv run --project <repo>` against the checked-out sources.
     Uv { project: String },
@@ -89,14 +91,7 @@ fn bundled_candidate() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
     let direct = dir.join(bundled_binary_name());
-    if direct.is_file() {
-        return Some(direct);
-    }
-    // One-dir PyInstaller layouts keep the launcher in a subdirectory.
-    let nested = dir
-        .join("mail-scan")
-        .join(bundled_binary_name());
-    nested.is_file().then_some(nested)
+    direct.is_file().then_some(direct)
 }
 
 fn uv_on_path() -> Option<PathBuf> {
@@ -149,15 +144,28 @@ pub fn resolve(python_root: &Path, override_python: Option<PathBuf>) -> Result<S
 /// so nothing sensitive is visible in a process listing (spec §6.6).
 pub fn command_for(mode: &SidecarMode, scan_argv: &[&str]) -> (PathBuf, Vec<String>) {
     match mode {
-        SidecarMode::Bundled { path, .. } => (
-            PathBuf::from(path),
-            scan_argv
-                .iter()
-                .filter(|a| !a.starts_with('-') || *a == &"scan")
-                .filter(|a| **a != "-I" && **a != "-m" && **a != "mail_scan")
-                .map(|a| (*a).to_string())
-                .collect(),
-        ),
+        SidecarMode::Bundled { path, .. } => {
+            // A frozen binary is not an interpreter, so the interpreter-only argv is
+            // dropped: `-I`, and `-m` together with the module name that follows it.
+            // Everything else — the subcommand and its options — must survive intact.
+            let mut args = Vec::new();
+            let mut drop_module_name = false;
+            for arg in scan_argv {
+                if drop_module_name {
+                    drop_module_name = false;
+                    continue;
+                }
+                match *arg {
+                    "-I" => continue,
+                    "-m" => {
+                        drop_module_name = true;
+                        continue;
+                    }
+                    other => args.push(other.to_string()),
+                }
+            }
+            (PathBuf::from(path), args)
+        }
         SidecarMode::Uv { project } => (
             PathBuf::from("uv"),
             [
@@ -264,18 +272,39 @@ mod tests {
     }
 
     #[test]
-    fn the_bundled_command_drops_interpreter_flags() {
-        // A frozen binary is not an interpreter: `-I -m mail_scan` would be
-        // meaningless argv, and passing it through would look like it worked.
+    fn the_bundled_command_drops_interpreter_flags_but_keeps_the_subcommand() {
+        // Asserted against the *real* SCAN_ARGV, not a stand-in. An earlier version of
+        // this test used a made-up argv without `--protocol 1`, which hid a filter that
+        // stripped `--protocol` and left its value `1` behind as a stray argument.
         let (program, args) = command_for(
             &SidecarMode::Bundled {
                 path: "/opt/app/jobtracker-mail-scan".into(),
                 pinned: true,
             },
-            &["-I", "-m", "mail_scan", "scan"],
+            crate::mail_scan::spawn::SCAN_ARGV,
         );
         assert_eq!(program, PathBuf::from("/opt/app/jobtracker-mail-scan"));
-        assert_eq!(args, vec!["scan".to_string()]);
+        assert_eq!(
+            args,
+            vec!["scan".to_string(), "--protocol".to_string(), "1".to_string()]
+        );
+    }
+
+    #[test]
+    fn every_mode_passes_the_protocol_through() {
+        // The sidecar refuses to run without it, so a mode that loses it is a mode
+        // that fails at the first spawn on a user's machine.
+        for mode in [
+            SidecarMode::Bundled { path: "/opt/x".into(), pinned: true },
+            SidecarMode::Uv { project: "/repo".into() },
+            SidecarMode::SystemPython { python: "python3".into() },
+        ] {
+            let (_, args) = command_for(&mode, crate::mail_scan::spawn::SCAN_ARGV);
+            let protocol = args.iter().position(|a| a == "--protocol");
+            assert!(protocol.is_some(), "{mode:?} lost --protocol: {args:?}");
+            assert_eq!(args.get(protocol.unwrap() + 1), Some(&"1".to_string()), "{mode:?}");
+            assert!(args.contains(&"scan".to_string()), "{mode:?} lost the subcommand");
+        }
     }
 
     #[test]
