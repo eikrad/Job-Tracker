@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { en } from "../../i18n/en";
+import { llmKeyStatus } from "../../lib/tauriApi";
 import {
   mailScanDeleteAllData,
   mailScanDetectThunderbird,
@@ -58,6 +59,7 @@ export function MailScanSettings() {
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scoringKeyConfigured, setScoringKeyConfigured] = useState(false);
 
   const load = useCallback(
     () =>
@@ -67,12 +69,14 @@ export function MailScanSettings() {
         mailScanProfileStatus("short"),
         mailScanProfileStatus("full"),
         mailScanSidecarProbe(),
+        llmKeyStatus("scaleway").catch(() => ({ configured: false, backend: "unknown" })),
       ])
-        .then(([loaded, sources, short, full, probe]) => {
+        .then(([loaded, sources, short, full, probe, keyStatus]) => {
           setSettings(loaded);
           setResolved(sources);
           setProfiles({ short, full });
           setSidecar(probe);
+          setScoringKeyConfigured(keyStatus.configured);
           setError(null);
         })
         .catch((e: unknown) => setError(String(e))),
@@ -363,6 +367,10 @@ export function MailScanSettings() {
       })}
 
       <h4 className="settingsSubTitle">{t.scoringHeading}</h4>
+      <p className="muted settingsHint">{t.scoringKeyHint}</p>
+      <p className={scoringKeyConfigured ? "muted" : "settingsError"}>
+        {scoringKeyConfigured ? t.scoringKeyConfigured : t.scoringKeyMissing}
+      </p>
       <label className="settingsRow">
         {t.cutoffLabel}
         <input
