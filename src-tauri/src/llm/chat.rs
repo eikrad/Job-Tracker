@@ -241,14 +241,35 @@ fn send_once(req: &ChatRequest<'_>) -> Result<String, LlmError> {
 
     let v: Value = serde_json::from_str(&text)
         .map_err(|e| LlmError::Other(format!("Provider returned invalid JSON: {e}")))?;
-    let content = v
-        .pointer(pointer)
-        .and_then(|c| c.as_str())
+    let content = extract_message_content(&v, pointer)
         .ok_or_else(|| LlmError::Other("Provider returned no message content.".into()))?;
     if content.trim().is_empty() {
         return Err(LlmError::Other("Provider returned empty message content.".into()));
     }
-    Ok(content.to_string())
+    Ok(content)
+}
+
+/// Read OpenAI `choices[0].message.content` whether it is a string or a parts array.
+fn extract_message_content(v: &Value, pointer: &str) -> Option<String> {
+    let node = v.pointer(pointer)?;
+    if let Some(s) = node.as_str() {
+        return Some(s.to_string());
+    }
+    if let Some(arr) = node.as_array() {
+        let joined: String = arr
+            .iter()
+            .filter_map(|part| {
+                part.get("text")
+                    .and_then(|t| t.as_str())
+                    .or_else(|| part.as_str())
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        if !joined.is_empty() {
+            return Some(joined);
+        }
+    }
+    None
 }
 
 fn parsed_retry_after(err: &LlmError) -> Option<Duration> {
