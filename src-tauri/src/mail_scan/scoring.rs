@@ -1042,10 +1042,7 @@ mod tests {
             }
             let mut out = Vec::with_capacity(batch.len());
             for l in batch {
-                match self.0.answer(&behaviour, &l.title) {
-                    Ok(raw) => out.push(raw),
-                    Err(e) => return Err(e),
-                }
+                out.push(self.0.answer(&behaviour, &l.title)?);
             }
             Ok(BatchResponse::Scored(out))
         }
