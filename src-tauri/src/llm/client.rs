@@ -421,6 +421,16 @@ mod tests {
     }
 
     #[test]
+    fn extract_tolerates_think_tags_in_model_content() {
+        let content = "<think>planning</think>\n{\"company\":\"Acme\",\"title\":\"Dev\"}";
+        let (base_url, _rx) = stub_provider("200 OK", &chat_completion(content));
+        let spec = provider_spec(LlmProvider::ScalewayDeepseek).with_base_url(&base_url);
+
+        let out = extract_with_spec(&spec, "sk", "an ad").expect("think-wrapped JSON must parse");
+        assert_eq!(out.get("company").and_then(|v| v.as_str()), Some("Acme"));
+    }
+
+    #[test]
     fn mistral_keeps_json_object_mode() {
         let (base_url, rx) = stub_provider("200 OK", &chat_completion(r#"{"company":"Acme"}"#));
         let spec = provider_spec(LlmProvider::Mistral).with_base_url(&base_url);

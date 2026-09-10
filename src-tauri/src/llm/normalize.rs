@@ -168,15 +168,77 @@ pub fn normalize_llm_job_partial(raw: &Map<String, Value>) -> HashMap<String, Va
 
 fn parse_raw_json_object(text: &str) -> Option<Map<String, Value>> {
     let trimmed = text.trim();
-    let unfenced = trimmed
+    let without_think = strip_think_blocks(trimmed);
+    let unfenced = without_think
         .trim_start_matches("```json")
         .trim_start_matches("```JSON")
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
-    for candidate in [unfenced, trimmed] {
+
+    for candidate in [unfenced, without_think.as_str(), trimmed] {
         if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(candidate) {
             return Some(map);
+        }
+        if let Some(extracted) = extract_first_json_object(candidate) {
+            if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&extracted) {
+                return Some(map);
+            }
+        }
+    }
+    None
+}
+
+/// Scaleway/DeepSeek reasoning models often wrap the answer as
+/// `<think>…</think>{…json…}`. A known bug can omit the opening tag.
+fn strip_think_blocks(text: &str) -> String {
+    let mut out = text.to_string();
+    while let Some(start) = out.find("<think>") {
+        let after = start + "<think>".len();
+        if let Some(rel_end) = out[after..].find("</think>") {
+            let end = after + rel_end + "</think>".len();
+            out.replace_range(start..end, "");
+        } else {
+            // Unclosed think block — drop from the tag to the end.
+            out.truncate(start);
+            break;
+        }
+    }
+    // Missing opening tag: content starts with reasoning and ends with </think>.
+    if let Some(end) = out.find("</think>") {
+        out = out[end + "</think>".len()..].to_string();
+    }
+    out
+}
+
+/// Pull the first top-level `{ … }` object out of surrounding prose / fences.
+fn extract_first_json_object(text: &str) -> Option<String> {
+    let start = text.find('{')?;
+    let bytes = text.as_bytes();
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escape = false;
+    for (i, &b) in bytes.iter().enumerate().skip(start) {
+        if in_string {
+            if escape {
+                escape = false;
+            } else if b == b'\\' {
+                escape = true;
+            } else if b == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_string = true,
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(text[start..=i].to_string());
+                }
+            }
+            _ => {}
         }
     }
     None
@@ -198,6 +260,30 @@ mod tests {
     fn strips_fences_and_maps_company() {
         let out = parse_partial_new_job_from_llm_text("```json\n{\"company\":\"X\"}\n```");
         assert_eq!(out.get("company").and_then(|v| v.as_str()), Some("X"));
+    }
+
+    #[test]
+    fn strips_scaleway_think_tags_around_json() {
+        // User-visible failure: DeepSeek/Scaleway returns reasoning then JSON;
+        // treating the whole string as JSON yields "Could not parse JSON…".
+        let text = "<think>\nLet me extract fields carefully.\n</think>\n{\"company\":\"Acme\",\"title\":\"Rust engineer\"}";
+        let out = parse_partial_new_job_from_llm_text(text);
+        assert_eq!(out.get("company").and_then(|v| v.as_str()), Some("Acme"));
+        assert_eq!(out.get("title").and_then(|v| v.as_str()), Some("Rust engineer"));
+    }
+
+    #[test]
+    fn strips_think_block_when_opening_tag_is_missing() {
+        let text = "reasoning about the ad…</think>\n{\"company\":\"Beta\"}";
+        let out = parse_partial_new_job_from_llm_text(text);
+        assert_eq!(out.get("company").and_then(|v| v.as_str()), Some("Beta"));
+    }
+
+    #[test]
+    fn extracts_json_object_from_prose_preamble() {
+        let text = "Here is the result:\n\n{\"company\":\"Gamma\",\"title\":\"SRE\"}\nThanks.";
+        let out = parse_partial_new_job_from_llm_text(text);
+        assert_eq!(out.get("company").and_then(|v| v.as_str()), Some("Gamma"));
     }
 
     #[test]
