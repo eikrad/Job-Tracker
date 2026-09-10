@@ -9,6 +9,7 @@ pub mod cluster;
 mod corpus;
 pub mod enrichment;
 pub mod fingerprint;
+pub mod inbox;
 pub mod injection;
 pub mod persist;
 pub mod profiles;

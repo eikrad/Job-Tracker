@@ -48,18 +48,18 @@
 
 ---
 
-## Task C3 — Mail Match Inbox UI 🟡
+## Task C3 — Mail Match Inbox UI 🟢
 
 **Commit:** `feat(mail-match): inbox with accept, update diff, and revocable dismiss`
 
-- [ ] **Step 1 — red:** Pending sorts by score then recency; filters by kind, score, board, enrichment state; empty states follow the existing search/status-filter pattern; all strings in `i18n/en.ts`.
-- [ ] **Step 2 — red:** Accept opens the **prefilled form** — never a silent write (spec non-goal 4). Accept update shows the diff, including the "job changed" state from C2.
-- [ ] **Step 3 — red:** badges for incomplete enrichment, near-duplicate (shown as a pair, not merged), suspicious content, and `seen N×`; an `invalid` score renders as `?` rather than a number the user might trust.
-- [ ] **Step 4 — red:** the Dismissed tab restores; the run summary links to what was suppressed. A dismissal the user cannot see or undo is the failure mode this tab exists to prevent.
-- [ ] **Step 5 — red:** listing text renders as **text**. Assert no `dangerouslySetInnerHTML` on this path — the webview holds no keys after PR A, but it does hold the user's data.
-- [ ] **Step 6 — red:** scan control — pre-run sheet (resolved folder paths, call estimate, model, cutoff), live progress, Cancel; the History view renders a finished run through the **same** component as a live one, from `stats_json`.
-- [ ] **Step 7 — red:** existing Capture Inbox tests still pass, untouched (ADR 0003).
-- [ ] **Step 8:** commit.
+- [x] **Step 1 — red:** Pending sorts by score then recency; filters by kind, score, board, enrichment state; empty states follow the existing search/status-filter pattern; all strings in `i18n/en.ts`.
+- [x] **Step 2 — red:** Accept opens the **prefilled form** — never a silent write (spec non-goal 4). Accept update shows the diff, including the "job changed" state from C2.
+- [x] **Step 3 — red:** badges for incomplete enrichment, near-duplicate (shown as a pair, not merged), suspicious content, and `seen N×`; an `invalid` score renders as `?` rather than a number the user might trust.
+- [x] **Step 4 — red:** the Dismissed tab restores; the run summary links to what was suppressed. A dismissal the user cannot see or undo is the failure mode this tab exists to prevent.
+- [x] **Step 5 — red:** listing text renders as **text**. Assert no `dangerouslySetInnerHTML` on this path — the webview holds no keys after PR A, but it does hold the user's data.
+- [x] **Step 6 — red:** scan control — pre-run sheet (resolved folder paths, call estimate, model, cutoff), live progress, Cancel; the History view renders a finished run through the **same** component as a live one, from `stats_json`.
+- [x] **Step 7 — red:** existing Capture Inbox tests still pass, untouched (ADR 0003).
+- [x] **Step 8:** commit.
 
 ---
 
