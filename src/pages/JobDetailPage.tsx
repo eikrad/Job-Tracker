@@ -2,14 +2,15 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, Building2, Calendar, ExternalLink, FileText,
-  Layers, MapPin, Monitor, Pencil, Star, Tag, Trash2,
+  Layers, MapPin, Monitor, Pencil, RefreshCw, Star, Tag, Trash2,
 } from "lucide-react";
 import { useJobTracker } from "../context/JobTrackerContext";
 import {
-  deleteJobDocument, listJobDocuments, listStatusHistory,
+  checkListingStatus, deleteJobDocument, listJobDocuments, listStatusHistory,
   openDocument, openUrlInBrowser, saveJobDocument,
 } from "../lib/tauriApi";
 import { JobForm } from "../features/jobs/JobForm";
+import { ListingStatusDot } from "../features/jobs/ListingStatusDot";
 import { en } from "../i18n/en";
 import type { DocType, JobDocument } from "../lib/types";
 
@@ -33,6 +34,7 @@ export function JobDetailPage() {
   const navigate = useNavigate();
   const {
     jobs, onDeleteJob, onUpdateJob, onExtract, statuses, syncJobList, runBackup,
+    onListingStatusChecked,
   } = useJobTracker();
 
   const job = jobs.find((j) => j.id === Number(id));
@@ -40,6 +42,8 @@ export function JobDetailPage() {
   const [history, setHistory] = useState<Array<{ from_status: string | null; to_status: string; changed_at: string }>>([]);
   const [editing, setEditing] = useState(false);
   const [uploadDocType, setUploadDocType] = useState<DocType>("cv");
+  const [checkingListing, setCheckingListing] = useState(false);
+  const [listingCheckError, setListingCheckError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!job) return;
@@ -80,6 +84,20 @@ export function JobDetailPage() {
       navigate("/");
     } catch (e) {
       window.alert(en.alerts.deleteJobFailed(e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function handleCheckListing() {
+    if (!job?.url) return;
+    setCheckingListing(true);
+    setListingCheckError(null);
+    try {
+      const status = await checkListingStatus(job.id, job.url);
+      onListingStatusChecked(job.id, status);
+    } catch (e) {
+      setListingCheckError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCheckingListing(false);
     }
   }
 
@@ -201,6 +219,34 @@ export function JobDetailPage() {
                 {job.url}
               </a>,
               !!job.url,
+            )}
+            {job.url && (
+              <div className="detailRow">
+                <span className="detailRowLabel">{en.jobDetailPage.listingStatus}</span>
+                <span className="listingStatusRow" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                  <ListingStatusDot status={job.listing_status} />
+                  {job.listing_status ? (
+                    <span style={{ textTransform: "capitalize" }}>{job.listing_status}</span>
+                  ) : (
+                    <span className="muted">{en.jobDetailPage.listingStatusUnknown}</span>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btnGhost btnSm"
+                    onClick={() => void handleCheckListing()}
+                    disabled={checkingListing}
+                    title={en.jobDetailPage.checkListingTitle}
+                  >
+                    <RefreshCw size={11} style={{ display: "inline", marginRight: 4 }} />
+                    {checkingListing ? en.jobDetailPage.checkingListing : en.jobDetailPage.checkListing}
+                  </button>
+                </span>
+              </div>
+            )}
+            {listingCheckError && (
+              <p className="muted" style={{ color: "var(--color-danger)", fontSize: "0.75rem" }}>
+                {listingCheckError}
+              </p>
             )}
             {rowNode(
               en.jobDetailPage.notes,

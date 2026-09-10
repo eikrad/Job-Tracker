@@ -1,6 +1,7 @@
 mod calendar;
 mod db;
 mod google_oauth;
+mod ipc_responsiveness;
 mod job_search;
 mod listing_check;
 mod llm;
@@ -70,6 +71,7 @@ pub fn run() {
             mail_scan::settings::mail_scan_resolve_sources,
             mail_scan::settings::mail_scan_test_source,
             mail_scan::settings::mail_scan_detect_thunderbird,
+            mail_scan::settings::mail_scan_pick_path,
             mail_scan::settings::mail_scan_sidecar_probe,
             mail_scan::settings::mail_scan_delete_all_data,
             mail_scan::inbox::mail_match_list,

@@ -160,6 +160,14 @@ fn read_http_request(stream: &mut TcpStream) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
+fn google_token_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())
+}
+
 /// Exchange authorization code for tokens (blocking).
 fn exchange_code_for_tokens(
     client_id: &str,
@@ -167,7 +175,7 @@ fn exchange_code_for_tokens(
     code: &str,
     code_verifier: &str,
 ) -> Result<String, String> {
-    let client = reqwest::blocking::Client::new();
+    let client = google_token_client()?;
     let params = [
         ("client_id", client_id),
         ("code", code),
@@ -197,7 +205,7 @@ fn exchange_code_for_tokens(
 
 /// Obtain a fresh access token using refresh_token (blocking).
 pub fn access_token_from_refresh(client_id: &str, refresh_token: &str) -> Result<String, String> {
-    let client = reqwest::blocking::Client::new();
+    let client = google_token_client()?;
     let params = [
         ("client_id", client_id),
         ("grant_type", "refresh_token"),

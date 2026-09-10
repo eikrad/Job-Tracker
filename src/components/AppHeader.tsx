@@ -112,6 +112,12 @@ export function AppHeader({ onOpenSettings, onOpenQuickCapture }: Props) {
               {en.jobSearch.navLink}
             </NavLink>
             <NavLink
+              to="/mail-matches"
+              className={({ isActive }) => `btn ${isActive ? "btnPrimary" : "btnGhost"}`}
+            >
+              {en.mailMatch.navLink}
+            </NavLink>
+            <NavLink
               to="/jobs/new"
               className={({ isActive }) => `btn ${isActive ? "btnPrimary" : "btnGhost"}`}
               aria-label={en.app.navAddJobAria}
