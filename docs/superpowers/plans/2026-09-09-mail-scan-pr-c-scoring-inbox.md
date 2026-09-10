@@ -35,16 +35,16 @@
 
 ---
 
-## Task C2 — Enrichment, field mapping, provenance 🟡
+## Task C2 — Enrichment, field mapping, provenance 🟢
 
 **Commit:** `feat(mail-scan): enrich matches and record field provenance`
 
-- [ ] **Step 1 — red:** enrichment maps deadline, contacts, workplace, work mode, salary, and contract type from fixture HTML into a `NewJob` partial, using the **same** normalizer as job-form extraction (PR A). One normalizer, two callers.
-- [ ] **Step 2 — red:** a fetch failure, a timeout, and an over-size body each leave the match **enqueued** with `enrichment_state` set and a reason — never a lost listing.
-- [ ] **Step 3 — red (§5.6, the subtle one):** the accept-time re-diff. A suggestion computed against `job.updated_at = T` and accepted after the user edited that job at `T+1` must recompute the patch against the live row, fill only still-blank fields, and surface "the job changed since this was scanned". A blind patch here silently overwrites the user's own edit.
-- [ ] **Step 4 — red:** accept is idempotent — two rapid accepts create one Job, guarded by the pending partial index inside the same transaction as the job write.
-- [ ] **Step 5 — red:** accept writes `job_field_provenance` per field; `mail_score*` is set; `priority` and `status` are untouched.
-- [ ] **Step 6:** commit.
+- [x] **Step 1 — red:** enrichment maps deadline, contacts, workplace, work mode, salary, and contract type from fixture HTML into a `NewJob` partial, using the **same** normalizer as job-form extraction (PR A). One normalizer, two callers.
+- [x] **Step 2 — red:** a fetch failure, a timeout, and an over-size body each leave the match **enqueued** with `enrichment_state` set and a reason — never a lost listing.
+- [x] **Step 3 — red (§5.6, the subtle one):** the accept-time re-diff. A suggestion computed against `job.updated_at = T` and accepted after the user edited that job at `T+1` must recompute the patch against the live row, fill only still-blank fields, and surface "the job changed since this was scanned". A blind patch here silently overwrites the user's own edit.
+- [x] **Step 4 — red:** accept is idempotent — two rapid accepts create one Job, guarded by the pending partial index inside the same transaction as the job write.
+- [x] **Step 5 — red:** accept writes `job_field_provenance` per field; `mail_score*` is set; `priority` and `status` are untouched.
+- [x] **Step 6:** commit.
 
 ---
 

@@ -4,9 +4,10 @@
 //! 59 usable rows and a `failed` run, and the score cache makes the redo nearly free.
 
 use rusqlite::{params, Connection, OptionalExtension};
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::mail_scan::cluster::{is_dismissed, upsert_cluster};
+use crate::mail_scan::enrichment::Enrichment;
 use crate::mail_scan::protocol::ListingEvent;
 use crate::mail_scan::score_cache::{record_sighting, ScoreIdentity};
 use crate::mail_scan::scoring::ScoreOutcome;
@@ -159,15 +160,27 @@ pub fn upsert_source_cursor(
     Ok(())
 }
 
-fn draft_json(listing: &ListingEvent) -> String {
-    json!({
-        "title": listing.title,
-        "company": listing.company,
-        "url": listing.url,
-        "raw_text": listing.snippet,
-        "source": listing.external_ref.as_ref().map(|r| r.board.clone()),
-    })
-    .to_string()
+/// The prefill for the job form: what the digest said, overlaid with whatever the
+/// listing page added.
+///
+/// Enrichment fills gaps, it does not overrule the extractor: title and company come
+/// from the board's own markup, which is more reliable than a model reading a page.
+fn draft_json(listing: &ListingEvent, enrichment: &Enrichment) -> String {
+    let mut draft = serde_json::Map::new();
+    for (k, v) in &enrichment.partial {
+        draft.insert(k.clone(), v.clone());
+    }
+    draft.insert("title".into(), json!(listing.title));
+    draft.insert("company".into(), json!(listing.company));
+    draft.insert("url".into(), json!(listing.url));
+    draft.insert("raw_text".into(), json!(listing.snippet));
+    if let Some(board) = listing.external_ref.as_ref().map(|r| r.board.clone()) {
+        draft.insert("source".into(), json!(board));
+    }
+    if !listing.location.trim().is_empty() && !draft.contains_key("workplace_city") {
+        draft.insert("workplace_city".into(), json!(listing.location));
+    }
+    Value::Object(draft).to_string()
 }
 
 /// One transaction per listing.
@@ -176,6 +189,7 @@ pub fn persist_listing(
     run_id: &str,
     listing: &ListingEvent,
     scored: &ScoreOutcome,
+    enrichment: &Enrichment,
     identities: &ScoringIdentities,
 ) -> Result<PersistOutcome, String> {
     let now = chrono::Utc::now().to_rfc3339();
@@ -250,7 +264,7 @@ pub fn persist_listing(
         return Ok(PersistOutcome::UnderCutoff);
     }
 
-    let draft = draft_json(listing);
+    let draft = draft_json(listing, enrichment);
     let board = listing.external_ref.as_ref().map(|r| r.board.as_str());
 
     if let Some(id) = existing {
@@ -259,8 +273,9 @@ pub fn persist_listing(
                 score = ?1, score_reason = ?2, score_state = ?3,
                 suspicious = ?4, draft_json = ?5, last_run_id = ?6, updated_at = ?7,
                 listing_url = ?8, message_id = ?9, message_date = ?10,
-                source_board = ?11, enrichment_state = ?12, near_duplicate_of = ?13
-             WHERE id = ?14",
+                source_board = ?11, enrichment_state = ?12, enrichment_error = ?13,
+                near_duplicate_of = ?14
+             WHERE id = ?15",
             params![
                 scored.score(),
                 scored.reason(),
@@ -273,7 +288,8 @@ pub fn persist_listing(
                 &listing.message_id,
                 &listing.message_date,
                 board,
-                scored.enrichment_state,
+                enrichment.state,
+                enrichment.error.as_deref(),
                 near.as_deref(),
                 id
             ],
@@ -284,13 +300,13 @@ pub fn persist_listing(
             "INSERT INTO mail_match_inbox (
                 fingerprint_id, kind, status, score, score_reason, score_state,
                 suspicious, near_duplicate_of, draft_json, enrichment_state,
-                source_board, message_id, message_date, listing_url,
+                enrichment_error, source_board, message_id, message_date, listing_url,
                 first_run_id, last_run_id, created_at, updated_at
              ) VALUES (
                 ?1, 'new', 'pending', ?2, ?3, ?4,
                 ?5, ?6, ?7, ?8,
-                ?9, ?10, ?11, ?12,
-                ?13, ?13, ?14, ?14
+                ?9, ?10, ?11, ?12, ?13,
+                ?14, ?14, ?15, ?15
              )",
             params![
                 &fp_id,
@@ -300,7 +316,8 @@ pub fn persist_listing(
                 i64::from(scored.suspicious),
                 near.as_deref(),
                 &draft,
-                scored.enrichment_state,
+                enrichment.state,
+                enrichment.error.as_deref(),
                 board,
                 &listing.message_id,
                 &listing.message_date,
@@ -365,7 +382,6 @@ mod tests {
             }],
             suspicious: false,
             outcome: verdict,
-            enrichment_state: "skipped",
         }
     }
 
@@ -380,7 +396,6 @@ mod tests {
             }],
             suspicious: false,
             outcome: verdict,
-            enrichment_state: "skipped",
         }
     }
 
@@ -425,8 +440,8 @@ mod tests {
         start_run(&mut conn, "r1").unwrap();
         let l = listing("Dev", "indeed:x", "acme|dev|kbh");
         let scored = scored_for(&l, "inbox");
-        persist_listing(&mut conn, "r1", &l, &scored, &identities()).unwrap();
-        persist_listing(&mut conn, "r1", &l, &scored, &identities()).unwrap();
+        persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities()).unwrap();
+        persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities()).unwrap();
 
         let seen: i64 = conn
             .query_row(
@@ -457,11 +472,11 @@ mod tests {
         let ids = identities();
 
         assert_eq!(
-            persist_listing(&mut conn, "r1", &a, &sa, &ids).unwrap(),
+            persist_listing(&mut conn, "r1", &a, &sa, &Enrichment::skipped(), &ids).unwrap(),
             PersistOutcome::Committed
         );
         assert_eq!(
-            persist_listing(&mut conn, "r1", &b, &sb, &ids).unwrap(),
+            persist_listing(&mut conn, "r1", &b, &sb, &Enrichment::skipped(), &ids).unwrap(),
             PersistOutcome::Committed
         );
 
@@ -469,12 +484,12 @@ mod tests {
 
         start_run(&mut conn, "r2").unwrap();
         assert_eq!(
-            persist_listing(&mut conn, "r2", &a, &sa, &ids).unwrap(),
+            persist_listing(&mut conn, "r2", &a, &sa, &Enrichment::skipped(), &ids).unwrap(),
             PersistOutcome::SuppressedByDismissal
         );
         // Different listing must not be buried by the dismissal.
         assert_eq!(
-            persist_listing(&mut conn, "r2", &b, &sb, &ids).unwrap(),
+            persist_listing(&mut conn, "r2", &b, &sb, &Enrichment::skipped(), &ids).unwrap(),
             PersistOutcome::Committed
         );
 
@@ -491,7 +506,7 @@ mod tests {
         restore(&mut conn, "indeed:keep").unwrap();
         start_run(&mut conn, "r3").unwrap();
         assert_eq!(
-            persist_listing(&mut conn, "r3", &a, &sa, &ids).unwrap(),
+            persist_listing(&mut conn, "r3", &a, &sa, &Enrichment::skipped(), &ids).unwrap(),
             PersistOutcome::Committed
         );
         let pending_keep: i64 = conn
@@ -514,7 +529,7 @@ mod tests {
         scored.content_hash = crate::mail_scan::scoring::listing_content_hash(&l);
 
         assert_eq!(
-            persist_listing(&mut conn, "r1", &l, &scored, &identities()).unwrap(),
+            persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities()).unwrap(),
             PersistOutcome::UnderCutoff
         );
 
@@ -546,7 +561,6 @@ mod tests {
             ],
             suspicious: false,
             outcome: "inbox",
-            enrichment_state: "skipped",
         };
         let ids = ScoringIdentities {
             pass1: ScoreIdentity {
@@ -561,7 +575,7 @@ mod tests {
             },
         };
 
-        persist_listing(&mut conn, "r1", &l, &scored, &ids).unwrap();
+        persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &ids).unwrap();
 
         let mut stmt = conn
             .prepare("SELECT pass, profile_hash, score FROM mail_scored_sightings ORDER BY pass")
@@ -586,6 +600,73 @@ mod tests {
         assert_eq!(score, 9);
     }
 
+    /// Enrichment failure must never cost the user a listing (spec §5.2).
+    ///
+    /// A dead link, a timeout, and an over-size body are all the same story from the
+    /// inbox's point of view: the match is still worth reviewing, and the row has to
+    /// say what went wrong so "incomplete enrichment is visible, not silent".
+    #[test]
+    fn a_failed_enrichment_still_enqueues_the_match_with_a_reason() {
+        for reason in [
+            "could not fetch the listing: Request failed",
+            "connection timed out",
+            "Response body exceeds 2 MiB",
+        ] {
+            let mut conn = db();
+            start_run(&mut conn, "r1").unwrap();
+            let l = listing("Dev", &format!("indeed:{}", reason.len()), "acme|dev|kbh");
+            let scored = scored_for(&l, "inbox");
+
+            let outcome = persist_listing(
+                &mut conn,
+                "r1",
+                &l,
+                &scored,
+                &Enrichment::failed(reason),
+                &identities(),
+            )
+            .unwrap();
+
+            assert_eq!(outcome, PersistOutcome::Committed, "{reason}");
+            let (state, error): (String, Option<String>) = conn
+                .query_row(
+                    "SELECT enrichment_state, enrichment_error FROM mail_match_inbox",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(state, "failed", "{reason}");
+            assert!(error.is_some(), "the row must say why: {reason}");
+        }
+    }
+
+    #[test]
+    fn enrichment_fills_the_draft_without_overruling_the_extractor() {
+        let mut conn = db();
+        start_run(&mut conn, "r1").unwrap();
+        let l = listing("Dev", "indeed:enriched", "acme|dev|kbh");
+        let scored = scored_for(&l, "inbox");
+
+        let mut partial = std::collections::HashMap::new();
+        partial.insert("deadline".to_string(), json!("2026-10-01"));
+        partial.insert("salary_range".to_string(), json!("60-70k DKK"));
+        // A model reading the page thinks the title is something else. The board's own
+        // markup is more reliable, so the extractor wins.
+        partial.insert("title".to_string(), json!("Totally Different Title"));
+        let enrichment = Enrichment::from_partial(partial);
+
+        persist_listing(&mut conn, "r1", &l, &scored, &enrichment, &identities()).unwrap();
+
+        let draft: String = conn
+            .query_row("SELECT draft_json FROM mail_match_inbox", [], |r| r.get(0))
+            .unwrap();
+        let v: Value = serde_json::from_str(&draft).unwrap();
+        assert_eq!(v["deadline"], json!("2026-10-01"));
+        assert_eq!(v["salary_range"], json!("60-70k DKK"));
+        assert_eq!(v["title"], json!("Dev"), "the extractor's title must win");
+        assert_eq!(v["company"], json!("Acme"));
+    }
+
     #[test]
     fn invalid_score_lands_in_the_inbox_with_a_null_score() {
         let mut conn = db();
@@ -601,10 +682,9 @@ mod tests {
             }],
             suspicious: true,
             outcome: "inbox",
-            enrichment_state: "skipped",
         };
 
-        persist_listing(&mut conn, "r1", &l, &scored, &identities()).unwrap();
+        persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities()).unwrap();
 
         let (score, state, suspicious): (Option<i64>, String, i64) = conn
             .query_row(

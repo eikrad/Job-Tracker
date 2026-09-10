@@ -260,12 +260,52 @@ fn parse_brave_results(
     Ok(out)
 }
 
+/// Elements whose *content* is code or styling, never prose.
+///
+/// Dropping the tags alone would leave the script body in the text, which then reaches
+/// the model as if a page had said it. That matters because these pages are fetched
+/// from links in email (spec §6.2/§6.3).
+const NON_PROSE_ELEMENTS: &[&str] = &["script", "style", "noscript", "template", "svg"];
+
+/// Byte ranges covered by a non-prose element, so their text is dropped wholesale.
+fn non_prose_spans(html: &str) -> Vec<(usize, usize)> {
+    let lower = html.to_lowercase();
+    let mut spans = Vec::new();
+    for tag in NON_PROSE_ELEMENTS {
+        let open = format!("<{tag}");
+        let close = format!("</{tag}");
+        let mut from = 0;
+        while let Some(rel) = lower[from..].find(&open) {
+            let start = from + rel;
+            // An unterminated element swallows the rest of the document, which is the
+            // safe direction: better to lose text than to read a script as prose.
+            let end = lower[start..]
+                .find(&close)
+                .map(|r| {
+                    let tail = start + r;
+                    lower[tail..].find('>').map(|g| tail + g + 1).unwrap_or(lower.len())
+                })
+                .unwrap_or(lower.len());
+            spans.push((start, end));
+            from = end.max(start + open.len());
+            if from >= lower.len() {
+                break;
+            }
+        }
+    }
+    spans
+}
+
 fn strip_html_to_text(html: &str) -> String {
+    let spans = non_prose_spans(html);
     let mut cleaned = String::with_capacity(html.len());
     let mut in_tag = false;
     let mut previous_was_space = false;
 
-    for ch in html.chars() {
+    for (idx, ch) in html.char_indices() {
+        if spans.iter().any(|(s, e)| idx >= *s && idx < *e) {
+            continue;
+        }
         match ch {
             '<' => in_tag = true,
             '>' => in_tag = false,
@@ -301,12 +341,21 @@ fn strip_html_to_text(html: &str) -> String {
         .to_string()
 }
 
-fn extract_job_page_text_from_html(html: &str) -> String {
+/// Strip a fetched page to plain text, capped at `max_chars`.
+///
+/// `pub(crate)` so mail-scan enrichment strips fetched listing pages the same way this
+/// path does — one HTML-to-text implementation, so "never render untrusted HTML"
+/// (spec §6.3) holds for both callers.
+pub(crate) fn extract_job_page_text(html: &str, max_chars: usize) -> String {
     let lower = html.to_lowercase();
     let body_start = lower.find("<body").unwrap_or(0);
     let body_html = &html[body_start..];
     let stripped = strip_html_to_text(body_html);
-    stripped.chars().take(12_000).collect()
+    stripped.chars().take(max_chars).collect()
+}
+
+fn extract_job_page_text_from_html(html: &str) -> String {
+    extract_job_page_text(html, 12_000)
 }
 
 fn fetch_job_page_text(url: &str) -> Result<String, String> {

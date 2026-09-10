@@ -48,7 +48,7 @@ pub struct JobDocument {
     pub created_at: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct NewJob {
     pub company: String,
     pub title: Option<String>,
@@ -171,6 +171,20 @@ fn insert_new_job(
 pub fn init_db(app: tauri::AppHandle) -> Result<(), String> {
     let mut conn = connection(&app)?;
     crate::migrations::run(&mut conn)
+}
+
+/// Insert a Job on an existing connection and return its id.
+///
+/// `pub(crate)` so mail-scan accept can create the Job inside the *same* transaction
+/// that claims the inbox row — that shared transaction is what makes a double accept
+/// produce one Job instead of two.
+pub(crate) fn insert_job_returning_id(
+    conn: &Connection,
+    payload: &NewJob,
+    now: &str,
+) -> Result<i64, String> {
+    insert_new_job(conn, payload, now).map_err(|e| format!("Create job failed: {e}"))?;
+    Ok(conn.last_insert_rowid())
 }
 
 #[tauri::command]

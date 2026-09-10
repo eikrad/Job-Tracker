@@ -383,7 +383,6 @@ pub struct ScoreOutcome {
     pub passes: Vec<PassRecord>,
     pub suspicious: bool,
     pub outcome: &'static str,
-    pub enrichment_state: &'static str,
 }
 
 impl ScoreOutcome {
@@ -429,6 +428,9 @@ pub struct BatchOutcome {
 
 pub struct ScoringEngine {
     scorer: Box<dyn ListingScorer>,
+    /// Absent means enrichment is skipped — every match still reaches the inbox, just
+    /// without the fetched fields.
+    enricher: Option<Box<dyn crate::mail_scan::enrichment::ListingEnricher>>,
     config: ScoringConfig,
     budget: Budget,
 }
@@ -438,8 +440,36 @@ impl ScoringEngine {
         Self {
             budget: Budget::new(config.budget),
             scorer,
+            enricher: None,
             config,
         }
+    }
+
+    pub fn with_enricher(
+        mut self,
+        enricher: Box<dyn crate::mail_scan::enrichment::ListingEnricher>,
+    ) -> Self {
+        self.enricher = Some(enricher);
+        self
+    }
+
+    /// Enrich a listing that reached the inbox, charging the run budget.
+    ///
+    /// Budget exhaustion here is not a failure: the match is already useful, so it is
+    /// enqueued `skipped` and the user can retry that one item from the inbox.
+    pub fn enrich(&mut self, listing: &ListingEvent) -> crate::mail_scan::enrichment::Enrichment {
+        use crate::mail_scan::enrichment::Enrichment;
+        let Some(enricher) = self.enricher.as_ref() else {
+            return Enrichment::skipped();
+        };
+        if self.budget.reserve().is_err() {
+            return Enrichment::skipped();
+        }
+        let result = enricher.enrich(listing);
+        if result.is_usable() {
+            self.budget.record_success();
+        }
+        result
     }
 
     pub fn budget(&self) -> &Budget {
@@ -668,7 +698,6 @@ impl ScoringEngine {
                 passes,
                 suspicious,
                 outcome,
-                enrichment_state: "skipped",
             });
         }
 
@@ -878,7 +907,7 @@ mod tests {
         };
         for (l, scored) in listings.iter().zip(batch.results.iter()) {
             if let Some(scored) = scored {
-                persist_listing(conn, run_id, l, scored, &identities).unwrap();
+                persist_listing(conn, run_id, l, scored, &crate::mail_scan::enrichment::Enrichment::skipped(), &identities).unwrap();
             }
         }
         batch

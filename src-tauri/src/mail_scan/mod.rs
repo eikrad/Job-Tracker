@@ -2,10 +2,12 @@
 //!
 //! Behind `mailScanEnabled` (default off) until the flag comes off in C4.
 
+pub mod accept;
 pub mod budget;
 pub mod cluster;
 #[cfg(test)]
 mod corpus;
+pub mod enrichment;
 pub mod fingerprint;
 pub mod injection;
 pub mod persist;
@@ -31,6 +33,7 @@ use self::persist::{
     finish_run, persist_listing, record_run_identity, start_run, update_run_stats,
     upsert_source_cursor, PersistOutcome, RunStats, ScoringIdentities,
 };
+use self::enrichment::{Enrichment, LlmEnricher};
 use self::profiles::{load_profile, ProfileKind};
 use self::protocol::{read_event_line, Event, ListingEvent, ProtocolError, MAX_LINE_BYTES};
 use self::scoring::{LlmScorer, RunStop, ScoringConfig, ScoringEngine};
@@ -153,8 +156,12 @@ fn build_engine(
         profile_short_hash: short.content_hash.clone(),
         profile_full_hash: full.content_hash.clone(),
     };
-    let scorer = LlmScorer::new(spec, key, short, full);
-    Ok((ScoringEngine::new(Box::new(scorer), config), identity))
+    let scorer = LlmScorer::new(spec.clone(), key.clone(), short, full);
+    let enricher = LlmEnricher::new(spec, key);
+    Ok((
+        ScoringEngine::new(Box::new(scorer), config).with_enricher(Box::new(enricher)),
+        identity,
+    ))
 }
 
 fn load_cursor_json(
@@ -207,7 +214,17 @@ fn flush_buffer(
 
     for (listing, scored) in buffered.iter().zip(batch.results.iter()) {
         let Some(scored) = scored else { continue };
-        match persist_listing(conn, run_id, listing, scored, &identities) {
+        // Only what reached the inbox is worth a fetch; under-cutoff listings are
+        // recorded as sightings and never enriched.
+        let enrichment = if scored.outcome == "inbox" {
+            engine.enrich(listing)
+        } else {
+            Enrichment::skipped()
+        };
+        if enrichment.state == "failed" {
+            state.stats.enrichment_failures += 1;
+        }
+        match persist_listing(conn, run_id, listing, scored, &enrichment, &identities) {
             Ok(PersistOutcome::Committed) => {
                 state.stats.listings_committed += 1;
                 state.stats.inbox_new += 1;
