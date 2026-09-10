@@ -10,6 +10,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { AddJobPage } from "./pages/AddJobPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
 import { JobSearchPage } from "./pages/JobSearchPage";
+import { MailMatchPage } from "./pages/MailMatchPage";
 import { enqueueBrowserCaptureUrl } from "./features/capture/captureInbox";
 
 export default function App() {
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="/jobs/new" element={<AddJobPage />} />
             <Route path="/job/:id" element={<JobDetailPage />} />
             <Route path="/job-search" element={<JobSearchPage />} />
+            <Route path="/mail-matches" element={<MailMatchPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

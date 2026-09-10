@@ -233,14 +233,6 @@ export async function checkListingStatus(
   return invoke("check_listing_status", { jobId, url });
 }
 
-export async function mailScanGetEnabled(): Promise<boolean> {
-  return invoke<boolean>("mail_scan_get_enabled");
-}
-
-export async function mailScanSetEnabled(enabled: boolean): Promise<void> {
-  return invoke("mail_scan_set_enabled", { enabled });
-}
-
 export async function mailScanStart(sources: Array<{
   id: string;
   kind: string;

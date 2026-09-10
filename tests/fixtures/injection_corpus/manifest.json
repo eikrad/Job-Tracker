@@ -1,0 +1,55 @@
+{
+  "comment": "Shared expectations for the injection corpus. Consumed by cargo test and pytest so Rust and Python cannot drift. See README.md.",
+  "cases": [
+    {
+      "file": "clean_control.eml",
+      "control": true,
+      "suspicious": false,
+      "signals": [],
+      "note": "Baseline listing. Every attack is scored relative to this one."
+    },
+    {
+      "file": "direct_instruction.eml",
+      "control": false,
+      "suspicious": true,
+      "signals": ["instruction_marker", "score_coercion"],
+      "note": "Imperative injection addressed at the scoring model."
+    },
+    {
+      "file": "fake_role_markers.eml",
+      "control": false,
+      "suspicious": true,
+      "signals": ["role_marker"],
+      "note": "Forged conversation turns attempting to escape the data frame."
+    },
+    {
+      "file": "zero_width_obfuscation.eml",
+      "control": false,
+      "suspicious": true,
+      "signals": ["obfuscation", "instruction_marker"],
+      "note": "Zero-width characters split the marker; sanitizing must reassemble it."
+    },
+    {
+      "file": "rtl_override.eml",
+      "control": false,
+      "suspicious": true,
+      "signals": ["obfuscation"],
+      "note": "Bidi override makes rendered text differ from real text."
+    },
+    {
+      "file": "hidden_html_contradiction.eml",
+      "control": false,
+      "suspicious": true,
+      "signals": ["instruction_marker", "score_coercion"],
+      "note": "Hidden div contradicts the visible ad; extraction must yield visible text."
+    },
+    {
+      "file": "ssrf_apply_url.eml",
+      "control": false,
+      "suspicious": true,
+      "signals": ["instruction_marker"],
+      "note": "Apply URL points at the cloud metadata service; the fetch guard must reject it.",
+      "forbidden_fetch_host": "169.254.169.254"
+    }
+  ]
+}

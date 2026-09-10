@@ -12,7 +12,6 @@ mod secrets;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(mail_scan::MailScanFlag::default())
         .manage(mail_scan::MailScanRuntime::default())
         .setup(|app| {
             if let Err(e) = secrets::init_app_store(app.handle()) {
@@ -63,10 +62,28 @@ pub fn run() {
             job_search::fetch_job_search_result_page_text,
             job_search::open_url_in_browser,
             listing_check::check_listing_status,
-            mail_scan::mail_scan_get_enabled,
-            mail_scan::mail_scan_set_enabled,
             mail_scan::mail_scan_start,
             mail_scan::mail_scan_cancel,
+            mail_scan::mail_scan_estimate,
+            mail_scan::settings::mail_scan_settings_get,
+            mail_scan::settings::mail_scan_settings_set,
+            mail_scan::settings::mail_scan_resolve_sources,
+            mail_scan::settings::mail_scan_test_source,
+            mail_scan::settings::mail_scan_detect_thunderbird,
+            mail_scan::settings::mail_scan_sidecar_probe,
+            mail_scan::settings::mail_scan_delete_all_data,
+            mail_scan::inbox::mail_match_list,
+            mail_scan::inbox::mail_match_list_dismissed,
+            mail_scan::inbox::mail_match_sightings,
+            mail_scan::inbox::mail_match_dismiss,
+            mail_scan::inbox::mail_match_restore,
+            mail_scan::inbox::mail_scan_list_runs,
+            mail_scan::accept::mail_match_preview_update,
+            mail_scan::accept::mail_match_accept_update,
+            mail_scan::accept::mail_match_accept_new,
+            mail_scan::profiles::mail_scan_profile_status,
+            mail_scan::profiles::mail_scan_profile_set_from_path,
+            mail_scan::profiles::mail_scan_profile_clear,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

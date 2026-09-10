@@ -92,7 +92,8 @@ pub fn watch_cancel_escalation(child: Arc<Mutex<Child>>, cancel_file: PathBuf) {
 /// Build the child environment: constructed, not inherited.
 ///
 /// `PYTHONPATH` is set deliberately so `-m mail_scan` resolves in dev; `PYTHONHOME`
-/// and `PYTHONSTARTUP` stay absent. Release packaging (PyInstaller / externalBin) is PR C.
+/// and `PYTHONSTARTUP` stay absent. A bundled sidecar ignores all of it, which is the
+/// point: the release path does not depend on a Python being installed at all.
 pub fn isolated_env(python_root: &Path) -> HashMap<String, String> {
     let mut env = HashMap::new();
     env.insert("PYTHONNOUSERSITE".into(), "1".into());
@@ -107,18 +108,21 @@ pub fn isolated_env(python_root: &Path) -> HashMap<String, String> {
     env
 }
 
-/// Dev-only spawn. Refuse outside debug builds unless explicitly opted in.
+/// Spawn the sidecar in whichever mode [`sidecar::resolve`] selected.
+///
+/// Never through a shell, never with a user-supplied interpreter path, and the config
+/// goes on stdin rather than argv (spec §6.4).
 pub fn spawn_scan(
-    python: &Path,
+    mode: &crate::mail_scan::sidecar::SidecarMode,
     python_root: &Path,
     config_json: &str,
 ) -> Result<SpawnedScan, String> {
-    ensure_dev_spawn_allowed()?;
     let env = isolated_env(python_root);
     assert_env_contract(&env)?;
+    let (program, args) = crate::mail_scan::sidecar::command_for(mode, SCAN_ARGV);
 
-    let mut cmd = Command::new(python);
-    cmd.args(SCAN_ARGV)
+    let mut cmd = Command::new(program);
+    cmd.args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -149,20 +153,6 @@ pub fn spawn_scan(
         child: Arc::new(Mutex::new(child)),
         stdout,
     })
-}
-
-fn ensure_dev_spawn_allowed() -> Result<(), String> {
-    if cfg!(debug_assertions) {
-        return Ok(());
-    }
-    if std::env::var_os("JOBTRACKER_MAIL_SCAN_DEV").is_some() {
-        return Ok(());
-    }
-    Err(
-        "Mail scan sidecar spawn is disabled in release builds until PR C packaging \
-         (set JOBTRACKER_MAIL_SCAN_DEV=1 only for explicit local testing)."
-            .into(),
-    )
 }
 
 fn assert_env_contract(env: &HashMap<String, String>) -> Result<(), String> {

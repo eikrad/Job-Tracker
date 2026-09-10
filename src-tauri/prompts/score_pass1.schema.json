@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["results"],
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "score", "reason"],
+        "properties": {
+          "id": { "type": "string", "maxLength": 64 },
+          "score": { "type": "integer", "minimum": 0, "maximum": 10 },
+          "reason": { "type": "string", "maxLength": 300 }
+        }
+      }
+    }
+  }
+}

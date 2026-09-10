@@ -1,10 +1,11 @@
 //! HTTP calls to LLM providers using keys from the secret store.
 
+use super::chat::{chat_json, ChatRequest, RetryPolicy};
 use super::normalize::parse_partial_new_job_from_llm_text;
 use super::provider::{AuthStyle, JsonMode, LlmProvider};
 use crate::secrets::{self, redact};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -43,114 +44,37 @@ fn map_status_error(status: u16, body: &str) -> String {
     }
 }
 
-/// Send a prepared request and return the response body, mapping non-2xx to a
-/// classified, redacted error. Shared by every provider path.
-fn send_for_body(req: reqwest::blocking::RequestBuilder, body: &Value) -> Result<Value, String> {
-    let res = req
-        .header("Content-Type", "application/json")
-        .json(body)
-        .send()
-        .map_err(|e| redact(&e.to_string()))?;
-    let status = res.status().as_u16();
-    let text = res.text().map_err(|e| redact(&e.to_string()))?;
-    if !(200..300).contains(&status) {
-        return Err(map_status_error(status, &text));
-    }
-    serde_json::from_str(&text).map_err(|e| format!("Provider returned invalid JSON: {e}"))
-}
-
-fn extract_openai_compatible(
-    spec: &super::provider::ProviderSpec,
-    api_key: &str,
-    prompt: &str,
-) -> Result<String, String> {
-    let client = http_client()?;
-    let url = format!("{}/chat/completions", spec.base_url.trim_end_matches('/'));
-
-    let mut body = json!({
-        "model": spec.model_id,
-        "messages": [{ "role": "user", "content": prompt }],
-        "temperature": 0.0,
-    });
-
-    match spec.json_mode {
-        JsonMode::Schema => {
-            let schema: Value = serde_json::from_str(EXTRACT_SCHEMA).map_err(|e| e.to_string())?;
-            body["response_format"] = json!({
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "job_extract",
-                    "schema": schema,
-                    "strict": false
-                }
-            });
-        }
-        JsonMode::JsonObject => {
-            body["response_format"] = json!({ "type": "json_object" });
-        }
-        JsonMode::ResponseMimeType => unreachable!("openai path"),
-    }
-
-    let req = match spec.auth {
-        AuthStyle::Bearer => client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", api_key.trim())),
-        AuthStyle::Header(name) => client.post(&url).header(name, api_key.trim()),
-    };
-
-    let v = send_for_body(req, &body)?;
-    let content = v
-        .pointer("/choices/0/message/content")
-        .and_then(|c| c.as_str())
-        .ok_or_else(|| "Provider returned no message content.".to_string())?;
-    if content.trim().is_empty() {
-        return Err("Provider returned empty message content.".into());
-    }
-    Ok(content.to_string())
-}
-
-fn extract_gemini(spec: &super::provider::ProviderSpec, api_key: &str, prompt: &str) -> Result<String, String> {
-    let client = http_client()?;
-    let url = format!(
-        "{}/models/{}:generateContent",
-        spec.base_url.trim_end_matches('/'),
-        spec.model_id
-    );
-    let body = json!({
-        "contents": [{ "parts": [{ "text": prompt }] }],
-        "generationConfig": { "responseMimeType": "application/json" }
-    });
-    let auth_header = match spec.auth {
-        AuthStyle::Header(name) => name,
-        AuthStyle::Bearer => "x-goog-api-key",
-    };
-    let req = client.post(&url).header(auth_header, api_key.trim());
-
-    let v = send_for_body(req, &body)?;
-    let content = v
-        .pointer("/candidates/0/content/parts/0/text")
-        .and_then(|c| c.as_str())
-        .ok_or_else(|| {
-            "Gemini returned no text (check API key, quota, or safety filters).".to_string()
-        })?;
-    Ok(content.to_string())
-}
-
 /// Call one provider and normalize its answer. Takes the spec rather than the enum so
 /// tests can retarget `base_url` at a stub server.
-fn extract_with_spec(
+///
+/// `pub(crate)` because mail-scan enrichment calls it too: turning job-ad text into a
+/// `NewJob` partial is the same task whether the text came from a paste box or from a
+/// fetched listing page, and a second copy of this would drift from the first.
+pub(crate) fn extract_with_spec(
     spec: &super::provider::ProviderSpec,
     api_key: &str,
     raw_text: &str,
 ) -> Result<HashMap<String, Value>, String> {
     let prompt = build_prompt(raw_text);
-    // The wire shape follows from the spec, not from the provider identity.
-    let model_text = match spec.json_mode {
-        JsonMode::ResponseMimeType => extract_gemini(spec, api_key, &prompt)?,
-        JsonMode::Schema | JsonMode::JsonObject => {
-            extract_openai_compatible(spec, api_key, &prompt)?
-        }
+    let schema: Option<Value> = match spec.json_mode {
+        JsonMode::Schema => Some(serde_json::from_str(EXTRACT_SCHEMA).map_err(|e| e.to_string())?),
+        _ => None,
     };
+    // Shared transport: one retry policy, one error classification, one redaction.
+    let model_text = chat_json(
+        &ChatRequest {
+            spec,
+            api_key,
+            // No system message keeps the exact wire shape this path has always sent.
+            system: None,
+            user: &prompt,
+            schema: schema.as_ref(),
+            schema_name: "job_extract",
+        },
+        RetryPolicy::default(),
+    )
+    .map_err(|e| e.to_string())?;
+
     let partial = parse_partial_new_job_from_llm_text(&model_text);
     if partial.is_empty() {
         return Err("Could not parse JSON from the model response.".into());
@@ -369,6 +293,7 @@ fn reject_empty_raw_text(raw_text: &str) -> Option<ExtractJobInfoResponse> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use super::super::provider::provider_spec;
     use std::io::{Read, Write};
     use std::net::TcpListener;
