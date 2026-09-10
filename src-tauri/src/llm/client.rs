@@ -417,16 +417,8 @@ mod tests {
         // reqwest emits header names lowercased.
         assert!(req.contains("authorization: Bearer sk-secret"), "{req}");
         assert!(req.contains("\"type\":\"json_schema\""), "{req}");
-        assert_eq!(out.get("company").and_then(|v| v.as_str()), Some("Acme"));
-    }
-
-    #[test]
-    fn extract_tolerates_think_tags_in_model_content() {
-        let content = "<think>planning</think>\n{\"company\":\"Acme\",\"title\":\"Dev\"}";
-        let (base_url, _rx) = stub_provider("200 OK", &chat_completion(content));
-        let spec = provider_spec(LlmProvider::ScalewayDeepseek).with_base_url(&base_url);
-
-        let out = extract_with_spec(&spec, "sk", "an ad").expect("think-wrapped JSON must parse");
+        // Without this, DeepSeek burns the budget on reasoning and returns empty content.
+        assert!(req.contains("\"reasoning_effort\":\"none\""), "{req}");
         assert_eq!(out.get("company").and_then(|v| v.as_str()), Some("Acme"));
     }
 
@@ -440,6 +432,17 @@ mod tests {
 
         assert!(req.contains("\"type\":\"json_object\""), "{req}");
         assert!(!req.contains("json_schema"), "{req}");
+        assert!(!req.contains("reasoning_effort"), "{req}");
+    }
+
+    #[test]
+    fn extract_tolerates_think_tags_in_model_content() {
+        let content = "<think>planning</think>\n{\"company\":\"Acme\",\"title\":\"Dev\"}";
+        let (base_url, _rx) = stub_provider("200 OK", &chat_completion(content));
+        let spec = provider_spec(LlmProvider::ScalewayDeepseek).with_base_url(&base_url);
+
+        let out = extract_with_spec(&spec, "sk", "an ad").expect("think-wrapped JSON must parse");
+        assert_eq!(out.get("company").and_then(|v| v.as_str()), Some("Acme"));
     }
 
     #[test]
