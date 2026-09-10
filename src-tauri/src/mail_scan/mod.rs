@@ -1,11 +1,17 @@
-//! Mail-scan orchestration: sidecar spawn, NDJSON protocol, persistence.
+//! Mail-scan orchestration: sidecar spawn, NDJSON protocol, scoring, persistence.
 //!
-//! Behind `mailScanEnabled` (default off). Scoring/enrichment are stubbed until PR C.
+//! Behind `mailScanEnabled` (default off) until the flag comes off in C4.
 
+pub mod budget;
 pub mod cluster;
+#[cfg(test)]
+mod corpus;
 pub mod fingerprint;
+pub mod injection;
 pub mod persist;
+pub mod profiles;
 pub mod protocol;
+pub mod score_cache;
 pub mod scoring;
 pub mod spawn;
 
@@ -22,12 +28,16 @@ use crate::db;
 use crate::secrets::redact;
 
 use self::persist::{
-    finish_run, persist_listing, start_run, update_run_stats, upsert_source_cursor, PersistOutcome,
-    RunStats,
+    finish_run, persist_listing, record_run_identity, start_run, update_run_stats,
+    upsert_source_cursor, PersistOutcome, RunStats, ScoringIdentities,
 };
-use self::protocol::{read_event_line, Event, ProtocolError, MAX_LINE_BYTES};
-use self::scoring::{ListingScorer, StubScorer};
+use self::profiles::{load_profile, ProfileKind};
+use self::protocol::{read_event_line, Event, ListingEvent, ProtocolError, MAX_LINE_BYTES};
+use self::scoring::{LlmScorer, RunStop, ScoringConfig, ScoringEngine};
 use self::spawn::{spawn_scan, watch_cancel_escalation, SpawnedScan};
+use crate::llm::overrides::resolved_spec;
+use crate::llm::provider::LlmProvider;
+use crate::secrets;
 
 /// Extractor names shipped with the sidecar (keep in sync with Python DEFAULT_EXTRACTORS).
 pub const DEFAULT_EXTRACTORS: &[&str] = &["indeed", "generic"];
@@ -67,6 +77,28 @@ struct DriveState {
     error_summary: Option<String>,
     /// source_id → (path, kind) for cursor commits
     sources: HashMap<String, (String, String)>,
+    /// Listings held back so pass 1 can be batched (spec §8.3). Bounded by the batch
+    /// size, and each one is still committed in its own transaction after scoring.
+    buffer: Vec<ListingEvent>,
+}
+
+impl DriveState {
+    fn new(sources: HashMap<String, (String, String)>) -> Self {
+        Self {
+            stats: RunStats::default(),
+            status: "completed".into(),
+            error_code: None,
+            error_summary: None,
+            sources,
+            buffer: Vec::new(),
+        }
+    }
+
+    fn fail(&mut self, code: &str, summary: String) {
+        self.status = "failed".into();
+        self.error_code = Some(code.to_string());
+        self.error_summary = Some(redact(&summary));
+    }
 }
 
 fn new_run_id() -> String {
@@ -84,6 +116,45 @@ fn sidecar_python() -> PathBuf {
     std::env::var_os("JOBTRACKER_MAIL_SCAN_PYTHON")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("python3"))
+}
+
+fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// What a run scored with — recorded on the run row so a score stays explainable.
+struct EngineIdentity {
+    model_id: String,
+    profile_short_hash: String,
+    profile_full_hash: String,
+}
+
+/// Assemble the scorer. Deliberately called *before* the sidecar is spawned: a missing
+/// profile or key should fail in under a second, not after reading a 200 MB mbox.
+fn build_engine(
+    app: &AppHandle,
+    provider: LlmProvider,
+    config: ScoringConfig,
+) -> Result<(ScoringEngine, EngineIdentity), String> {
+    let dir = app_data_dir(app)?;
+    let short = load_profile(&dir, ProfileKind::Short)?;
+    let full = load_profile(&dir, ProfileKind::Full)?;
+    let key = secrets::get_secret(provider.secret_provider())?
+        .filter(|k| !k.trim().is_empty())
+        .ok_or_else(|| {
+            "E_CONFIG_INCOMPLETE: add an API key for the scoring provider in Settings.".to_string()
+        })?;
+    let spec = resolved_spec(app, provider)?;
+    let identity = EngineIdentity {
+        model_id: spec.model_id.clone(),
+        profile_short_hash: short.content_hash.clone(),
+        profile_full_hash: full.content_hash.clone(),
+    };
+    let scorer = LlmScorer::new(spec, key, short, full);
+    Ok((ScoringEngine::new(Box::new(scorer), config), identity))
 }
 
 fn load_cursor_json(
@@ -111,12 +182,78 @@ fn load_cursor_json(
     }))
 }
 
+/// Score the buffered listings and commit each one. Returns false when the run must
+/// stop issuing calls.
+///
+/// Listings that could not be scored (budget, breaker) are **not** persisted: leaving
+/// them untouched means the next run picks them up, whereas persisting them with a
+/// placeholder score would cache a non-answer as a verdict.
+fn flush_buffer(
+    conn: &mut rusqlite::Connection,
+    run_id: &str,
+    engine: &mut ScoringEngine,
+    state: &mut DriveState,
+) -> Result<bool, String> {
+    if state.buffer.is_empty() {
+        return Ok(true);
+    }
+    let buffered = std::mem::take(&mut state.buffer);
+    let refs: Vec<&ListingEvent> = buffered.iter().collect();
+    let batch = engine.score_batch(conn, &refs)?;
+    let identities = ScoringIdentities {
+        pass1: engine.identity(1),
+        pass2: engine.identity(2),
+    };
+
+    for (listing, scored) in buffered.iter().zip(batch.results.iter()) {
+        let Some(scored) = scored else { continue };
+        match persist_listing(conn, run_id, listing, scored, &identities) {
+            Ok(PersistOutcome::Committed) => {
+                state.stats.listings_committed += 1;
+                state.stats.inbox_new += 1;
+            }
+            Ok(PersistOutcome::UnderCutoff) => {
+                state.stats.listings_committed += 1;
+                state.stats.under_cutoff += 1;
+            }
+            Ok(PersistOutcome::SuppressedByDismissal) => {
+                state.stats.suppressed_by_dismissal += 1;
+            }
+            Err(e) => {
+                state.fail("E_DB", e);
+                return Ok(false);
+            }
+        }
+    }
+    state.stats.llm_calls = engine.budget().calls_used();
+
+    match batch.stop {
+        None => Ok(true),
+        // The cap is a successful stop: the run completes, keeps its results, and the
+        // UI offers Continue. Treating it as a failure would train the user to ignore
+        // failures.
+        Some(RunStop::BudgetExhausted) => {
+            state.stats.budget_exhausted = true;
+            log::info!("mail scan {run_id}: call budget exhausted, stopping cleanly");
+            Ok(false)
+        }
+        Some(RunStop::Unavailable(detail)) => {
+            state.fail("E_LLM_UNAVAILABLE", detail);
+            Ok(false)
+        }
+        Some(RunStop::Fatal { code, detail }) => {
+            state.fail(code, detail);
+            Ok(false)
+        }
+    }
+}
+
 /// Apply one protocol event to DB/stats. Returns false when the run should stop.
 fn apply_event(
     conn: &mut rusqlite::Connection,
     run_id: &str,
     event: Event,
-    scorer: &dyn ListingScorer,
+    engine: &mut ScoringEngine,
     state: &mut DriveState,
 ) -> Result<bool, String> {
     match event {
@@ -136,23 +273,20 @@ fn apply_event(
             }
             Ok(true)
         }
-        Event::Listing(listing) => match persist_listing(conn, run_id, listing.as_ref(), scorer) {
-            Ok(PersistOutcome::Committed) => {
-                state.stats.listings_committed += 1;
-                Ok(true)
+        Event::Listing(listing) => {
+            state.buffer.push(*listing);
+            if state.buffer.len() >= engine.batch_size() {
+                return flush_buffer(conn, run_id, engine, state);
             }
-            Ok(PersistOutcome::SuppressedByDismissal) => {
-                state.stats.suppressed_by_dismissal += 1;
-                Ok(true)
-            }
-            Err(e) => {
-                state.status = "failed".into();
-                state.error_code = Some("E_PERSIST".into());
-                state.error_summary = Some(redact(&e));
-                Ok(false)
-            }
-        },
+            Ok(true)
+        }
         Event::SourceFinished(ev) => {
+            // Commit the cursor only after everything read from this source is on
+            // disk. Advancing it over buffered listings would skip them for good on
+            // the next incremental run.
+            if !flush_buffer(conn, run_id, engine, state)? {
+                return Ok(false);
+            }
             let (path, kind) = state
                 .sources
                 .get(&ev.source)
@@ -190,16 +324,18 @@ fn consume_reader<R: std::io::Read>(
     conn: &mut rusqlite::Connection,
     run_id: &str,
     reader: &mut R,
-    scorer: &dyn ListingScorer,
+    engine: &mut ScoringEngine,
     state: &mut DriveState,
     mut on_tick: impl FnMut(&mut rusqlite::Connection, &DriveState),
 ) -> Result<(), String> {
     let mut line_buf: Vec<u8> = Vec::with_capacity(4096);
+    let mut stopped = false;
     loop {
         match read_event_line(reader, &mut line_buf, MAX_LINE_BYTES) {
             Ok(None) => break,
             Ok(Some(event)) => {
-                if !apply_event(conn, run_id, event, scorer, state)? {
+                if !apply_event(conn, run_id, event, engine, state)? {
+                    stopped = true;
                     break;
                 }
             }
@@ -224,6 +360,19 @@ fn consume_reader<R: std::io::Read>(
         }
         on_tick(conn, state);
     }
+    // Score whatever is still buffered, even when the stream died mid-way: those
+    // listings were read successfully and throwing them away would mean a truncated
+    // stream costs the user work it had already paid for.
+    if !stopped {
+        flush_buffer(conn, run_id, engine, state)?;
+    } else if !state.buffer.is_empty() {
+        let salvage = std::mem::take(&mut state.buffer);
+        log::info!(
+            "mail scan {run_id}: stopped with {} listing(s) unscored; next run picks them up",
+            salvage.len()
+        );
+    }
+    on_tick(conn, state);
     Ok(())
 }
 
@@ -242,6 +391,49 @@ pub fn mail_scan_set_enabled(enabled: bool, flag: State<'_, MailScanFlag>) -> Re
 #[serde(rename_all = "camelCase")]
 pub struct StartScanRequest {
     pub sources: Vec<SourceConfig>,
+    /// Scoring provider id; defaults to Scaleway when the caller does not say.
+    #[serde(default)]
+    pub provider: Option<String>,
+    /// Minimum pass-2 score to reach the inbox (spec §11.3 default 7).
+    #[serde(default)]
+    pub cutoff: Option<i32>,
+    /// Hard floor on message age, in days (spec §5.5 default 90).
+    #[serde(default)]
+    pub since_days: Option<u32>,
+    /// Per-run call cap.
+    #[serde(default)]
+    pub max_calls: Option<u32>,
+    /// Explicit "Re-score backlog" — bypasses score reuse, not the budget.
+    #[serde(default)]
+    pub force_rescore: Option<bool>,
+}
+
+/// Days of mail history considered when the caller does not override it.
+pub const DEFAULT_SINCE_DAYS: u32 = 90;
+
+impl StartScanRequest {
+    fn scoring_config(&self) -> ScoringConfig {
+        let mut config = ScoringConfig {
+            force_rescore: self.force_rescore.unwrap_or(false),
+            ..Default::default()
+        };
+        if let Some(cutoff) = self.cutoff {
+            config.pass2_cutoff = cutoff.clamp(0, 10);
+        }
+        if let Some(max_calls) = self.max_calls {
+            config.budget.max_calls = max_calls;
+        }
+        config
+    }
+
+    fn provider(&self) -> Result<LlmProvider, String> {
+        LlmProvider::parse(self.provider.as_deref().unwrap_or("scaleway_deepseek"))
+    }
+
+    fn since_iso(&self) -> String {
+        let days = i64::from(self.since_days.unwrap_or(DEFAULT_SINCE_DAYS));
+        (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339()
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -269,6 +461,12 @@ pub fn mail_scan_start(
         }
     }
 
+    // Fail before doing any work if the profiles or the key are missing — a scan that
+    // reads a whole mail folder and only then discovers it cannot score is worse than
+    // one that never starts.
+    let provider = request.provider()?;
+    let (engine, engine_identity) = build_engine(&app, provider, request.scoring_config())?;
+
     let run_id = new_run_id();
     let cancel_dir = std::env::temp_dir().join("jobtracker-mail-scan");
     std::fs::create_dir_all(&cancel_dir).map_err(|e| e.to_string())?;
@@ -277,6 +475,13 @@ pub fn mail_scan_start(
 
     let mut conn = db::connection(&app)?;
     start_run(&mut conn, &run_id)?;
+    record_run_identity(
+        &conn,
+        &run_id,
+        &engine_identity.model_id,
+        &engine_identity.profile_short_hash,
+        &engine_identity.profile_full_hash,
+    )?;
 
     let mut source_meta = HashMap::new();
     let mut sources_json = Vec::new();
@@ -302,7 +507,7 @@ pub fn mail_scan_start(
             "max_listings_per_run": 2000,
             "max_body_chars": 20_000,
         },
-        "since": null,
+        "since": request.since_iso(),
         "cancel_file": cancel_file.to_string_lossy(),
     });
 
@@ -326,7 +531,15 @@ pub fn mail_scan_start(
     let runtime2 = runtime.inner.clone();
     let run_id2 = run_id.clone();
     std::thread::spawn(move || {
-        let result = drive_scan(&app2, &run_id2, &mut child, &cancel_file, source_meta);
+        let mut engine = engine;
+        let result = drive_scan(
+            &app2,
+            &run_id2,
+            &mut child,
+            &cancel_file,
+            source_meta,
+            &mut engine,
+        );
         let mut guard = runtime2.lock().unwrap_or_else(|e| e.into_inner());
         *guard = None;
         if let Err(e) = result {
@@ -335,6 +548,48 @@ pub fn mail_scan_start(
     });
 
     Ok(run_id)
+}
+
+/// Pre-run cost preview and re-score backlog size (spec §8.3, §11.3).
+///
+/// Shown before the user commits to spending: how many calls a scan would cost, and
+/// how many under-cutoff listings a "Re-score backlog" would re-pay for.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanEstimate {
+    pub estimate: budget::CallEstimate,
+    pub backlog_under_cutoff: i64,
+    pub model_id: String,
+    pub profile_short: profiles::ProfileStatus,
+    pub profile_full: profiles::ProfileStatus,
+}
+
+#[tauri::command]
+pub fn mail_scan_estimate(
+    app: AppHandle,
+    provider: Option<String>,
+    expected_listings: Option<u32>,
+    max_calls: Option<u32>,
+) -> Result<ScanEstimate, String> {
+    let provider = LlmProvider::parse(provider.as_deref().unwrap_or("scaleway_deepseek"))?;
+    let dir = app_data_dir(&app)?;
+    let conn = db::connection(&app)?;
+    let cap = max_calls.unwrap_or(budget::DEFAULT_MAX_CALLS);
+
+    Ok(ScanEstimate {
+        estimate: budget::estimate_calls(
+            expected_listings.unwrap_or(0),
+            scoring::PASS1_BATCH_SIZE,
+            // Coarse prior for the share clearing the pass-1 gate; shown as an
+            // estimate, never billed against.
+            0.34,
+            cap,
+        ),
+        backlog_under_cutoff: score_cache::count_under_cutoff(&conn)?,
+        model_id: resolved_spec(&app, provider)?.model_id,
+        profile_short: profiles::profile_status(&dir, ProfileKind::Short),
+        profile_full: profiles::profile_status(&dir, ProfileKind::Full),
+    })
 }
 
 #[tauri::command]
@@ -359,16 +614,10 @@ fn drive_scan(
     child: &mut SpawnedScan,
     cancel_file: &Path,
     sources: HashMap<String, (String, String)>,
+    engine: &mut ScoringEngine,
 ) -> Result<(), String> {
     let mut conn = db::connection(app)?;
-    let scorer = StubScorer;
-    let mut state = DriveState {
-        stats: RunStats::default(),
-        status: "completed".into(),
-        error_code: None,
-        error_summary: None,
-        sources,
-    };
+    let mut state = DriveState::new(sources);
     let mut last_emit = std::time::Instant::now()
         .checked_sub(std::time::Duration::from_secs(1))
         .unwrap_or_else(std::time::Instant::now);
@@ -386,7 +635,7 @@ fn drive_scan(
         &mut conn,
         run_id,
         stdout,
-        &scorer,
+        engine,
         &mut state,
         |conn, st| {
             if last_emit.elapsed() >= std::time::Duration::from_millis(250) {
@@ -452,17 +701,11 @@ pub fn consume_event_stream<R: std::io::Read>(
     conn: &mut rusqlite::Connection,
     run_id: &str,
     mut reader: R,
-    scorer: &dyn ListingScorer,
+    engine: &mut ScoringEngine,
 ) -> Result<RunStats, String> {
     start_run(conn, run_id)?;
-    let mut state = DriveState {
-        stats: RunStats::default(),
-        status: "completed".into(),
-        error_code: None,
-        error_summary: None,
-        sources: HashMap::new(),
-    };
-    consume_reader(conn, run_id, &mut reader, scorer, &mut state, |_, _| {})?;
+    let mut state = DriveState::new(HashMap::new());
+    consume_reader(conn, run_id, &mut reader, engine, &mut state, |_, _| {})?;
     update_run_stats(conn, run_id, &state.stats)?;
     finish_run(
         conn,

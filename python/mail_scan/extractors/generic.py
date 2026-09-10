@@ -6,12 +6,17 @@ import re
 
 from mail_scan.extractors.types import ExtractedListing
 from mail_scan.sources import MailMessage
+from mail_scan.urls import is_public_http_url
 
 _URL = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
 
 
 def extract_generic(message: MailMessage) -> list[ExtractedListing]:
-    urls = _URL.findall(message.body_text)
+    # The body is attacker-controlled, so a URL found in it is a candidate, not a
+    # destination. Internal addresses are dropped before they can become a listing
+    # the user might click or the enricher might be asked to fetch (spec §6.3).
+    candidates = (u.rstrip(").,;") for u in _URL.findall(message.body_text))
+    urls = [u for u in candidates if is_public_http_url(u)]
     if not urls:
         return []
 

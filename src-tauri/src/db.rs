@@ -542,29 +542,53 @@ pub fn delete_job_document(app: tauri::AppHandle, doc_id: i64) -> Result<(), Str
     Ok(())
 }
 
+/// App-data subdirectories copied out alongside the database.
+///
+/// This is an allowlist, not a filter, and it is deliberately short. `backupFolder`
+/// defaults to `~/Jottacloud`, so **everything named here leaves the machine.** The
+/// Candidate Profiles (`profiles/`, spec §6.5) are a CV and are absent on purpose —
+/// see `backup_never_copies_candidate_profiles`.
+pub(crate) const BACKED_UP_SUBDIRS: &[&str] = &["storage/applications"];
+
+/// Copy the allowlisted app-data subdirectories into `dest_dir`.
+///
+/// Split out from [`backup_to_folder`] so the exclusion can be tested against a real
+/// directory tree rather than asserted about in a comment.
+pub(crate) fn copy_backup_assets(
+    app_data: &std::path::Path,
+    dest_dir: &std::path::Path,
+) -> Result<(), String> {
+    for rel in BACKED_UP_SUBDIRS {
+        let src = rel.split('/').fold(app_data.to_path_buf(), |p, c| p.join(c));
+        let dst = rel.split('/').fold(dest_dir.to_path_buf(), |p, c| p.join(c));
+        std::fs::create_dir_all(&dst).map_err(|e| e.to_string())?;
+        if !src.exists() {
+            continue;
+        }
+        for entry in std::fs::read_dir(&src).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if entry.path().is_dir() {
+                continue;
+            }
+            std::fs::copy(entry.path(), dst.join(entry.file_name())).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn backup_to_folder(dest: String, app: tauri::AppHandle) -> Result<(), String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let dest_path = std::path::PathBuf::from(shellexpand::tilde(&dest).as_ref());
     let dest_dir = dest_path.join("JobTracker");
-    let dest_storage = dest_dir.join("storage").join("applications");
-
-    std::fs::create_dir_all(&dest_storage).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
 
     let db_dst = dest_dir.join("app.db");
     // WAL-safe: single consistent file (no -wal/-shm sidecars). See migrations::vacuum_into.
     let conn = connection(&app)?;
     crate::migrations::vacuum_into(&conn, &db_dst)?;
 
-    let pdf_src = app_data.join("storage").join("applications");
-    if pdf_src.exists() {
-        for entry in std::fs::read_dir(&pdf_src).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let fname = entry.file_name();
-            std::fs::copy(entry.path(), dest_storage.join(&fname)).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
+    copy_backup_assets(&app_data, &dest_dir)
 }
 
 #[tauri::command]

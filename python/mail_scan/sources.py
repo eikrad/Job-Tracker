@@ -12,6 +12,8 @@ from email.message import Message
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
+from mail_scan.html_text import html_to_visible_text, looks_like_html
+
 
 @dataclass(frozen=True)
 class MailMessage:
@@ -72,26 +74,56 @@ def _message_date(msg: Message) -> str:
         return raw
 
 
+def _decode_part(part: Message) -> str:
+    payload = part.get_payload(decode=True)
+    if isinstance(payload, bytes):
+        charset = part.get_content_charset() or "utf-8"
+        try:
+            return payload.decode(charset, errors="replace")
+        except LookupError:
+            # Mail in the wild names charsets Python has never heard of.
+            return payload.decode("utf-8", errors="replace")
+    if isinstance(payload, str):
+        return payload
+    return ""
+
+
 def _body_text(msg: Message, max_chars: int) -> str:
-    parts: list[str] = []
+    """Best available plain text for a message.
+
+    Prefers `text/plain`. Falls back to the *visible* text of `text/html` — never the
+    markup, and never the parts of it a human reader cannot see (spec §6.2): a hidden
+    block contradicting the visible ad is a prompt-injection vector, not content.
+    """
+    plain: list[str] = []
+    html: list[str] = []
+
     if msg.is_multipart():
         for part in msg.walk():
+            if part.get_content_maintype() == "multipart":
+                continue
+            # Attachments are not body text, whatever they claim to be.
+            if (part.get_content_disposition() or "") == "attachment":
+                continue
             ctype = part.get_content_type()
             if ctype == "text/plain":
-                payload = part.get_payload(decode=True)
-                if isinstance(payload, bytes):
-                    charset = part.get_content_charset() or "utf-8"
-                    parts.append(payload.decode(charset, errors="replace"))
-                elif isinstance(payload, str):
-                    parts.append(payload)
+                plain.append(_decode_part(part))
+            elif ctype == "text/html":
+                html.append(_decode_part(part))
     else:
-        payload = msg.get_payload(decode=True)
-        if isinstance(payload, bytes):
-            charset = msg.get_content_charset() or "utf-8"
-            parts.append(payload.decode(charset, errors="replace"))
-        elif isinstance(payload, str):
-            parts.append(payload)
-    text = "\n".join(parts).strip()
+        decoded = _decode_part(msg)
+        if msg.get_content_type() == "text/html":
+            html.append(decoded)
+        else:
+            plain.append(decoded)
+
+    text = "\n".join(p for p in plain if p.strip()).strip()
+    if not text and html:
+        text = html_to_visible_text("\n".join(html)).strip()
+    elif text and looks_like_html(text):
+        # A digest sent as text/plain that is really markup.
+        text = html_to_visible_text(text).strip()
+
     if len(text) > max_chars:
         return text[:max_chars]
     return text

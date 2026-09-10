@@ -67,6 +67,10 @@ pub fn run() {
             mail_scan::mail_scan_set_enabled,
             mail_scan::mail_scan_start,
             mail_scan::mail_scan_cancel,
+            mail_scan::mail_scan_estimate,
+            mail_scan::profiles::mail_scan_profile_status,
+            mail_scan::profiles::mail_scan_profile_set_from_path,
+            mail_scan::profiles::mail_scan_profile_clear,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
