@@ -110,8 +110,10 @@ export function MailScanSettings() {
     const path = profilePaths[kind].trim();
     if (!path) return;
     try {
-      setProfiles({ ...profiles, [kind]: await mailScanProfileSetFromPath(kind, path) });
+      const status = await mailScanProfileSetFromPath(kind, path);
+      setProfiles({ ...profiles, [kind]: status });
       setProfilePaths({ ...profilePaths, [kind]: "" });
+      setNotice(t.profileSaved);
       setError(null);
     } catch (e) {
       setError(String(e));
@@ -122,7 +124,10 @@ export function MailScanSettings() {
     try {
       const picked = await mailScanPickPath("profile");
       if (!picked) return;
-      setProfiles({ ...profiles, [kind]: await mailScanProfileSetFromPath(kind, picked) });
+      const status = await mailScanProfileSetFromPath(kind, picked);
+      setProfiles({ ...profiles, [kind]: status });
+      setProfilePaths({ ...profilePaths, [kind]: "" });
+      setNotice(t.profileSaved);
       setError(null);
     } catch (e) {
       setError(String(e));
@@ -318,18 +323,23 @@ export function MailScanSettings() {
       <p className="muted settingsHint">{t.profilesHint}</p>
       {(["short", "full"] as const).map((kind) => {
         const status = profiles[kind];
+        const configured = status.configured === true;
         return (
           <div key={kind} className="mail-scan-settings__profile">
             <strong>{kind === "short" ? t.profileShort : t.profileFull}</strong>{" "}
             <span className="muted">
-              {status.configured && status.sizeBytes !== undefined && status.hashPrefix
-                ? t.profileConfigured(status.sizeBytes, status.hashPrefix)
+              {configured
+                ? status.sizeBytes !== undefined && status.hashPrefix
+                  ? `${t.profileConfiguredLabel} — ${t.profileConfigured(status.sizeBytes, status.hashPrefix)}`
+                  : t.profileConfiguredLabel
                 : t.profileMissing}
             </span>
             <input
               type="text"
               value={profilePaths[kind]}
-              placeholder={t.profilePathPlaceholder}
+              placeholder={
+                configured ? t.profilePathReplacePlaceholder : t.profilePathPlaceholder
+              }
               aria-label={t.profilePathLabel(kind === "short" ? t.profileShort : t.profileFull)}
               onChange={(e) => setProfilePaths({ ...profilePaths, [kind]: e.target.value })}
             />
@@ -341,9 +351,9 @@ export function MailScanSettings() {
               disabled={!profilePaths[kind].trim()}
               onClick={() => void replaceProfile(kind)}
             >
-              {t.profileReplace}
+              {configured ? t.profileReplace : t.profileSave}
             </button>
-            {status.configured ? (
+            {configured ? (
               <button type="button" onClick={() => void clearProfile(kind)}>
                 {t.profileClear}
               </button>

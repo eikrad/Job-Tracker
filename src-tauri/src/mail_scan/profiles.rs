@@ -221,8 +221,10 @@ pub fn mail_scan_profile_set_from_path(
             MAX_PROFILE_BYTES / 1024
         ));
     }
-    let content = fs::read_to_string(&src)
-        .map_err(|_| "E_PROFILE_UNREADABLE: the profile must be UTF-8 text (.md or .txt).".to_string())?;
+    let content = fs::read_to_string(&src).map_err(|_| {
+        "E_PROFILE_UNREADABLE: the profile must be UTF-8 text (.md or .txt), not a PDF or Word file."
+            .to_string()
+    })?;
 
     write_profile(&root, kind, &content)?;
     Ok(profile_status(&root, kind))

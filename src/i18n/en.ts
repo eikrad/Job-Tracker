@@ -573,16 +573,22 @@ export const en = {
       "No Thunderbird mail folders found — use Browse and pick the file without .msf under Mail/Local Folders.",
 
     profilesHeading: "Candidate profiles",
-    profilesHint: "Your CV, used to score listings. Stored locally with owner-only permissions and never included in exports or backups.",
+    profilesHint:
+      "Your CV text (.md or .txt — not PDF), used to score listings. Stored locally with owner-only permissions and never included in exports or backups.",
     profileShort: "Short profile",
     profileFull: "Full profile",
-    profileConfigured: (size: number, hash: string) => `${Math.round(size / 1024)} KB · ${hash}`,
+    profileConfiguredLabel: "Configured",
+    profileConfigured: (size: number, hash: string) =>
+      size < 1024 ? `${size} B · ${hash}` : `${Math.round(size / 1024)} KB · ${hash}`,
     profileMissing: "Not configured",
+    profileSave: "Save",
     profileReplace: "Replace",
     profileBrowse: "Browse…",
     profilePathPlaceholder: "~/Documents/cv-short.md",
+    profilePathReplacePlaceholder: "Browse or paste a path to replace",
     profilePathLabel: (which: string) => `Path to the ${which} file`,
     profileClear: "Clear",
+    profileSaved: "Profile saved.",
 
     scoringHeading: "Scoring",
     cutoffLabel: "Cutoff (minimum score to reach the inbox)",
