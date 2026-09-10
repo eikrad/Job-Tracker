@@ -50,16 +50,22 @@ src/                    — React + TypeScript UI
     extraction/         — AI text extraction (invokes Rust; normalizes fields in TS)
     jobSearch/          — Job search UI (keys stay in keyring)
     jobs/                — Core job CRUD and state
+    mailMatch/           — Mail Match Inbox: view logic, run reducer, panel (separate from capture/, ADR 0003)
     reminders/           — Reminder support
   components/           — Shared UI components
   context/              — React context providers (global app state)
   hooks/                — Shared custom hooks (incl. useTheme — Breath light/dark theme)
   i18n/                 — Internationalisation strings
   lib/                  — Utility functions (incl. theme.ts); lib/jobs/ holds dashboard/table helpers (sortJobs, filterJobs, boardViewPreference, jobTableColumns, hiddenJobStatuses)
-  pages/                — Route-level page components: Dashboard, Add Job, Job Detail (`/job/:id`), Job Search
+  pages/                — Route-level page components: Dashboard, Add Job, Job Detail (`/job/:id`), Job Search, Mail Matches (`/mail-matches`)
 src-tauri/              — Rust / Tauri backend
   src/                  — Tauri commands, SQLite access, file handling
+    llm/                — Provider registry, shared chat transport (retry/classification), normalizer
+    mail_scan/          — Sidecar orchestration, scoring, enrichment, accept, inbox queries, settings
+  prompts/              — Prompt templates and JSON schemas (extraction + scoring)
+  binaries/             — Frozen mail-scan sidecar for release builds (gitignored)
   capabilities/         — Tauri permission declarations
+python/                 — Mail-scan sidecar (no network, no secrets — ADR 0004)
 docs/                   — Architecture and maintenance docs
 scripts/                — Build and tooling scripts
 tests/                  — Python integration tests (pytest)
@@ -205,6 +211,52 @@ All data lives in the OS app data directory — nothing is stored in the repo.
 | `jobs` | One row per application — company, title, dates, contact, salary, status, etc. |
 | `status_history` | Audit trail of `from_status` → `to_status` changes, written automatically on every status update |
 | `job_documents` | One row per attached PDF (CV, cover letter, other), linked to a job |
+| `job_field_provenance` | Which fields a mail scan wrote, and in which run — answers "where did this deadline come from?" |
+| `mail_scan_runs` | One row per scan, with `stats_json` counters the History view renders |
+| `mail_fingerprints` / `mail_fingerprint_aliases` | Tiered listing identity, stable across runs (spec §5.1) |
+| `mail_match_inbox` | Pending / accepted / dismissed matches awaiting review |
+| `mail_match_dismissals` | Revocable suppressions, with reason and originating run |
+| `mail_scored_sightings` | Score cache and re-score policy, keyed by content + profile + prompt + model |
+| `mail_source_cursors` | Per-folder incremental read position, so a 200 MB folder is not re-read |
+
+### Mail scan
+
+```
+Settings (folders, profiles, key)
+        │
+        ▼
+mail_scan_start ──► sidecar (Python, no network, no secrets)
+        │                    │ NDJSON events on stdout
+        │                    ▼
+        │            listings buffered (≤10) ──► pass 1 batch score  ─┐
+        │                                                             │ cache first
+        │                    ┌──────────── pass 2 (per listing) ◄──────┘
+        │                    ▼
+        │            enrichment: fetch_untrusted ──► text ──► same normalizer
+        │                    │                                as the job form
+        │                    ▼
+        └──────────► one transaction per listing ──► mail_match_inbox
+                                                          │
+                                                          ▼
+                                            Mail Match Inbox (review)
+                                                          │
+                                              Accept ──► prefilled job form
+                                                          │
+                                                          ▼
+                                            jobs + job_field_provenance
+```
+
+Properties worth knowing before changing any of it:
+
+- **No path from model output to a written Job.** A score can only put a row in front
+  of a human. `priority` and `status` are never written from a scan.
+- **Per-listing transactions.** A crash at listing 60 of 118 leaves 59 usable rows.
+- **Two cache lookups, deliberately different.** The exact 5-tuple lookup makes a re-run
+  free; the model-blind lookup stops a provider switch from re-spending the backlog.
+  Only a profile edit or a prompt change re-scores.
+- **The accept-time re-diff.** A suggestion is recomputed against the live Job, so an
+  edit made after the scan is never overwritten.
+- **Secrets and CV content stay in Rust.** Neither crosses the IPC boundary.
 
 ---
 

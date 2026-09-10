@@ -5,7 +5,8 @@ import { useTheme } from "../hooks/useTheme";
 import type { ThemePreference } from "../lib/theme";
 import { BOARD_VIEWS, type BoardView } from "../lib/jobs/boardViewPreference";
 import { exportJobsAsCsv, exportJobsAsJson } from "../lib/export/exportBundle";
-import { googleOauthGetClientId, googleOauthSetClientId, llmProviderOverrideGet, llmProviderOverrideSet, llmTestConnection, mailScanGetEnabled, mailScanSetEnabled } from "../lib/tauriApi";
+import { MailScanSettings } from "../features/mailMatch/MailScanSettings";
+import { googleOauthGetClientId, googleOauthSetClientId, llmProviderOverrideGet, llmProviderOverrideSet, llmTestConnection } from "../lib/tauriApi";
 import type { LlmProvider } from "../features/extraction/extractJobInfo";
 import { SecretKeyField } from "./SecretKeyField";
 import { en } from "../i18n/en";
@@ -62,7 +63,6 @@ export function SettingsModal({ open, onClose }: Props) {
   const [overrideBaseUrl, setOverrideBaseUrl] = useState("");
   const [overrideModelId, setOverrideModelId] = useState("");
   const [overrideBusy, setOverrideBusy] = useState(false);
-  const [mailScanEnabled, setMailScanEnabled] = useState(false);
   // This dialog is mounted for the whole session. Defer its body until first open so the
   // SecretKeyFields don't each fire a keyring round-trip on every app launch.
   const [hasOpened, setHasOpened] = useState(false);
@@ -95,11 +95,6 @@ export function SettingsModal({ open, onClose }: Props) {
       } catch {
         setOverrideBaseUrl("");
         setOverrideModelId("");
-      }
-      try {
-        setMailScanEnabled(await mailScanGetEnabled());
-      } catch {
-        setMailScanEnabled(false);
       }
     })();
   }, [open, refreshGoogleOauthStatus, llmProvider]);
@@ -409,27 +404,12 @@ export function SettingsModal({ open, onClose }: Props) {
                     placeholder={en.app.googlePlaceholder}
                     onStatusChange={() => void refreshManualGoogleTokenStatus()}
                   />
-                  <h4 className="settingsSubTitle">{en.app.mailScanDevHeading}</h4>
-                  <p className="muted settingsHint">{en.app.mailScanDevHint}</p>
-                  <label className="settingsRow">
-                    <input
-                      type="checkbox"
-                      checked={mailScanEnabled}
-                      onChange={(e) => {
-                        const next = e.target.checked;
-                        setMailScanEnabled(next);
-                        void mailScanSetEnabled(next).catch((err) => {
-                          window.alert(String(err));
-                          setMailScanEnabled(!next);
-                        });
-                      }}
-                    />{" "}
-                    {en.app.mailScanEnabledLabel}
-                  </label>
                 </div>
               )}
             </div>
           </section>
+
+          <MailScanSettings />
 
           <section className="settingsSection">
             <h3 className="cardTitle">{en.app.settingsSectionPipeline}</h3>

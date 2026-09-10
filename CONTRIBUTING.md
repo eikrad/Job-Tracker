@@ -41,7 +41,38 @@ Emergency skip (avoid if possible): `HUSKY=0 git commit …`
 |--------|---------|
 | `npm run tauri:dev` | Full desktop app (SQLite, native APIs). **Use this for most feature work.** |
 | `npm run dev` | Vite only in the browser — UI-only; no Tauri commands or DB. **AI extraction and keyring secrets require `tauri:dev`.** |
-| `npm run tauri:build` | Release build (artifacts under `src-tauri/target/release/`). |
+| `npm run tauri:build` | Release build (artifacts under `src-tauri/target/release/`). **Build the mail-scan sidecar first — see below.** |
+
+### Mail-scan sidecar
+
+The mail scanner is a Python sidecar (ADR 0002). How it is launched depends on the build:
+
+| Build | How it runs | Needs Python installed? |
+|-------|-------------|-------------------------|
+| `npm run tauri:dev` | `uv run --project <repo>` against `python/` | Yes — via `uv` |
+| `npm run tauri:build` | A frozen PyInstaller binary bundled as a Tauri `externalBin` | **No** |
+
+Settings → Mail scan shows which mode is active, so "it works on my machine" is
+answerable without guessing.
+
+For a release build, use the script that does both steps:
+
+```bash
+npm run tauri:build:release
+```
+
+It freezes the sidecar, then bundles with `JOBTRACKER_SIDECAR_SHA256` set so the app
+refuses a tampered or half-updated binary. `externalBin` lives in
+`src-tauri/tauri.release.conf.json`, **not** in `tauri.conf.json`: Tauri requires an
+`externalBin` to exist at build time, so putting it in the base config would break
+`cargo build`, `npm run verify`, and CI — none of which need a frozen sidecar.
+
+Without the pin the app still runs but reports the sidecar as *unpinned* — a dev build
+should not fail on a missing hash, or nobody would keep the check.
+
+**Verify a release build on a machine with no Python installed.** That is the whole
+point of freezing it, and it is the one step that can fail on a user's machine rather
+than yours.
 
 ## Tauri release bundles (Linux, AppImage)
 

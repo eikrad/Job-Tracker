@@ -13,6 +13,7 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 - **Job detail page** — a dedicated `/job/:id` page per application with a full edit form (contact/workplace details, salary, etc.), document upload/management, and a status-change history timeline
 - **Configurable status workflow** — the default board pipeline is `Interesting → Plan to Apply → Application Sent → Feedback → Done`; column names are editable in Settings
 - **Quick capture** — paste a job URL into the header's Capture drawer to auto-fetch and AI-extract it into a draft; unresolved captures land in a Capture Inbox for later triage. A copyable handoff link (`?capture_url=…`) lets you queue a URL from outside the app (e.g. a bookmark); the app picks it up as a browser capture the next time it loads
+- **Mail scan & Mail Match Inbox** — point the app at your local Thunderbird mail folders and it reads job-alert digests, scores each listing against your own Candidate Profiles, and queues the good ones for review. Nothing is ever saved without you approving it; dismissals are revocable, and mail is read **read-only from local folders** (no IMAP, no passwords)
 - **In-app job search** — search Jobindex and Indeed without leaving the app (SerpAPI + Brave Search fallback), with one-click save
 - **Listing status check** — one click on the job detail page checks whether a saved listing is still active, closed, archived, or unreachable (direct fetch, or via SerpAPI for sources that block automated requests, e.g. Indeed)
 - **AI-assisted extraction** — paste a job listing and let Gemini or Mistral fill in the fields automatically
@@ -214,11 +215,49 @@ If **Create in Google** fails after a long time, use **Disconnect** and **Connec
 4. For one job with each kind of date, use **Create in Google** and confirm events appear in your **primary** Google Calendar.
 5. **Disconnect** when finished testing if you do not want the refresh token left on this machine.
 
+## Mail scan
+
+Configure mail folders and both Candidate Profiles in **Settings → Mail scan**, then press
+**Scan job emails**. A pre-run sheet shows the *resolved* folder paths, the model, the
+cutoff, and an estimate of how many model calls the run will cost, before it spends
+anything.
+
+What comes back lands in the **Mail Match Inbox** (`/mail-matches`), separate from the
+Capture Inbox:
+
+- **Pending** — matches sorted by score, with badges for incomplete details, suspicious
+  content, near-duplicates, and repeat sightings. **Accept** opens the job form
+  prefilled; nothing is written until you submit it.
+- **Dismissed** — everything you have suppressed, with its reason, restorable in one
+  click.
+- **History** — past runs and their counters.
+
+Notes on how it behaves:
+
+- **Scores are advisory.** A score never sets a job's `priority` or `status`, and it
+  never creates a Job on its own.
+- **Mail is hostile input.** Listing text is passed to the model as data, hidden HTML
+  and invisible characters are stripped, and a listing that tries to instruct the model
+  is flagged rather than trusted. Fetched pages are never rendered in the app.
+- **Re-runs are cheap.** Scores are cached, so a crashed or cancelled scan costs almost
+  nothing to repeat. Editing a Candidate Profile re-scores the backlog; *copying* the
+  file does not.
+- **Candidate Profiles are CV content.** They live at `$APPDATA/profiles/` mode `0600`,
+  are never shown to the web view, and are excluded from export and backup.
+- **Settings → Delete all mail scan data** removes every trace of scanning (inbox,
+  sightings, dismissals, cursors, runs, cache) and leaves your Jobs untouched.
+
+The external *Jobmails* helper this replaces is retired; day-to-day use is entirely in
+the app.
+
 ## Data storage
 
 - **SQLite and uploaded PDFs** live in the OS app data directory for the Tauri app (not in this repo).
 - The repo `storage/` folder is for optional manual files; see `.gitignore`.
-- User-entered API keys in Settings are stored in local storage for this app profile.
+- API keys are stored in the **OS keyring** (falling back to a `0600` file when no
+  secret service is available); they are never returned to the web view.
+- Candidate Profiles live at `$APPDATA/profiles/{short,full}.md`, mode `0600`, and are
+  excluded from export and backup by default.
 
 ## Import / export
 

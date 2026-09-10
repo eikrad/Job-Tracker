@@ -80,7 +80,44 @@ export type ScanEstimate = {
   profileFull: ProfileStatus;
 };
 
-export type MailSource = { id: string; kind: string; path: string };
+export type MailSource = { id: string; label: string; kind: string; path: string };
+
+export type MailScanSettingsPayload = {
+  sources: MailSource[];
+  cutoff: number;
+  sinceDays: number;
+  maxCalls: number;
+  provider: string;
+};
+
+export type ResolvedSource = {
+  id: string;
+  label: string;
+  enteredPath: string;
+  /** Where the entered path actually points — shown before the folder is read. */
+  resolvedPath: string | null;
+  kind: string;
+  exists: boolean;
+  redirected: boolean;
+  error: string | null;
+};
+
+export type SourceTestResult = {
+  id: string;
+  ok: boolean;
+  messageCount: number;
+  earliest: string | null;
+  latest: string | null;
+  resolvedPath: string | null;
+  error: string | null;
+};
+
+export type SidecarProbe = {
+  available: boolean;
+  description: string;
+  hashPinned: boolean;
+  error: string | null;
+};
 
 export async function mailMatchList(status = "pending"): Promise<MailMatchRow[]> {
   return invoke("mail_match_list", { status });
@@ -148,10 +185,6 @@ export async function mailScanCancel(): Promise<void> {
   await invoke("mail_scan_cancel");
 }
 
-export async function mailScanGetEnabled(): Promise<boolean> {
-  return invoke("mail_scan_get_enabled");
-}
-
 export async function mailScanProfileStatus(kind: "short" | "full"): Promise<ProfileStatus> {
   return invoke("mail_scan_profile_status", { kind });
 }
@@ -165,4 +198,33 @@ export async function mailScanProfileSetFromPath(
 
 export async function mailScanProfileClear(kind: "short" | "full"): Promise<ProfileStatus> {
   return invoke("mail_scan_profile_clear", { kind });
+}
+
+export async function mailScanSettingsGet(): Promise<MailScanSettingsPayload> {
+  return invoke("mail_scan_settings_get");
+}
+
+export async function mailScanSettingsSet(settings: MailScanSettingsPayload): Promise<void> {
+  await invoke("mail_scan_settings_set", { settings });
+}
+
+export async function mailScanResolveSources(): Promise<ResolvedSource[]> {
+  return invoke("mail_scan_resolve_sources");
+}
+
+export async function mailScanTestSource(source: MailSource): Promise<SourceTestResult> {
+  return invoke("mail_scan_test_source", { source });
+}
+
+export async function mailScanDetectThunderbird(): Promise<string[]> {
+  return invoke("mail_scan_detect_thunderbird");
+}
+
+export async function mailScanSidecarProbe(): Promise<SidecarProbe> {
+  return invoke("mail_scan_sidecar_probe");
+}
+
+/** Destructive. The UI gates this behind typing DELETE. */
+export async function mailScanDeleteAllData(confirmation: string): Promise<void> {
+  await invoke("mail_scan_delete_all_data", { confirmation });
 }

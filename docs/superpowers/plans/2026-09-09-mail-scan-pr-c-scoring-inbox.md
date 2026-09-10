@@ -67,14 +67,14 @@
 
 **Commit:** `feat(mail-scan): settings, packaging, and general availability`
 
-- [ ] **Step 1:** Settings — mail sources with a picker, **resolved** paths displayed (so a symlinked folder is visible before it is read, §6.4), `Test read` reporting message count and date range; profile replace with hash prefix; cutoff, `since`, budget; `Re-score backlog`; **`Delete all mail scan data`** behind typed confirmation, removing inbox, sightings, dismissals, cursors, runs, cache, and logs while leaving Jobs intact.
-- [ ] **Step 2 — packaging (the one item that can fail on a user's machine, not yours):** PyInstaller one-dir sidecar as Tauri `externalBin` for release; `uv run` in dev; `probe` reports which mode is active. Verify a **release build on a machine without Python installed** — the whole plan assumes this and nothing so far has tested it. Add the release-build hash pin (§6.4).
-- [ ] **Step 3:** Thunderbird profile auto-detect (best-effort, Linux first; manual picking always works, and Windows layout differs).
-- [ ] **Step 4:** remove the `mailScanEnabled` flag; docs in `README.md`, `docs/architecture.md`, `CONTRIBUTING.md` (sidecar build step); note that day-to-day Jobmails use is retired.
-- [ ] **Step 5:** manual E2E (§9.6) with real mbox samples **outside the repo**: full scan; cancel and resume; kill the app mid-scan and restart; revoke the key mid-scan (expect a clean `failed`); run offline (expect `E_LLM_UNAVAILABLE`, no partial garbage).
-- [ ] **Step 6:** `npm run verify` green with the Rust half actually executed; TODO grep clean; `git grep` finds no key, no profile content, no personal mail.
-- [ ] **Step 7:** bump app version 0.3.0 → 0.4.0 in `package.json` and `src-tauri/Cargo.toml` (keep them identical).
-- [ ] **Step 8:** commit.
+- [x] **Step 1:** Settings — mail sources with a picker, **resolved** paths displayed (so a symlinked folder is visible before it is read, §6.4), `Test read` reporting message count and date range; profile replace with hash prefix; cutoff, `since`, budget; `Re-score backlog`; **`Delete all mail scan data`** behind typed confirmation, removing inbox, sightings, dismissals, cursors, runs, cache, and logs while leaving Jobs intact.
+- [x] **Step 2 — packaging (the one item that can fail on a user's machine, not yours):** PyInstaller one-dir sidecar as Tauri `externalBin` for release; `uv run` in dev; `probe` reports which mode is active. Verify a **release build on a machine without Python installed** *(NEEDS THE USER — packaging implemented and buildable, but not executed on a Python-free machine)* — the whole plan assumes this and nothing so far has tested it. Add the release-build hash pin (§6.4).
+- [x] **Step 3:** Thunderbird profile auto-detect (best-effort, Linux first; manual picking always works, and Windows layout differs).
+- [x] **Step 4:** remove the `mailScanEnabled` flag; docs in `README.md`, `docs/architecture.md`, `CONTRIBUTING.md` (sidecar build step); note that day-to-day Jobmails use is retired.
+- [ ] **Step 5 — NEEDS THE USER (not automatable here):** manual E2E (§9.6) with real mbox samples **outside the repo**: full scan; cancel and resume; kill the app mid-scan and restart; revoke the key mid-scan (expect a clean `failed`); run offline (expect `E_LLM_UNAVAILABLE`, no partial garbage).
+- [x] **Step 6:** `npm run verify` green with the Rust half actually executed; TODO grep clean; `git grep` finds no key, no profile content, no personal mail.
+- [x] **Step 7:** bump app version 0.3.0 → 0.4.0 in `package.json` and `src-tauri/Cargo.toml` (keep them identical).
+- [x] **Step 8:** commit.
 ---
 
 ## Spec coverage

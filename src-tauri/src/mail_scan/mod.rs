@@ -15,12 +15,13 @@ pub mod persist;
 pub mod profiles;
 pub mod protocol;
 pub mod score_cache;
+pub mod settings;
+pub mod sidecar;
 pub mod scoring;
 pub mod spawn;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rusqlite::OptionalExtension;
@@ -45,16 +46,6 @@ use crate::secrets;
 
 /// Extractor names shipped with the sidecar (keep in sync with Python DEFAULT_EXTRACTORS).
 pub const DEFAULT_EXTRACTORS: &[&str] = &["indeed", "generic"];
-
-/// Dev-only gate. Default off so PR B stays invisible.
-#[derive(Clone)]
-pub struct MailScanFlag(pub Arc<AtomicBool>);
-
-impl Default for MailScanFlag {
-    fn default() -> Self {
-        Self(Arc::new(AtomicBool::new(false)))
-    }
-}
 
 #[derive(Clone, Default)]
 pub struct MailScanRuntime {
@@ -112,14 +103,12 @@ fn new_run_id() -> String {
     format!("ms_{}_{}", chrono::Utc::now().timestamp_millis(), suffix)
 }
 
-fn python_root() -> PathBuf {
+pub(crate) fn python_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../python")
 }
 
-fn sidecar_python() -> PathBuf {
-    std::env::var_os("JOBTRACKER_MAIL_SCAN_PYTHON")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("python3"))
+fn sidecar_python_override() -> Option<PathBuf> {
+    std::env::var_os("JOBTRACKER_MAIL_SCAN_PYTHON").map(PathBuf::from)
 }
 
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -394,17 +383,6 @@ fn consume_reader<R: std::io::Read>(
     Ok(())
 }
 
-#[tauri::command]
-pub fn mail_scan_get_enabled(flag: State<'_, MailScanFlag>) -> bool {
-    flag.0.load(Ordering::Relaxed)
-}
-
-#[tauri::command]
-pub fn mail_scan_set_enabled(enabled: bool, flag: State<'_, MailScanFlag>) -> Result<(), String> {
-    flag.0.store(enabled, Ordering::Relaxed);
-    Ok(())
-}
-
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartScanRequest {
@@ -465,13 +443,9 @@ pub struct SourceConfig {
 #[tauri::command]
 pub fn mail_scan_start(
     app: AppHandle,
-    flag: State<'_, MailScanFlag>,
     runtime: State<'_, MailScanRuntime>,
     request: StartScanRequest,
 ) -> Result<String, String> {
-    if !flag.0.load(Ordering::Relaxed) {
-        return Err("Mail scan is disabled (enable mailScanEnabled in Settings).".into());
-    }
     {
         let guard = runtime.inner.lock().map_err(|e| e.to_string())?;
         if guard.is_some() {
@@ -529,7 +503,9 @@ pub fn mail_scan_start(
         "cancel_file": cancel_file.to_string_lossy(),
     });
 
-    let mut child = match spawn_scan(&sidecar_python(), &python_root(), &config.to_string()) {
+    let mode = sidecar::resolve(&python_root(), sidecar_python_override())?;
+    log::info!("mail scan {run_id}: using {}", mode.describe());
+    let mut child = match spawn_scan(&mode, &python_root(), &config.to_string()) {
         Ok(c) => c,
         Err(e) => {
             let mut c = db::connection(&app)?;
@@ -611,13 +587,7 @@ pub fn mail_scan_estimate(
 }
 
 #[tauri::command]
-pub fn mail_scan_cancel(
-    flag: State<'_, MailScanFlag>,
-    runtime: State<'_, MailScanRuntime>,
-) -> Result<(), String> {
-    if !flag.0.load(Ordering::Relaxed) {
-        return Err("Mail scan is disabled.".into());
-    }
+pub fn mail_scan_cancel(runtime: State<'_, MailScanRuntime>) -> Result<(), String> {
     let guard = runtime.inner.lock().map_err(|e| e.to_string())?;
     let Some(active) = guard.as_ref() else {
         return Ok(());
