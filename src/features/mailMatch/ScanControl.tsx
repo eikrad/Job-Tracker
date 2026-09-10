@@ -101,7 +101,12 @@ export function ScanControl({
 
   return (
     <section className="scan-control">
-      <button type="button" onClick={() => void openSheet()} disabled={running}>
+      <button
+        type="button"
+        className="btn btnPrimary"
+        onClick={() => void openSheet()}
+        disabled={running}
+      >
         {running ? t.scanRunning : t.scanButton}
       </button>
 
@@ -151,10 +156,15 @@ export function ScanControl({
           ) : null}
 
           <div className="scan-control__sheet-actions">
-            <button type="button" onClick={() => void start()} disabled={!canStart}>
+            <button
+              type="button"
+              className="btn btnPrimary"
+              onClick={() => void start()}
+              disabled={!canStart}
+            >
               {t.scanPreflightStart}
             </button>
-            <button type="button" onClick={() => setSheetOpen(false)}>
+            <button type="button" className="btn btnGhost" onClick={() => setSheetOpen(false)}>
               {t.scanPreflightCancel}
             </button>
           </div>

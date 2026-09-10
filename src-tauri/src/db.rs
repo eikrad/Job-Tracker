@@ -591,7 +591,13 @@ pub(crate) fn copy_backup_assets(
 }
 
 #[tauri::command]
-pub fn backup_to_folder(dest: String, app: tauri::AppHandle) -> Result<(), String> {
+pub async fn backup_to_folder(dest: String, app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || backup_to_folder_inner(dest, app))
+        .await
+        .map_err(|e| format!("Thread error: {e}"))?
+}
+
+fn backup_to_folder_inner(dest: String, app: tauri::AppHandle) -> Result<(), String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let dest_path = std::path::PathBuf::from(shellexpand::tilde(&dest).as_ref());
     let dest_dir = dest_path.join("JobTracker");

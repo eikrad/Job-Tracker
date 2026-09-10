@@ -665,27 +665,45 @@ pub fn get_location_suggestions(app: tauri::AppHandle) -> Result<Vec<String>, St
 }
 
 #[tauri::command]
-pub fn fetch_job_search_results(
+pub async fn fetch_job_search_results(
     platform: String,
     keywords: Vec<String>,
     location: Option<String>,
     region: Option<String>,
 ) -> Result<Vec<JobSearchResult>, String> {
-    let loc = location.unwrap_or_default();
-    let reg = region.unwrap_or_else(|| "dk".to_string());
-    let serp_key = crate::secrets::get_secret_or_default("serpapi");
-    let brave_key = crate::secrets::get_secret_or_default("brave");
-    if serp_key.trim().is_empty() && brave_key.trim().is_empty() {
-        return Err(
-            "Missing search API keys. Add SerpAPI and/or Brave Search API key in Settings."
-                .to_string(),
-        );
-    }
-    fetch_platform_results(&platform, &keywords, &loc, &reg, &serp_key, &brave_key)
+    tauri::async_runtime::spawn_blocking(move || {
+        let loc = location.unwrap_or_default();
+        let reg = region.unwrap_or_else(|| "dk".to_string());
+        let serp_key = crate::secrets::get_secret_or_default("serpapi");
+        let brave_key = crate::secrets::get_secret_or_default("brave");
+        if serp_key.trim().is_empty() && brave_key.trim().is_empty() {
+            return Err(
+                "Missing search API keys. Add SerpAPI and/or Brave Search API key in Settings."
+                    .to_string(),
+            );
+        }
+        fetch_platform_results(&platform, &keywords, &loc, &reg, &serp_key, &brave_key)
+    })
+    .await
+    .map_err(|e| format!("Thread error: {e}"))?
 }
 
 #[tauri::command]
-pub fn fetch_job_search_bundle(
+pub async fn fetch_job_search_bundle(
+    app: tauri::AppHandle,
+    keywords: Vec<String>,
+    location: Option<String>,
+    region: Option<String>,
+    platforms: Vec<String>,
+) -> Result<JobSearchResultsBundle, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        fetch_job_search_bundle_inner(app, keywords, location, region, platforms)
+    })
+    .await
+    .map_err(|e| format!("Thread error: {e}"))?
+}
+
+fn fetch_job_search_bundle_inner(
     app: tauri::AppHandle,
     keywords: Vec<String>,
     location: Option<String>,
@@ -727,9 +745,38 @@ pub fn fetch_job_search_bundle(
     let mut top5_per_platform: HashMap<String, Vec<JobSearchResult>> = HashMap::new();
     let mut fallback_hints: HashMap<String, JobSearchFallbackHint> = HashMap::new();
 
-    for platform in requested_platforms {
-        let platform_results =
-            fetch_platform_results(&platform, &keywords, &loc, &reg, &serp_key, &brave_key)?;
+    // Fetch platforms in parallel — sequential SerpAPI/Brave calls were stacking
+    // up to ~2 minutes of wall time while the sync command froze the window.
+    let platform_jobs: Vec<(String, Result<Vec<JobSearchResult>, String>)> =
+        std::thread::scope(|scope| {
+            let mut handles = Vec::with_capacity(requested_platforms.len());
+            for platform in &requested_platforms {
+                let platform = platform.clone();
+                let keywords = keywords.clone();
+                let loc = loc.clone();
+                let reg = reg.clone();
+                let serp_key = serp_key.clone();
+                let brave_key = brave_key.clone();
+                handles.push(scope.spawn(move || {
+                    let results = fetch_platform_results(
+                        &platform,
+                        &keywords,
+                        &loc,
+                        &reg,
+                        &serp_key,
+                        &brave_key,
+                    );
+                    (platform, results)
+                }));
+            }
+            handles
+                .into_iter()
+                .map(|h| h.join().unwrap_or_else(|_| ("?".into(), Err("platform worker panicked".into()))))
+                .collect()
+        });
+
+    for (platform, platform_results) in platform_jobs {
+        let platform_results = platform_results?;
         if platform_results.is_empty() {
             let browser_url = build_search_url(
                 platform.clone(),
@@ -833,8 +880,10 @@ pub fn open_url_in_browser(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn fetch_job_search_result_page_text(url: String) -> Result<String, String> {
-    fetch_job_page_text(&url)
+pub async fn fetch_job_search_result_page_text(url: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || fetch_job_page_text(&url))
+        .await
+        .map_err(|e| format!("Thread error: {e}"))?
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────────────

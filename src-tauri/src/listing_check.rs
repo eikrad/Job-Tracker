@@ -41,10 +41,6 @@ fn detect_status(url: &str, serp_api_key: &str) -> ListingStatus {
         Err(_) => return ListingStatus::Unreachable,
     };
 
-    if !(200..400).contains(&fetched.status) {
-        return ListingStatus::Unreachable;
-    }
-
     let body = fetched
         .body
         .chars()
@@ -52,7 +48,42 @@ fn detect_status(url: &str, serp_api_key: &str) -> ListingStatus {
         .collect::<String>()
         .to_lowercase();
 
-    classify_by_domain(url, &fetched.final_url, &body)
+    classify_http_result(url, &fetched.final_url, fetched.status, &body)
+}
+
+/// Classify a fetched listing page. Separated from network I/O so HTTP status
+/// quirks (Jobindex 404 for removed ads) are unit-testable.
+fn classify_http_result(
+    original_url: &str,
+    final_url: &str,
+    status: u16,
+    body_head: &str,
+) -> ListingStatus {
+    let domain = extract_domain(original_url).unwrap_or_default();
+
+    // Success and redirects that landed on a document.
+    if (200..400).contains(&status) {
+        return classify_by_domain(original_url, final_url, body_head);
+    }
+
+    // Job boards often return 404 HTML for removed listings — that is Closed,
+    // not Unreachable (which means "we couldn't tell").
+    if status == 404 {
+        if domain.contains("jobindex.dk") {
+            return classify_jobindex(final_url, status, body_head);
+        }
+        if domain.contains("linkedin.com") {
+            return classify_linkedin(final_url, body_head);
+        }
+        let generic = classify_generic(final_url, body_head);
+        if generic == ListingStatus::Closed {
+            return ListingStatus::Closed;
+        }
+        // Bare 404 with no phrase still means the listing is gone.
+        return ListingStatus::Closed;
+    }
+
+    ListingStatus::Unreachable
 }
 
 fn classify_by_domain(original_url: &str, final_url: &str, body_head: &str) -> ListingStatus {
@@ -61,14 +92,16 @@ fn classify_by_domain(original_url: &str, final_url: &str, body_head: &str) -> L
     if domain.contains("linkedin.com") {
         classify_linkedin(final_url, body_head)
     } else if domain.contains("jobindex.dk") {
-        classify_jobindex(final_url)
+        classify_jobindex(final_url, 200, body_head)
     } else {
         classify_generic(final_url, body_head)
     }
 }
 
 fn extract_domain(url: &str) -> Option<String> {
-    url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_lowercase))
+    url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_lowercase))
 }
 
 fn classify_linkedin(final_url: &str, body_head: &str) -> ListingStatus {
@@ -147,15 +180,24 @@ fn classify_indeed(original_url: &str, final_url: &str, body_head: &str) -> List
     ListingStatus::Active
 }
 
-fn classify_jobindex(final_url: &str) -> ListingStatus {
-    // Jobindex redirects closed jobs to their archive at /job/arkiv/...
+fn classify_jobindex(final_url: &str, status: u16, body_head: &str) -> ListingStatus {
+    // Legacy archive redirect (still honour if Jobindex serves it).
     if final_url.contains("/arkiv") || final_url.contains("jobindex.dk/arkiv") {
         return ListingStatus::Archived;
+    }
+    // Current behaviour: removed ads return HTTP 404 with "Siden kan ikke findes".
+    if status == 404
+        || body_head.contains("siden kan ikke findes")
+        || body_head.contains("page not found")
+        || body_head.contains("jobbet er ikke længere aktivt")
+    {
+        return ListingStatus::Closed;
     }
     ListingStatus::Active
 }
 
 fn classify_generic(final_url: &str, body_head: &str) -> ListingStatus {
+    let _ = final_url;
     // For unknown domains: look for common "closed" phrases in page title area
     let closed_signals = [
         "job no longer available",
@@ -166,17 +208,10 @@ fn classify_generic(final_url: &str, body_head: &str) -> ListingStatus {
         "404",
         "ikke tilgængelig", // Danish "not available"
         "stillingen er besat", // Danish "position is filled"
+        "siden kan ikke findes",
     ];
     if closed_signals.iter().any(|s| body_head.contains(s)) {
         return ListingStatus::Closed;
-    }
-    // Check if we were redirected to a completely different domain (likely a generic error page)
-    if let (Some(orig), Some(fin)) = (
-        extract_domain(final_url),
-        // We don't have original here, but a redirect to root "/" with short body suggests removal
-        None::<String>,
-    ) {
-        let _ = (orig, fin); // suppress unused warning
     }
     ListingStatus::Active
 }
@@ -218,6 +253,60 @@ mod tests {
     use super::*;
 
     #[test]
+    fn jobindex_http_404_is_closed_not_unreachable() {
+        // Live Jobindex removed ads return 404 HTML titled "Siden kan ikke findes".
+        // Treating that as Unreachable was the user-visible bug.
+        assert_eq!(
+            classify_http_result(
+                "https://www.jobindex.dk/jobannonce/1323456",
+                "https://www.jobindex.dk/jobannonce/1323456",
+                404,
+                "<title>Siden kan ikke findes | Jobindex</title>"
+            ),
+            ListingStatus::Closed
+        );
+    }
+
+    #[test]
+    fn jobindex_annonce_path_active_on_200() {
+        assert_eq!(
+            classify_http_result(
+                "https://www.jobindex.dk/jobannonce/999001",
+                "https://www.jobindex.dk/jobannonce/999001",
+                200,
+                "<title>Software Engineer - Acme | Jobindex</title>"
+            ),
+            ListingStatus::Active
+        );
+    }
+
+    #[test]
+    fn generic_http_404_is_closed() {
+        assert_eq!(
+            classify_http_result(
+                "https://careers.example.com/jobs/42",
+                "https://careers.example.com/jobs/42",
+                404,
+                "<title>Not Found</title>"
+            ),
+            ListingStatus::Closed
+        );
+    }
+
+    #[test]
+    fn http_500_is_unreachable() {
+        assert_eq!(
+            classify_http_result(
+                "https://example.com/jobs/42",
+                "https://example.com/jobs/42",
+                500,
+                "internal error"
+            ),
+            ListingStatus::Unreachable
+        );
+    }
+
+    #[test]
     fn linkedin_closed_on_expired_url() {
         assert_eq!(
             classify_linkedin("https://linkedin.com/jobs/view/123/expired", ""),
@@ -239,7 +328,10 @@ mod tests {
     #[test]
     fn linkedin_active_when_no_signals() {
         assert_eq!(
-            classify_linkedin("https://linkedin.com/jobs/view/123", "<title>Software Engineer at Acme</title>"),
+            classify_linkedin(
+                "https://linkedin.com/jobs/view/123",
+                "<title>Software Engineer at Acme</title>"
+            ),
             ListingStatus::Active
         );
     }
@@ -271,7 +363,7 @@ mod tests {
     #[test]
     fn jobindex_archived_on_arkiv_redirect() {
         assert_eq!(
-            classify_jobindex("https://www.jobindex.dk/job/arkiv/123456"),
+            classify_jobindex("https://www.jobindex.dk/job/arkiv/123456", 200, ""),
             ListingStatus::Archived
         );
     }
@@ -279,7 +371,7 @@ mod tests {
     #[test]
     fn jobindex_active_on_normal_url() {
         assert_eq!(
-            classify_jobindex("https://www.jobindex.dk/job/123456"),
+            classify_jobindex("https://www.jobindex.dk/job/123456", 200, ""),
             ListingStatus::Active
         );
     }
@@ -295,8 +387,22 @@ mod tests {
     #[test]
     fn generic_active_on_clean_page() {
         assert_eq!(
-            classify_generic("https://example.com/jobs/42", "<title>Software Engineer - Acme</title>"),
+            classify_generic(
+                "https://example.com/jobs/42",
+                "<title>Software Engineer - Acme</title>"
+            ),
             ListingStatus::Active
+        );
+    }
+
+    #[test]
+    #[ignore = "hits the live Jobindex network; run with --ignored"]
+    fn live_jobindex_removed_ad_is_closed() {
+        let status = detect_status("https://www.jobindex.dk/jobannonce/1323456", "");
+        assert_eq!(
+            status,
+            ListingStatus::Closed,
+            "removed Jobindex ads currently 404; must not report unreachable"
         );
     }
 
@@ -309,19 +415,24 @@ mod tests {
             final_url: String,
             body_head: String,
             expected: String,
+            #[serde(default)]
+            http_status: Option<u16>,
         }
         let raw = include_str!("../fixtures/listing_status_baseline.json");
         let cases: Vec<Case> = serde_json::from_str(raw).expect("baseline fixture");
         assert!(cases.len() >= 7, "baseline should cover several boards");
 
         for case in cases {
+            let status = case
+                .http_status
+                .unwrap_or(200);
             let got = if extract_domain(&case.original_url)
                 .unwrap_or_default()
                 .contains("indeed.com")
             {
                 classify_indeed(&case.original_url, &case.final_url, &case.body_head)
             } else {
-                classify_by_domain(&case.original_url, &case.final_url, &case.body_head)
+                classify_http_result(&case.original_url, &case.final_url, status, &case.body_head)
             };
             assert_eq!(
                 got.as_str(),

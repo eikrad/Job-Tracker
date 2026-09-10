@@ -1,6 +1,7 @@
 use chrono::{Duration, NaiveDate};
 use rusqlite::params;
 use serde::Deserialize;
+use std::time::Duration as StdDuration;
 use tauri::AppHandle;
 
 use crate::db::connection;
@@ -50,8 +51,15 @@ fn pick_date_and_summary(
     Ok((date, summary, description))
 }
 
-#[tauri::command]
-pub fn google_calendar_create_event(
+fn google_api_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .timeout(StdDuration::from_secs(30))
+        .connect_timeout(StdDuration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+fn google_calendar_create_event_inner(
     app: AppHandle,
     args: GoogleCalendarCreateEventArgs,
 ) -> Result<String, String> {
@@ -94,7 +102,7 @@ pub fn google_calendar_create_event(
       "start": { "date": start_d },
       "end": { "date": end_date },
     });
-    let client = reqwest::blocking::Client::new();
+    let client = google_api_client()?;
     let res = client
         .post("https://www.googleapis.com/calendar/v3/calendars/primary/events")
         .header("Authorization", format!("Bearer {}", access_token.trim()))
@@ -113,6 +121,16 @@ pub fn google_calendar_create_event(
         .unwrap_or("Event created")
         .to_string();
     Ok(link)
+}
+
+#[tauri::command]
+pub async fn google_calendar_create_event(
+    app: AppHandle,
+    args: GoogleCalendarCreateEventArgs,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || google_calendar_create_event_inner(app, args))
+        .await
+        .map_err(|e| format!("Thread error: {e}"))?
 }
 
 #[cfg(test)]

@@ -110,8 +110,19 @@ fn detect_kind(resolved: &Path) -> &'static str {
     }
 }
 
+/// Thunderbird shows `.msf` next to every folder — that file is only the search
+/// index (design §5.5). The mail payload is the sibling with the same name and
+/// no extension. If the user (or Dolphin) picked `Indeed.msf`, use `Indeed`.
+pub fn normalize_mail_path(path: &Path) -> PathBuf {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(ext) if ext.eq_ignore_ascii_case("msf") => path.with_extension(""),
+        _ => path.to_path_buf(),
+    }
+}
+
 pub fn resolve_source(source: &MailSource) -> ResolvedSource {
     let expanded = PathBuf::from(shellexpand::tilde(&source.path).as_ref());
+    let target = normalize_mail_path(&expanded);
     let mut out = ResolvedSource {
         id: source.id.clone(),
         label: source.label.clone(),
@@ -123,14 +134,14 @@ pub fn resolve_source(source: &MailSource) -> ResolvedSource {
         error: None,
     };
 
-    match expanded.canonicalize() {
+    match target.canonicalize() {
         Ok(resolved) => {
             if !resolved.is_file() && !resolved.is_dir() {
                 out.error = Some("E_SOURCE_UNREADABLE: not a file or a folder.".into());
                 return out;
             }
             out.exists = true;
-            out.redirected = resolved != expanded;
+            out.redirected = resolved != expanded || target != expanded;
             out.kind = detect_kind(&resolved).to_string();
             out.resolved_path = Some(resolved.to_string_lossy().into_owned());
         }
@@ -232,7 +243,7 @@ fn count_mbox(path: &Path) -> Result<MboxSummary, String> {
     Ok((count, earliest, latest))
 }
 
-/// Best-effort Thunderbird mail directories (spec §13: Linux first, manual always works).
+/// Best-effort Thunderbird profile roots (spec §13: Linux first, manual always works).
 pub fn detect_thunderbird_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     let home = std::env::var_os("HOME").map(PathBuf::from);
@@ -258,6 +269,55 @@ pub fn detect_thunderbird_roots() -> Vec<PathBuf> {
         }
     }
     roots
+}
+
+fn is_thunderbird_junk_name(name: &str) -> bool {
+    name.ends_with(".msf")
+        || name.ends_with(".dat")
+        || name.eq_ignore_ascii_case("msgFilterRules.dat")
+        || name.starts_with('.')
+}
+
+/// Walk `Mail/Local Folders` (and nested `.sbd` trees) for mbox payload files.
+///
+/// Skips `.msf` indexes entirely — those are not mail (design §5.5).
+fn collect_local_folder_mboxes(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if is_thunderbird_junk_name(&name) {
+            continue;
+        }
+        if name.ends_with(".sbd") && path.is_dir() {
+            collect_local_folder_mboxes(&path, out);
+            continue;
+        }
+        if path.is_file() {
+            out.push(path);
+        }
+    }
+}
+
+/// mbox files under each detected profile's Local Folders (not the profile root).
+pub fn discover_thunderbird_mailboxes() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for root in detect_thunderbird_roots() {
+        let Ok(profiles) = std::fs::read_dir(&root) else {
+            continue;
+        };
+        for profile in profiles.flatten() {
+            let local = profile.path().join("Mail").join("Local Folders");
+            if local.is_dir() {
+                collect_local_folder_mboxes(&local, &mut out);
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// Tables `Delete all mail scan data` clears, in FK-safe order.
@@ -323,10 +383,46 @@ pub fn mail_scan_test_source(source: MailSource) -> SourceTestResult {
 
 #[tauri::command]
 pub fn mail_scan_detect_thunderbird() -> Vec<String> {
+    let mailboxes = discover_thunderbird_mailboxes();
+    if !mailboxes.is_empty() {
+        return mailboxes
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+    }
+    // Fall back to profile roots so the UI can still hint where to Browse.
     detect_thunderbird_roots()
         .iter()
         .map(|p| p.to_string_lossy().into_owned())
         .collect()
+}
+
+/// Native OS file/folder dialog (Dolphin/Nautilus/Explorer via the desktop portal).
+///
+/// `kind`: `"mbox"` (file), `"maildir"` (folder), or `"profile"` (CV file).
+/// Picking a `.msf` index normalizes to the sibling mbox payload.
+#[tauri::command]
+pub fn mail_scan_pick_path(kind: String) -> Option<String> {
+    let dialog = rfd::FileDialog::new();
+    let picked = match kind.as_str() {
+        "maildir" => dialog
+            .set_title("Select a maildir folder (contains cur/ and new/)")
+            .pick_folder(),
+        "profile" => dialog
+            .set_title("Select a candidate profile file")
+            .add_filter("Text / Markdown", &["md", "txt", "markdown"])
+            .add_filter("All files", &["*"])
+            .pick_file(),
+        _ => dialog
+            .set_title("Select a Thunderbird mail file (not the .msf index)")
+            .pick_file(),
+    }?;
+    let normalized = if kind == "profile" {
+        picked
+    } else {
+        normalize_mail_path(&picked)
+    };
+    Some(normalized.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -388,6 +484,44 @@ mod tests {
         let resolved = resolve_source(&source("/definitely/not/here.mbox"));
         assert!(!resolved.exists);
         assert!(resolved.error.unwrap().starts_with("E_SOURCE_UNREADABLE"));
+    }
+
+    #[test]
+    fn picking_an_msf_index_resolves_to_the_sibling_mbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let mbox = dir.path().join("Indeed");
+        let msf = dir.path().join("Indeed.msf");
+        fs::write(&mbox, "From a@b Mon Sep 08 2026\nSubject: x\n\nbody\n").unwrap();
+        fs::write(&msf, "fake thunderbird index").unwrap();
+
+        let resolved = resolve_source(&source(msf.to_str().unwrap()));
+        assert!(resolved.exists);
+        assert_eq!(resolved.kind, "mbox");
+        assert_eq!(
+            PathBuf::from(resolved.resolved_path.unwrap()).canonicalize().unwrap(),
+            mbox.canonicalize().unwrap()
+        );
+        assert!(resolved.redirected);
+    }
+
+    #[test]
+    fn collect_local_folders_skips_msf_and_walks_sbd() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("Local Folders");
+        fs::create_dir_all(local.join("Jobs.sbd")).unwrap();
+        fs::write(local.join("Trash"), "From a@b\n").unwrap();
+        fs::write(local.join("Trash.msf"), "index").unwrap();
+        fs::write(local.join("Jobs.sbd").join("Indeed"), "From a@b\n").unwrap();
+        fs::write(local.join("Jobs.sbd").join("Indeed.msf"), "index").unwrap();
+
+        let mut found = Vec::new();
+        collect_local_folder_mboxes(&local, &mut found);
+        found.sort();
+        let names: Vec<_> = found
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["Indeed".to_string(), "Trash".to_string()]);
     }
 
     #[test]

@@ -31,13 +31,22 @@
     "expected": "archived",
     "note": "Archive redirect path."
   },
-  {
+    {
     "id": "jobindex_active",
     "original_url": "https://www.jobindex.dk/job/123456",
     "final_url": "https://www.jobindex.dk/job/123456",
     "body_head": "",
     "expected": "active",
     "note": "Normal Jobindex job URL."
+  },
+  {
+    "id": "jobindex_annonce_404_removed",
+    "original_url": "https://www.jobindex.dk/jobannonce/1323456",
+    "final_url": "https://www.jobindex.dk/jobannonce/1323456",
+    "body_head": "<title>Siden kan ikke findes | Jobindex</title>",
+    "expected": "closed",
+    "http_status": 404,
+    "note": "Removed Jobindex ads currently 404 instead of redirecting to /arkiv."
   },
   {
     "id": "generic_danish_filled",

@@ -220,6 +220,13 @@ export async function mailScanDetectThunderbird(): Promise<string[]> {
   return invoke("mail_scan_detect_thunderbird");
 }
 
+/** Native OS picker. `kind`: `mbox` | `maildir` | `profile`. */
+export async function mailScanPickPath(
+  kind: "mbox" | "maildir" | "profile",
+): Promise<string | null> {
+  return invoke("mail_scan_pick_path", { kind });
+}
+
 export async function mailScanSidecarProbe(): Promise<SidecarProbe> {
   return invoke("mail_scan_sidecar_probe");
 }

@@ -48,6 +48,10 @@ type Tab = "pending" | "dismissed" | "history";
 export type MailMatchInboxPanelProps = {
   /** Opens the job form prefilled — the only way a match becomes a Job. */
   onAcceptDraft: (inboxId: number, draft: Partial<NewJob>) => void;
+  /** Bump after a scan finishes so pending/history reload. */
+  reloadToken?: number;
+  /** When the page already shows the title (e.g. next to Scan control). */
+  hidePageHeading?: boolean;
   /** Injected in tests; defaults to the real commands. */
   api?: Partial<MailMatchApi>;
 };
@@ -162,7 +166,12 @@ function UpdateDiff({
   );
 }
 
-export function MailMatchInboxPanel({ onAcceptDraft, api }: MailMatchInboxPanelProps) {
+export function MailMatchInboxPanel({
+  onAcceptDraft,
+  reloadToken = 0,
+  hidePageHeading = false,
+  api,
+}: MailMatchInboxPanelProps) {
   const client = useMemo<MailMatchApi>(() => ({ ...realApi, ...api }), [api]);
 
   const [tab, setTab] = useState<Tab>("pending");
@@ -191,7 +200,7 @@ export function MailMatchInboxPanel({ onAcceptDraft, api }: MailMatchInboxPanelP
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, reloadToken]);
 
   const shown = useMemo(() => visibleRows(rows, filters), [rows, filters]);
   const pairs = useMemo(() => pairNearDuplicates(rows), [rows]);
@@ -247,10 +256,12 @@ export function MailMatchInboxPanel({ onAcceptDraft, api }: MailMatchInboxPanelP
 
   return (
     <section className="mail-match" aria-label={t.title}>
-      <header className="mail-match__header">
-        <h2>{t.title}</h2>
-        <p className="mail-match__subtitle">{t.subtitle}</p>
-      </header>
+      {hidePageHeading ? null : (
+        <header className="mail-match__header">
+          <h2>{t.title}</h2>
+          <p className="mail-match__subtitle">{t.subtitle}</p>
+        </header>
+      )}
 
       {error ? (
         <p className="mail-match__error" role="alert">

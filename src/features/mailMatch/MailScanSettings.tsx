@@ -16,6 +16,7 @@ import {
   mailScanDeleteAllData,
   mailScanDetectThunderbird,
   mailScanEstimate,
+  mailScanPickPath,
   mailScanProfileClear,
   mailScanProfileSetFromPath,
   mailScanProfileStatus,
@@ -102,11 +103,8 @@ export function MailScanSettings() {
   }
 
   /**
-   * Point at a profile file by path.
-   *
-   * A native picker would be nicer, but it would mean adding the Tauri dialog plugin;
-   * the security property is the same either way — the webview only ever handles the
-   * *path*, and Rust reads the CV.
+   * Point at a profile file by path (typed or Browse).
+   * The webview only ever holds the path; Rust reads the CV.
    */
   async function replaceProfile(kind: ProfileKind) {
     const path = profilePaths[kind].trim();
@@ -115,6 +113,32 @@ export function MailScanSettings() {
       setProfiles({ ...profiles, [kind]: await mailScanProfileSetFromPath(kind, path) });
       setProfilePaths({ ...profilePaths, [kind]: "" });
       setError(null);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function browseProfile(kind: ProfileKind) {
+    try {
+      const picked = await mailScanPickPath("profile");
+      if (!picked) return;
+      setProfiles({ ...profiles, [kind]: await mailScanProfileSetFromPath(kind, picked) });
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function browseSource(index: number, kind: "mbox" | "maildir") {
+    if (!settings) return;
+    try {
+      const picked = await mailScanPickPath(kind);
+      if (!picked) return;
+      const sources = [...settings.sources];
+      const base = picked.split(/[/\\]/).pop() || "";
+      const label = sources[index].label.trim() || base.replace(/\.msf$/i, "");
+      sources[index] = { ...sources[index], path: picked, kind, label };
+      patch({ sources });
     } catch (e) {
       setError(String(e));
     }
@@ -132,15 +156,23 @@ export function MailScanSettings() {
   }
 
   async function detectThunderbird() {
-    const roots = await mailScanDetectThunderbird();
-    setNotice(roots.length ? t.thunderbirdFound(roots.length) : t.thunderbirdNone);
-    if (!roots.length || !settings) return;
-    patch({
-      sources: [
-        ...settings.sources,
-        { id: newSourceId(), label: "Thunderbird", path: roots[0], kind: "maildir" },
-      ],
-    });
+    const paths = await mailScanDetectThunderbird();
+    setNotice(paths.length ? t.thunderbirdFound(paths.length) : t.thunderbirdNone);
+    if (!paths.length || !settings) return;
+    const existing = new Set(settings.sources.map((s) => s.path));
+    const added = paths
+      .filter((path) => !existing.has(path))
+      .map((path, i) => {
+        const name = path.split(/[/\\]/).pop() || "Thunderbird";
+        return {
+          id: `src_${Date.now().toString(36)}_${i}`,
+          label: name,
+          path,
+          kind: "mbox" as const,
+        };
+      });
+    if (!added.length) return;
+    patch({ sources: [...settings.sources, ...added] });
   }
 
   async function rescoreBacklog() {
@@ -220,6 +252,14 @@ export function MailScanSettings() {
                   }}
                 />
               </label>
+              <div className="mail-scan-settings__source-actions">
+                <button type="button" onClick={() => void browseSource(index, "mbox")}>
+                  {t.sourceBrowseMbox}
+                </button>
+                <button type="button" onClick={() => void browseSource(index, "maildir")}>
+                  {t.sourceBrowseMaildir}
+                </button>
+              </div>
 
               {info?.resolvedPath ? (
                 <p className="muted settingsHint">{t.sourceResolved(info.resolvedPath)}</p>
@@ -293,6 +333,9 @@ export function MailScanSettings() {
               aria-label={t.profilePathLabel(kind === "short" ? t.profileShort : t.profileFull)}
               onChange={(e) => setProfilePaths({ ...profilePaths, [kind]: e.target.value })}
             />
+            <button type="button" onClick={() => void browseProfile(kind)}>
+              {t.profileBrowse}
+            </button>
             <button
               type="button"
               disabled={!profilePaths[kind].trim()}

@@ -187,7 +187,23 @@ pub struct LlmTestConnectionResponse {
 }
 
 #[tauri::command]
-pub fn llm_test_connection(app: tauri::AppHandle, provider: String) -> LlmTestConnectionResponse {
+pub async fn llm_test_connection(
+    app: tauri::AppHandle,
+    provider: String,
+) -> LlmTestConnectionResponse {
+    match tauri::async_runtime::spawn_blocking(move || llm_test_connection_inner(app, provider)).await
+    {
+        Ok(response) => response,
+        Err(e) => LlmTestConnectionResponse {
+            ok: false,
+            model_id: None,
+            detail: None,
+            error: Some(format!("Thread error: {e}")),
+        },
+    }
+}
+
+fn llm_test_connection_inner(app: tauri::AppHandle, provider: String) -> LlmTestConnectionResponse {
     let provider = match LlmProvider::parse(&provider) {
         Ok(p) => p,
         Err(e) => {
@@ -246,7 +262,24 @@ pub fn llm_test_connection(app: tauri::AppHandle, provider: String) -> LlmTestCo
 }
 
 #[tauri::command]
-pub fn extract_job_info(
+pub async fn extract_job_info(
+    app: tauri::AppHandle,
+    raw_text: String,
+    provider: String,
+) -> ExtractJobInfoResponse {
+    match tauri::async_runtime::spawn_blocking(move || extract_job_info_inner(app, raw_text, provider))
+        .await
+    {
+        Ok(response) => response,
+        Err(e) => ExtractJobInfoResponse {
+            ok: false,
+            partial: None,
+            error: Some(format!("Thread error: {e}")),
+        },
+    }
+}
+
+fn extract_job_info_inner(
     app: tauri::AppHandle,
     raw_text: String,
     provider: String,
