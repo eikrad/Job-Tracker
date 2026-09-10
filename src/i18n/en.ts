@@ -61,13 +61,16 @@ export const en = {
     llmTestConnection: "Test connection",
     llmTestConnectionOk: (model: string, detail: string) => `${model}: ${detail}`,
     llmTestConnectionFail: (err: string) => `Connection failed: ${err}`,
+    llmKeysHeading: "API keys",
+    llmKeysHint:
+      "Paste the key, then click Save key. Mail scan and Extract use these keys. “Save overrides” below does not store a key.",
     llmOverrideHeading: "LLM endpoint overrides (advanced)",
     llmOverrideHint:
-      "Leave blank to use built-in defaults. Overrides apply to Extract and Test connection.",
+      "Optional. Leave blank for built-in defaults. This only changes base URL / model id — it does not save your API key.",
     llmOverrideBaseUrl: "Base URL",
     llmOverrideModelId: "Model id",
     llmOverrideSave: "Save overrides",
-    llmOverrideSaved: "Overrides saved.",
+    llmOverrideSaved: "Overrides saved (API key unchanged).",
     llmOverrideReset: "Reset to defaults",
     secretMigrationWarning: (details: string) =>
       `Some API keys could not be moved into the keyring and remain in browser storage for now:\n\n${details}`,
@@ -596,6 +599,10 @@ export const en = {
     budgetLabel: "Model calls per scan",
     budgetHint: "A scan stops cleanly at this cap and can be continued afterwards.",
     providerLabel: "Scoring provider",
+    scoringKeyHint:
+      "Mail scan uses the Scaleway API key from Settings → Integrations (Save key — not Save overrides).",
+    scoringKeyConfigured: "Scaleway API key: configured",
+    scoringKeyMissing: "Scaleway API key: not configured — add it under Integrations first",
 
     dataHeading: "Data",
     rescoreBacklog: "Re-score backlog",

@@ -278,46 +278,9 @@ export function SettingsModal({ open, onClose }: Props) {
               </button>
             </div>
             {testMessage ? <p className="muted settingsHint">{testMessage}</p> : null}
-            <h4 className="settingsSubTitle">{en.app.llmOverrideHeading}</h4>
-            <p className="muted settingsHint">{en.app.llmOverrideHint}</p>
-            <label>
-              {en.app.llmOverrideBaseUrl}
-              <input
-                value={overrideBaseUrl}
-                onChange={(e) => setOverrideBaseUrl(e.target.value)}
-                placeholder="https://api.scaleway.ai/v1"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </label>
-            <label>
-              {en.app.llmOverrideModelId}
-              <input
-                value={overrideModelId}
-                onChange={(e) => setOverrideModelId(e.target.value)}
-                placeholder="deepseek-v4-flash-0731"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </label>
-            <div className="row settingsGoogleActions">
-              <button
-                type="button"
-                className="btn btnSm btnPrimary"
-                disabled={overrideBusy}
-                onClick={() => void onSaveOverrides()}
-              >
-                {en.app.llmOverrideSave}
-              </button>
-              <button
-                type="button"
-                className="btn btnSm btnGhost"
-                disabled={overrideBusy}
-                onClick={() => void onResetOverrides()}
-              >
-                {en.app.llmOverrideReset}
-              </button>
-            </div>
+
+            <h4 className="settingsSubTitle">{en.app.llmKeysHeading}</h4>
+            <p className="muted settingsHint">{en.app.llmKeysHint}</p>
             <SecretKeyField
               provider="scaleway"
               label={en.app.scalewayKey}
@@ -344,6 +307,47 @@ export function SettingsModal({ open, onClose }: Props) {
               placeholder={en.app.braveSearchApiPlaceholder}
             />
             <p className="muted settingsHint">{en.app.jobSearchProviderHint}</p>
+
+            <h4 className="settingsSubTitle">{en.app.llmOverrideHeading}</h4>
+            <p className="muted settingsHint">{en.app.llmOverrideHint}</p>
+            <label>
+              {en.app.llmOverrideBaseUrl}
+              <input
+                value={overrideBaseUrl}
+                onChange={(e) => setOverrideBaseUrl(e.target.value)}
+                placeholder="https://api.scaleway.ai/v1"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            <label>
+              {en.app.llmOverrideModelId}
+              <input
+                value={overrideModelId}
+                onChange={(e) => setOverrideModelId(e.target.value)}
+                placeholder="deepseek-v4-flash-0731"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            <div className="row settingsGoogleActions">
+              <button
+                type="button"
+                className="btn btnSm btnGhost"
+                disabled={overrideBusy}
+                onClick={() => void onSaveOverrides()}
+              >
+                {en.app.llmOverrideSave}
+              </button>
+              <button
+                type="button"
+                className="btn btnSm btnGhost"
+                disabled={overrideBusy}
+                onClick={() => void onResetOverrides()}
+              >
+                {en.app.llmOverrideReset}
+              </button>
+            </div>
 
             <div className="settingsGoogleBlock">
               <h4 className="settingsSubTitle">{en.app.googleCalendarHeading}</h4>
