@@ -67,8 +67,11 @@ The outbox **must** be a separate database. A table inside the synced file, writ
 2. Convert `db.rs` from `rusqlite` to `libsql`, embedded replica with offline writes. Migrations port unchanged.
 3. Propagate `async` through the remaining SQL call sites. `mail_scan/scoring.rs`, `accept.rs`, and `persist.rs` are the bulk of the diff and the riskiest part — that module also orchestrates a threaded sidecar.
 4. Define the outbox schema (intent kind, target id or client UUID, payload, timestamp) and build the drain loop that applies intents via the existing `db.rs` functions.
-5. Encryption at rest with a user-held key; credential and token handling via the existing keyring path (ADR 0005).
-6. Decide attachment strategy. `job_documents` stores filesystem paths, so PDFs do not sync; either object storage or desktop-only in every client.
+5. Migrate existing installs. Embedded replicas refuse to open a populated database that has never synced ("require a clean database or a previously synced database"), so an existing `app.db` cannot simply be pointed at a replica. Sequence: create the remote, push current contents up, then let the local replica rebuild clean from sync. Needs a rollback path and a pre-migration backup — `backup_to_folder` already exists.
+6. Encryption at rest with a user-held key. `EncryptionConfig` takes a caller-supplied key, `libsql_generate_aes256_key` derives one from a password, and `sqlite3_rekey` can encrypt an existing plaintext file in place — fold this into milestone 5 rather than running a second migration. Requires the crate's `encryption` feature. Note the only cipher is AES-256-CBC without HMAC: confidential, but tampering is undetectable.
+7. Verify what `remote_encryption` / `EncryptionContext` guarantees on the server side before relying on it (see ADR 0008) — if the provider can read synced contents, encrypt the contact columns at the application layer instead.
+8. Credential and token handling via the existing keyring path (ADR 0005).
+9. Decide attachment strategy. `job_documents` stores filesystem paths, so PDFs do not sync; either object storage or desktop-only in every client.
 
 ### Conflict strategy
 Last-write-wins by timestamp, with the desktop as the single serialization point. No tombstones or merge rules are needed. Any future move to concurrent writers reopens both the id migration and the frame-divergence problem — see ADR 0006 before considering it.
@@ -76,6 +79,7 @@ Last-write-wins by timestamp, with the desktop as the single serialization point
 ### Known constraints
 - One desktop only. Two desktops against one synced database break the single-writer rule.
 - Phone edits converge only while the desktop is running.
+- An embedded replica cannot adopt an existing populated database file; first sync has to rebuild it (milestone 5).
 
 ## Android App Roadmap
 Status: planned — approach decided (ADR 0007)
@@ -97,7 +101,7 @@ Because the desktop applies intents through its own `create_job` / `update_job` 
 | Capture, mail scan, LLM extraction, calendar | No — desktop-only by design (ADRs 0001, 0002, 0004) |
 
 ### Milestones
-1. Land sync milestones 1–4 — the desktop must be on libSQL with a working drain loop before the phone has anything to talk to.
+1. Land sync milestones 1–5 — the desktop must be on libSQL with a working drain loop, and existing installs migrated, before the phone has anything to talk to.
 2. Read-only MVP: job list, detail, deadline view.
 3. Intent writes for status change and field edits, with optimistic display of unapplied intents.
 4. Manual job creation and delete.
