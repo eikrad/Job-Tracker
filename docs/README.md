@@ -24,7 +24,7 @@ Forward-looking design documents — not descriptions of the current codebase.
 
 | File | What it covers |
 |------|----------------|
-| [refactor-sync-roadmap.md](refactor-sync-roadmap.md) | Planned performance refactors (phases A / B / C), plus cross-device sync and Android sequencing (decisions in ADRs 0006–0007) |
+| [refactor-sync-roadmap.md](refactor-sync-roadmap.md) | Planned performance refactors (phases A / B / C), plus cross-device sync and Android sequencing (decisions in ADRs 0006–0008) |
 | [superpowers/specs/2026-09-09-mail-scan-integration-design.md](superpowers/specs/2026-09-09-mail-scan-integration-design.md) | **Active design.** In-app Mail Scan (rev. 2). See ADRs 0001–0005 and [CONTEXT.md](../CONTEXT.md) |
 | [superpowers/plans/2026-09-09-mail-scan-integration.md](superpowers/plans/2026-09-09-mail-scan-integration.md) | Plan index — PRs A (foundation), B (skeleton), C (scoring & inbox) |
 

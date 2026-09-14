@@ -1,7 +1,7 @@
 # Refactor and Sync Roadmap
 
 ## Scope
-This roadmap tracks performance and maintainability work in three refactor phases, plus cross-device sync and Android support. The sync and Android architecture decisions are recorded in ADRs 0006 and 0007; this file tracks the sequencing.
+This roadmap tracks performance and maintainability work in three refactor phases, plus cross-device sync and Android support. The sync, Android, and data-residency decisions are recorded in ADRs 0006–0008; this file tracks the sequencing.
 
 ## Phase A: Quick Safe Pass
 Status: in progress
@@ -50,62 +50,62 @@ Status: planned
 - Medium-high: broad architectural change surface.
 
 ## Cross-Device Sync Roadmap
-Status: planned — architecture decided (ADR 0006)
+Status: planned — architecture decided (ADRs 0006, 0008)
 
 ### Decision
-Turso (libSQL) with the desktop as an embedded replica in `remote_writes` mode. Turso is the source of truth; reads are served from the local file; a background interval pulls frames down. See [ADR 0006](adr/0006-turso-libsql-embedded-replica-for-sync.md) for the rejected alternatives (Supabase, self-hosted API, libSQL offline writes, one-way mirror).
+libSQL embedded replica with **offline writes and a single writer**. The desktop is the only writer to the synced database and stays fully functional offline; Android reads it and writes intents to a separate outbox database that the desktop drains. Provider is Turso Cloud, with each user supplying their own credentials. See [ADR 0006](adr/0006-turso-libsql-embedded-replica-for-sync.md) and [ADR 0008](adr/0008-sync-provider-and-data-residency.md).
 
 This supersedes the earlier "Option A: Supabase / Option B: self-hosted API" track. Neither was chosen: both require rewriting every query away from SQLite and hand-building a sync protocol, where the embedded replica keeps the existing SQL, schema, and id scheme intact.
 
-### Why the id scheme drove the decision
-The schema uses `INTEGER PRIMARY KEY AUTOINCREMENT` across all 11 tables, with 7 `last_insert_rowid()` call sites and `id: number` typing through the frontend. Any topology with more than one writer allocating ids forces a migration to distributed ids before a single row can sync. Remote writes let the server allocate ids, which removes that migration entirely.
+### Why a single writer
+Two constraints, one answer. The schema uses `INTEGER PRIMARY KEY AUTOINCREMENT` across all 11 tables with 7 `last_insert_rowid()` call sites — two id-allocating writers would force a distributed-id migration before anything could sync. And libSQL replicas sync WAL frames rather than rows, so two replicas writing offline diverge unmergeably. One writer dissolves both problems and keeps the desktop writable offline.
 
-The cost of that choice: **the desktop is read-only when offline.** This is the main assumption to revisit if it proves painful in practice.
+The outbox **must** be a separate database. A table inside the synced file, written by the phone over HTTP, is a second writer and reintroduces the divergence.
 
 ### Milestones
-1. Split mail-scan tables (`mail_scan_runs`, `mail_fingerprints`, `mail_fingerprint_aliases`, `mail_match_inbox`, `mail_match_dismissals`, `mail_scored_sightings`, `mail_source_cursors`) into a local-only database file. Worth doing on its own merits — libSQL syncs whole files, so scoring caches would otherwise push thousands of rows per scan run to the cloud.
-2. Convert `db.rs` from `rusqlite` to `libsql`, embedded replica with remote writes. Migrations port unchanged (`PRAGMA user_version` and `AUTOINCREMENT` both work on libSQL).
+1. Split mail-scan tables (`mail_scan_runs`, `mail_fingerprints`, `mail_fingerprint_aliases`, `mail_match_inbox`, `mail_match_dismissals`, `mail_scored_sightings`, `mail_source_cursors`) into a local-only database file. Worth doing on its own merits — libSQL syncs whole files, so scoring caches would otherwise push thousands of rows per scan run.
+2. Convert `db.rs` from `rusqlite` to `libsql`, embedded replica with offline writes. Migrations port unchanged.
 3. Propagate `async` through the remaining SQL call sites. `mail_scan/scoring.rs`, `accept.rs`, and `persist.rs` are the bulk of the diff and the riskiest part — that module also orchestrates a threaded sidecar.
-4. Handle the offline-desktop path explicitly in the UI rather than failing writes silently.
-5. Decide attachment strategy. `job_documents` stores filesystem paths, so PDFs do not sync; either move them to object storage or mark them desktop-only in every client.
-6. Watch Turso row-read/write limits after the first sync-enabled release.
+4. Define the outbox schema (intent kind, target id or client UUID, payload, timestamp) and build the drain loop that applies intents via the existing `db.rs` functions.
+5. Encryption at rest with a user-held key; credential and token handling via the existing keyring path (ADR 0005).
+6. Decide attachment strategy. `job_documents` stores filesystem paths, so PDFs do not sync; either object storage or desktop-only in every client.
 
 ### Conflict strategy
-Row-level last-write-wins by `updated_at`, which is what a single remote writer gives for free. No tombstones or merge rules are needed: both devices write to the same remote database, so there is nothing to reconcile. Note that libSQL replicas sync WAL frames, not rows — any future move to concurrent offline writes diverges at the frame level and cannot merge, which is why that mode was rejected.
+Last-write-wins by timestamp, with the desktop as the single serialization point. No tombstones or merge rules are needed. Any future move to concurrent writers reopens both the id migration and the frame-divergence problem — see ADR 0006 before considering it.
+
+### Known constraints
+- One desktop only. Two desktops against one synced database break the single-writer rule.
+- Phone edits converge only while the desktop is running.
 
 ## Android App Roadmap
 Status: planned — approach decided (ADR 0007)
 
 ### Decision
-A standalone Kotlin + Compose client talking to Turso over HTTP (Ktor), not a Tauri mobile target and not React Native. See [ADR 0007](adr/0007-android-as-thin-remote-client.md). This supersedes the earlier React Native + Expo recommendation.
+A standalone Kotlin + Compose client over Turso's HTTP API (Ktor), reading the synced database and writing intents to the outbox. See [ADR 0007](adr/0007-android-as-thin-remote-client.md). This supersedes the earlier React Native + Expo recommendation.
+
+Because the desktop applies intents through its own `create_job` / `update_job` / `update_job_status` functions, no write invariant is reimplemented on the phone — `status_history`, validation, and the `job_documents` cascade all happen on the desktop side as they do today.
 
 ### Scope
 | Capability | On Android |
 |---|---|
 | View jobs, detail, deadlines | Yes |
-| Status change (with history) | Yes — highest value, straightforward |
+| Status change (with history) | Yes — highest value |
 | Notes, priority, tags, contact fields, dates | Yes |
-| Create a job by hand | Yes |
-| Delete a job | No — cascade and file cleanup stay desktop-owned |
+| Create a job by hand | Yes — real id assigned when the desktop applies it |
+| Delete a job | Yes — desktop performs the cascade |
 | Attachments / PDFs | No — files on disk, not in the DB |
 | Capture, mail scan, LLM extraction, calendar | No — desktop-only by design (ADRs 0001, 0002, 0004) |
 
-### Write invariants to reimplement
-The phone bypasses the Tauri commands, and those commands are not thin SQL wrappers. Each of these is enforced in Rust today and must be reproduced as a batched transaction client-side, or the data drifts silently:
-
-- `update_job_status` — `UPDATE jobs` plus a `status_history` INSERT in one transaction.
-- `update_job` — validates non-empty company, bumps `updated_at`, and appends `status_history` when the status changed as a side effect of the edit.
-- `delete_job` — hand-cascades to `job_documents` and `status_history`, then removes files from disk. The schema declares no foreign-key cascades. This is why delete is not shipped on Android.
-
 ### Milestones
-1. Land the sync roadmap through milestone 3 — the desktop must be on Turso before a phone client has anything to talk to.
+1. Land sync milestones 1–4 — the desktop must be on libSQL with a working drain loop before the phone has anything to talk to.
 2. Read-only MVP: job list, detail, deadline view.
-3. Add status change and field edits with the invariants above.
-4. Add manual job creation.
-5. Offline outbox — queue pending mutations, replay on reconnect. Deferred to v2; explicitly not solved by switching libSQL to offline writes (ADR 0006).
+3. Intent writes for status change and field edits, with optimistic display of unapplied intents.
+4. Manual job creation and delete.
+5. Local queue so intents can be recorded offline and replayed on reconnect. Deferred; explicitly not solved by making the phone a second replica writer (ADR 0006).
 
 ## Priority Queue
 1. Phase B context slicing and card decoupling.
 2. Mail-scan database split (sync milestone 1) — independently useful, unblocks the rest.
 3. `rusqlite` → `libsql` conversion and the `async` propagation (sync milestones 2–3).
-4. Android read-only MVP, then writes.
+4. Outbox schema and drain loop (sync milestone 4).
+5. Android read-only MVP, then intent writes.
