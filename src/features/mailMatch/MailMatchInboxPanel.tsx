@@ -10,7 +10,7 @@
  *   file uses `dangerouslySetInnerHTML`, and `MailMatchInboxPanel.test.tsx` asserts it.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { en } from "../../i18n/en";
 import { boardName } from "../../lib/jobs/boardName";
 import { openUrlInBrowser } from "../../lib/tauriApi";
@@ -39,6 +39,7 @@ import {
   type MailMatchRow,
 } from "./mailMatchInbox";
 import { runViewFromRow, type RunView } from "./runSummary";
+import { TRIAGE_ROW_ATTR, triageCommand } from "./triageKeys";
 import { RunSummaryCard } from "./RunSummaryCard";
 
 const t = en.mailMatch;
@@ -74,6 +75,11 @@ type MailMatchApi = {
 type AcceptNotice =
   | { kind: "accepted"; inboxId: number; jobId: number; title: string }
   | { kind: "undone" };
+
+/** The last accept or dismiss, which `u` reverses. */
+type Undoable =
+  | { kind: "accept"; inboxId: number }
+  | { kind: "dismiss"; fingerprintId: string };
 
 const realApi: MailMatchApi = {
   list: mailMatchList,
@@ -239,7 +245,11 @@ export function MailMatchInboxPanel({
   const [filters, setFilters] = useState<MailMatchFilters>(defaultFilters);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [notice, setNotice] = useState<AcceptNotice | null>(null);
+  const [lastAction, setLastAction] = useState<Undoable | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The row keyboard triage is on. Real DOM focus follows it (see the effect below). */
+  const [focusedId, setFocusedId] = useState<number | null>(null);
+  const titleButtons = useRef(new Map<number, HTMLButtonElement>());
 
   const refresh = useCallback(
     () =>
@@ -266,6 +276,13 @@ export function MailMatchInboxPanel({
     [filters],
   );
 
+  /** Where focus goes once `row` leaves the list: the next row, else the previous. */
+  function moveFocusPast(row: MailMatchRow) {
+    if (focusedId !== row.id) return;
+    const i = shown.findIndex((r) => r.id === row.id);
+    setFocusedId(shown[i + 1]?.id ?? shown[i - 1]?.id ?? null);
+  }
+
   async function acceptRow(row: MailMatchRow) {
     try {
       const outcome = await client.acceptNew(row.id);
@@ -278,7 +295,9 @@ export function MailMatchInboxPanel({
           jobId: outcome.jobId,
           title: row.title ?? en.common.untitled,
         });
+        setLastAction({ kind: "accept", inboxId: row.id });
       }
+      moveFocusPast(row);
       onJobsChanged?.();
       await refresh();
     } catch (e) {
@@ -290,6 +309,7 @@ export function MailMatchInboxPanel({
     try {
       await client.undoAccept(inboxId);
       setNotice({ kind: "undone" });
+      setLastAction(null);
       onJobsChanged?.();
       await refresh();
     } catch (e) {
@@ -301,11 +321,53 @@ export function MailMatchInboxPanel({
     // One click: the Dismissed tab is the undo, so there is nothing to confirm.
     try {
       await client.dismiss(row.id);
+      setLastAction({ kind: "dismiss", fingerprintId: row.fingerprintId });
+      moveFocusPast(row);
       await refresh();
     } catch (e) {
       setError(String(e));
     }
   }
+
+  function undoLast() {
+    if (!lastAction) return;
+    if (lastAction.kind === "accept") void undoAccept(lastAction.inboxId);
+    else {
+      setLastAction(null);
+      void restoreOne(lastAction.fingerprintId);
+    }
+  }
+
+  function moveFocus(step: 1 | -1) {
+    if (shown.length === 0) return;
+    const i = shown.findIndex((r) => r.id === focusedId);
+    const next = i < 0 ? (step === 1 ? 0 : shown.length - 1) : i + step;
+    setFocusedId(shown[Math.min(Math.max(next, 0), shown.length - 1)].id);
+  }
+
+  // Keyboard triage (Pending tab only). Re-registered every render so the handler
+  // always sees current rows and focus; it is a single cheap listener.
+  useEffect(() => {
+    if (tab !== "pending") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const command = triageCommand(e);
+      if (!command) return;
+      const focused = shown.find((r) => r.id === focusedId) ?? null;
+      if (command === "next" || command === "prev") moveFocus(command === "next" ? 1 : -1);
+      else if (command === "undo") undoLast();
+      else if (!focused) return;
+      else if (command === "toggle") setExpanded(expanded === focused.id ? null : focused.id);
+      else if (command === "accept") void acceptRow(focused);
+      else if (command === "dismiss") void dismissRow(focused);
+      e.preventDefault();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  });
+
+  useEffect(() => {
+    if (focusedId !== null) titleButtons.current.get(focusedId)?.focus();
+  }, [focusedId]);
 
   async function restoreOne(fingerprintId: string) {
     try {
@@ -437,6 +499,8 @@ export function MailMatchInboxPanel({
             ) : null}
           </div>
 
+          {shown.length > 0 ? <p className="mail-match__shortcuts">{t.shortcutsHint}</p> : null}
+
           {shown.length === 0 ? (
             <p className="mail-match__empty">
               {filtersActive || rows.length > 0 ? t.emptyPendingFiltered : t.emptyPending}
@@ -446,14 +510,25 @@ export function MailMatchInboxPanel({
               {shown.map((row) => {
                 const pair = pairs.get(row.id);
                 const isOpen = expanded === row.id;
+                const isFocused = focusedId === row.id;
                 return (
-                  <li key={row.id} className="mail-match__row">
+                  <li
+                    key={row.id}
+                    className={`mail-match__row${isFocused ? " is-focused" : ""}`}
+                    aria-current={isFocused ? "true" : undefined}
+                  >
                     <div className="mail-match__row-main">
                       <ScoreChip row={row} />
                       <button
                         type="button"
                         className="mail-match__row-title"
                         aria-expanded={isOpen}
+                        {...{ [TRIAGE_ROW_ATTR]: "" }}
+                        ref={(el) => {
+                          if (el) titleButtons.current.set(row.id, el);
+                          else titleButtons.current.delete(row.id);
+                        }}
+                        onFocus={() => setFocusedId(row.id)}
                         onClick={() => setExpanded(isOpen ? null : row.id)}
                       >
                         <strong>{row.title ?? en.common.untitled}</strong>

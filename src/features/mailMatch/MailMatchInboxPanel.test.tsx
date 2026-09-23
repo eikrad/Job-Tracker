@@ -216,6 +216,144 @@ describe("reading a match", () => {
   });
 });
 
+describe("keyboard triage", () => {
+  const twoRows = () => [
+    row({ id: 1, fingerprintId: "fp-1", title: "Rust Engineer" }),
+    row({ id: 2, fingerprintId: "fp-2", title: "Platform Engineer" }),
+  ];
+
+  function press(key: string, target: Element = document.activeElement ?? document.body) {
+    fireEvent.keyDown(target, { key });
+  }
+
+  /** Title of the row keyboard focus is on, or null. */
+  function currentTitle(): string | null {
+    const current = screen
+      .queryAllByRole("listitem")
+      .find((li) => li.getAttribute("aria-current") === "true");
+    return current?.querySelector("strong")?.textContent ?? null;
+  }
+
+  it("moves a visible focus through the rows with j/k and the arrow keys", async () => {
+    renderPanel(makeApi({ rows: twoRows() }));
+    await screen.findByText("Platform Engineer");
+
+    press("j");
+    expect(currentTitle()).toBe("Rust Engineer");
+    press("j");
+    expect(currentTitle()).toBe("Platform Engineer");
+    press("k");
+    expect(currentTitle()).toBe("Rust Engineer");
+    press("ArrowDown");
+    expect(currentTitle()).toBe("Platform Engineer");
+    press("ArrowUp");
+    expect(currentTitle()).toBe("Rust Engineer");
+    // The focused row really has keyboard focus, so screen readers follow along.
+    expect(document.activeElement?.textContent).toContain("Rust Engineer");
+  });
+
+  it("opens and closes the focused row's detail with Enter or o", async () => {
+    renderPanel(makeApi({ rows: twoRows() }));
+    await screen.findByText("Platform Engineer");
+
+    press("j");
+    press("Enter");
+    expect(await screen.findByRole("region", { name: t.detailRegion("Rust Engineer") })).toBeTruthy();
+    press("o");
+    expect(screen.queryByRole("region", { name: t.detailRegion("Rust Engineer") })).toBeNull();
+  });
+
+  it("accepts the focused row with a and moves on to the next one", async () => {
+    const api = makeApi({ rows: twoRows() });
+    renderPanel(api);
+    await screen.findByText("Platform Engineer");
+
+    press("j");
+    press("a");
+
+    await waitFor(() => expect(api.acceptNew).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(currentTitle()).toBe("Platform Engineer"));
+  });
+
+  it("dismisses the focused row with d and moves on to the next one", async () => {
+    const api = makeApi({ rows: twoRows() });
+    renderPanel(api);
+    await screen.findByText("Platform Engineer");
+
+    press("j");
+    press("d");
+
+    await waitFor(() => expect(api.dismiss).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(currentTitle()).toBe("Platform Engineer"));
+  });
+
+  it("undoes the last accept with u", async () => {
+    const api = makeApi({ rows: twoRows() });
+    renderPanel(api);
+    await screen.findByText("Platform Engineer");
+
+    press("j");
+    press("a");
+    await screen.findByText(t.acceptedNotice("Rust Engineer"));
+    press("u");
+
+    await waitFor(() => expect(api.undoAccept).toHaveBeenCalledWith(1));
+  });
+
+  it("undoes the last dismiss with u", async () => {
+    const api = makeApi({ rows: twoRows() });
+    renderPanel(api);
+    await screen.findByText("Platform Engineer");
+
+    press("j");
+    press("d");
+    await waitFor(() => expect(currentTitle()).toBe("Platform Engineer"));
+    press("u");
+
+    await waitFor(() => expect(api.restore).toHaveBeenCalledWith("fp-1"));
+  });
+
+  it("ignores shortcuts while typing in the search box", async () => {
+    const api = makeApi({ rows: twoRows() });
+    renderPanel(api);
+    await screen.findByText("Platform Engineer");
+    press("j");
+
+    const search = screen.getByRole("searchbox");
+    search.focus();
+    press("a", search);
+    press("d", search);
+    press("j", search);
+
+    expect(api.acceptNew).not.toHaveBeenCalled();
+    expect(api.dismiss).not.toHaveBeenCalled();
+    expect(currentTitle()).toBe("Rust Engineer");
+  });
+
+  it("leaves keys alone while a dialog is open", async () => {
+    // The scan sheet sits on the same page; its buttons must not accept matches.
+    const api = makeApi({ rows: twoRows() });
+    renderPanel(api);
+    await screen.findByText("Platform Engineer");
+    press("j");
+
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    const button = document.createElement("button");
+    dialog.append(button);
+    document.body.append(dialog);
+    press("a", button);
+    dialog.remove();
+
+    expect(api.acceptNew).not.toHaveBeenCalled();
+  });
+
+  it("shows which keys do what", async () => {
+    renderPanel(makeApi({ rows: twoRows() }));
+    expect(await screen.findByText(t.shortcutsHint)).toBeTruthy();
+  });
+});
+
 describe("accept", () => {
   it("creates the job in one click and offers to open it", async () => {
     const api = makeApi({ rows: [row()] });

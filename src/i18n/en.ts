@@ -485,6 +485,7 @@ export const en = {
     acceptedUndo: "Undo",
     undoneNotice: "Accept undone. The match is back in the inbox.",
     dismiss: "Dismiss",
+    shortcutsHint: "Keys: j/k move · Enter or o opens · a accept · d dismiss · u undo",
     restore: "Restore",
     restoredAt: (when: string) => `Dismissed ${when}`,
     dismissedNoReason: "No reason given",

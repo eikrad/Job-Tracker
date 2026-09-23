@@ -2311,6 +2311,22 @@ pre {
   border-radius: var(--radius-md, 8px);
 }
 
+/* Keyboard triage: the row j/k landed on. */
+.mail-match__row.is-focused {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
+.mail-match__row-title:focus-visible {
+  outline: none;
+}
+
+.mail-match__shortcuts {
+  margin: 0 0 var(--space-sm);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
 /* Expected, not a problem: quieter than the incomplete/failed badges. */
 .mail-match__badge--snippetOnly {
   border-style: dashed;
