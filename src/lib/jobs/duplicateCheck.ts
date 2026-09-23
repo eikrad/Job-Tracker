@@ -3,8 +3,8 @@ import type { Job, NewJob } from "../types";
 /**
  * Returns an existing job if payload likely duplicates URL or company+title.
  *
- * Follow-up (not in mail-scan PRs): align this with `mailFingerprint` /
- * `tests/fixtures/fingerprints.json` normalization. Changing it here would alter
+ * Follow-up (not in mail-scan PRs): align this with the sidecar's fingerprint
+ * normalization (`python/mail_scan/fingerprint.py`). Changing it here would alter
  * existing job dedup for every user.
  */
 export function findDuplicateJob(

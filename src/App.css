@@ -2267,6 +2267,98 @@ pre {
   color: var(--color-text-muted);
 }
 
+.mail-match__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--color-border);
+}
+
+.mail-match__detail h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+}
+
+.mail-match__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.mail-match__pass p {
+  margin: 0.1rem 0 0.4rem;
+}
+
+.mail-match__hint {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+/* The full ad: plain text, its own scroll so a long listing cannot bury the row. */
+.mail-match__listing-text {
+  max-height: 24rem;
+  overflow: auto;
+  margin: 0;
+  padding: var(--space-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+}
+
+/* Keyboard triage: the row j/k landed on. */
+.mail-match__row.is-focused {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
+.mail-match__row-title:focus-visible {
+  outline: none;
+}
+
+.mail-match__bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.mail-match__bulk label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.mail-match__bulk .mail-match__shortcuts {
+  margin: 0 0 0 auto;
+}
+
+.mail-match__failures {
+  flex-basis: 100%;
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--status-danger-fg);
+  font-size: 0.85rem;
+}
+
+.mail-match__shortcuts {
+  margin: 0 0 var(--space-sm);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+/* Expected, not a problem: quieter than the incomplete/failed badges. */
+.mail-match__badge--snippetOnly {
+  border-style: dashed;
+}
+
 .run-summary {
   width: 100%;
   max-width: 28rem;

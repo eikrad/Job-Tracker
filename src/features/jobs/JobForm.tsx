@@ -29,6 +29,7 @@ function jobToNewJob(j: Job): NewJob {
     company: j.company,
     title: j.title ?? undefined,
     url: j.url ?? undefined,
+    board_url: j.board_url ?? undefined,
     raw_text: j.raw_text ?? undefined,
     status: j.status,
     deadline: j.deadline ?? undefined,

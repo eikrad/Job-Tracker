@@ -15,9 +15,9 @@ from mail_scan.exit_codes import (
     EXIT_UNREADABLE,
 )
 from mail_scan.extractors.base import DEFAULT_EXTRACTORS
-from mail_scan.scan import run_scan
+from mail_scan.scan import PROTOCOL, run_scan
 
-SUPPORTED_PROTOCOL = 1
+SUPPORTED_PROTOCOL = PROTOCOL
 
 
 def probe(protocol: int) -> int:

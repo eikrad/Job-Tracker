@@ -814,6 +814,90 @@
       "expected_strong": null,
       "expected_weak": "acme|software engineer|sonderborg",
       "expected_cluster": "weak:acme|software engineer|sonderborg"
+    },
+    {
+      "id": "linkedin-member-tokens",
+      "input": {
+        "company": "Acme",
+        "title": "Engineer",
+        "location": "Aarhus",
+        "url": "https://www.linkedin.com/comm/jobs/view/4000000001/?trackingId=T&refId=R&lipi=L&midToken=M&midSig=S&trk=eml-x&trkEmail=eml-y&eid=E&otpToken=O",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://linkedin.com/jobs/view/4000000001",
+      "expected_weak": "acme|engineer|aarhus",
+      "expected_cluster": "url:https://linkedin.com/jobs/view/4000000001"
+    },
+    {
+      "id": "jobindex-uid",
+      "input": {
+        "company": "Acme",
+        "title": "Engineer",
+        "location": "Aarhus",
+        "url": "https://www.jobindex.dk/c?t=h1000001&uid=U&abtestid=A&ttid=j1&source=email&utm_source=jobindex&utm_medium=email&utm_campaign=jobmail",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://jobindex.dk/c?t=h1000001",
+      "expected_weak": "acme|engineer|aarhus",
+      "expected_cluster": "url:https://jobindex.dk/c?t=h1000001"
+    },
+    {
+      "id": "indeed-rc-clk-dl",
+      "input": {
+        "company": "Acme",
+        "title": "Engineer",
+        "location": "Aarhus",
+        "url": "https://dk.indeed.com/rc/clk/dl?jk=0123456789abcdef&from=ja&qd=Q&rd=R&tk=T&alid=A&bb=B&tmtk=M",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://dk.indeed.com/viewjob?jk=0123456789abcdef",
+      "expected_weak": "acme|engineer|aarhus",
+      "expected_cluster": "url:https://dk.indeed.com/viewjob?jk=0123456789abcdef"
+    },
+    {
+      "id": "indeed-pagead-tokens",
+      "input": {
+        "company": "Acme",
+        "title": "Engineer",
+        "location": "Aarhus",
+        "url": "https://dk.indeed.com/pagead/clk/dl?mo=r&ad=AD1&tk=T&alid=A&bb=B",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://dk.indeed.com/pagead/clk/dl?mo=r&ad=AD1",
+      "expected_weak": "acme|engineer|aarhus",
+      "expected_cluster": "url:https://dk.indeed.com/pagead/clk/dl?mo=r&ad=AD1"
+    },
+    {
+      "id": "mailchimp-and-session-tokens",
+      "input": {
+        "company": "Acme",
+        "title": "Engineer",
+        "location": "Aarhus",
+        "url": "https://jobs.example.com/a?id=1&mc_eid=E&mc_cid=C&token=T&sid=S&utm_content=x",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://jobs.example.com/a?id=1",
+      "expected_weak": "acme|engineer|aarhus",
+      "expected_cluster": "url:https://jobs.example.com/a?id=1"
+    },
+    {
+      "id": "tracking-param-case-insensitive",
+      "input": {
+        "company": "Acme",
+        "title": "Engineer",
+        "location": "Aarhus",
+        "url": "https://jobs.example.com/a?UTM_Source=x&TRK=y&Uid=z&id=1",
+        "board": null,
+        "external_id": null
+      },
+      "expected_strong": "url:https://jobs.example.com/a?id=1",
+      "expected_weak": "acme|engineer|aarhus",
+      "expected_cluster": "url:https://jobs.example.com/a?id=1"
     }
   ]
 }

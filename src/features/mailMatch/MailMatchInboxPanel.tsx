@@ -4,42 +4,42 @@
  *
  * Two rules run through the whole component:
  *
- * - **Accept is one click, and undoable.** A new match becomes an Interesting Job
- *   straight from its draft; the notice that follows offers Open and Undo. An update
- *   goes through a diff first, because it writes onto a Job the user already owns.
+ * - **Accept is one click, and undoable.** A match becomes an Interesting Job
+ *   straight from its draft; the notice that follows offers Open and Undo.
  * - **Listing text is text.** Bodies and pages here came out of email. Nothing in this
  *   file uses `dangerouslySetInnerHTML`, and `MailMatchInboxPanel.test.tsx` asserts it.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { en } from "../../i18n/en";
+import { boardName } from "../../lib/jobs/boardName";
+import { openUrlInBrowser } from "../../lib/tauriApi";
 import {
   mailMatchAcceptNew,
-  mailMatchAcceptUpdate,
   mailMatchDismiss,
   mailMatchList,
   mailMatchListDismissed,
-  mailMatchPreviewUpdate,
   mailMatchRestore,
   mailMatchUndoAccept,
   mailScanListRuns,
   type DismissedRow,
   type RunRow,
-  type UpdatePreview,
 } from "./mailMatchApi";
 import {
   badgesFor,
   boardOptions,
   defaultFilters,
+  draftLinks,
+  filterRows,
   listingText,
   pairNearDuplicates,
   scoreLabel,
-  visibleRows,
   type Badge,
   type MailMatchFilters,
   type MailMatchRow,
 } from "./mailMatchInbox";
 import { runViewFromRow, type RunView } from "./runSummary";
+import { TRIAGE_ROW_ATTR, triageCommand } from "./triageKeys";
 import { RunSummaryCard } from "./RunSummaryCard";
 
 const t = en.mailMatch;
@@ -65,16 +65,26 @@ type MailMatchApi = {
   listRuns: typeof mailScanListRuns;
   dismiss: typeof mailMatchDismiss;
   restore: typeof mailMatchRestore;
-  previewUpdate: typeof mailMatchPreviewUpdate;
-  acceptUpdate: typeof mailMatchAcceptUpdate;
   acceptNew: typeof mailMatchAcceptNew;
   undoAccept: typeof mailMatchUndoAccept;
+  /** The app's external-link path: the system browser, never the webview. */
+  openUrl: typeof openUrlInBrowser;
 };
 
-/** What the last accept did, kept outside the row: the row leaves the list on accept. */
-type AcceptNotice =
+type Action = "accept" | "dismiss";
+
+/**
+ * What the last action did, kept outside the row: the row leaves the list. A single
+ * accept or dismiss is undoable from here (and with `u`); a bulk run reports its
+ * count and any failures.
+ */
+type Notice =
   | { kind: "accepted"; inboxId: number; jobId: number; title: string }
-  | { kind: "undone" };
+  | { kind: "dismissed"; fingerprintId: string; title: string }
+  | { kind: "undone"; action: Action }
+  | { kind: "bulk"; action: Action; done: number; total: number; failures: BulkFailure[] };
+
+type BulkFailure = { title: string; error: string };
 
 const realApi: MailMatchApi = {
   list: mailMatchList,
@@ -82,19 +92,23 @@ const realApi: MailMatchApi = {
   listRuns: mailScanListRuns,
   dismiss: mailMatchDismiss,
   restore: mailMatchRestore,
-  previewUpdate: mailMatchPreviewUpdate,
-  acceptUpdate: mailMatchAcceptUpdate,
   acceptNew: mailMatchAcceptNew,
   undoAccept: mailMatchUndoAccept,
+  openUrl: openUrlInBrowser,
 };
 
 const badgeLabels: Record<Badge["kind"], string> = {
-  update: t.badgeUpdate,
+  snippetOnly: t.badgeSnippetOnly,
   incompleteEnrichment: t.badgeIncompleteEnrichment,
   enrichmentFailed: t.badgeEnrichmentFailed,
   nearDuplicate: t.badgeNearDuplicate,
   suspicious: t.badgeSuspicious,
   seenAgain: "",
+};
+
+const badgeTitles: Partial<Record<Badge["kind"], string>> = {
+  snippetOnly: t.badgeSnippetOnlyTitle,
+  suspicious: t.badgeSuspiciousTitle,
 };
 
 function BadgeList({ badges }: { badges: Badge[] }) {
@@ -105,7 +119,7 @@ function BadgeList({ badges }: { badges: Badge[] }) {
         <li
           key={badge.kind}
           className={`mail-match__badge mail-match__badge--${badge.kind}`}
-          title={badge.kind === "suspicious" ? t.badgeSuspiciousTitle : undefined}
+          title={badgeTitles[badge.kind]}
         >
           {badge.kind === "seenAgain" ? t.seenTimes(badge.count ?? 2) : badgeLabels[badge.kind]}
         </li>
@@ -128,52 +142,150 @@ function ScoreChip({ row }: { row: MailMatchRow }) {
   );
 }
 
-/** The recomputed diff, including the "job changed" state from C2. */
-function UpdateDiff({
-  preview,
-  onApply,
-  onCancel,
+function NoticeBody({
+  notice,
+  onOpenJob,
+  onUndo,
 }: {
-  preview: UpdatePreview;
-  onApply: () => void;
-  onCancel: () => void;
+  notice: Notice;
+  onOpenJob?: (jobId: number) => void;
+  onUndo: () => void;
 }) {
-  const applicable = preview.fields.filter((f) => f.applicable);
+  const undo = (
+    <button type="button" onClick={onUndo}>
+      {t.acceptedUndo}
+    </button>
+  );
+  switch (notice.kind) {
+    case "accepted":
+      return (
+        <>
+          <span>{t.acceptedNotice(notice.title)}</span>
+          {onOpenJob ? (
+            <button type="button" onClick={() => onOpenJob(notice.jobId)}>
+              {t.acceptedOpen}
+            </button>
+          ) : null}
+          {undo}
+        </>
+      );
+    case "dismissed":
+      return (
+        <>
+          <span>{t.dismissedNotice(notice.title)}</span>
+          {undo}
+        </>
+      );
+    case "undone":
+      return <span>{notice.action === "accept" ? t.undoneNotice : t.dismissUndoneNotice}</span>;
+    case "bulk":
+      return (
+        <>
+          <span>
+            {notice.action === "accept"
+              ? t.bulkAcceptedNotice(notice.done, notice.total)
+              : t.bulkDismissedNotice(notice.done, notice.total)}
+          </span>
+          {notice.failures.length > 0 ? (
+            <ul className="mail-match__failures">
+              {notice.failures.map((f, i) => (
+                <li key={i}>{t.bulkFailure(f.title, f.error)}</li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      );
+  }
+}
+
+function PassLine({
+  pass,
+  score,
+  reason,
+}: {
+  pass: 1 | 2;
+  score: number | null;
+  reason: string | null;
+}) {
+  if (score === null && reason === null) {
+    return <p className="mail-match__pass mail-match__hint">{t.passNotRun(pass)}</p>;
+  }
   return (
-    <section className="mail-match__diff" aria-label={t.diffTitle}>
-      <h4>{t.diffTitle}</h4>
-      {preview.jobChangedSinceScan ? (
-        <p className="mail-match__diff-warning" role="status">
-          {t.diffJobChanged}
-        </p>
-      ) : null}
-      {preview.fields.length === 0 || applicable.length === 0 ? (
-        <p className="mail-match__empty">{t.diffNothingToDo}</p>
-      ) : null}
-      <ul className="mail-match__diff-list">
-        {preview.fields.map((field) => (
-          <li
-            key={field.field}
-            className={field.applicable ? "is-applicable" : "is-skipped"}
-          >
-            <span className="mail-match__diff-field">{t.diffFieldLabel(field.field)}</span>
-            <span className="mail-match__diff-value">{field.suggested}</span>
-            <span className="mail-match__diff-note">
-              {field.applicable
-                ? t.diffWillWrite
-                : `${t.diffSkipped} — ${t.diffCurrent(field.current ?? "")}`}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <div className="mail-match__diff-actions">
-        <button type="button" onClick={onApply} disabled={applicable.length === 0}>
-          {t.diffApply(applicable.length)}
-        </button>
-        <button type="button" onClick={onCancel}>
-          {t.diffCancel}
-        </button>
+    <div className="mail-match__pass">
+      <strong>{t.passScore(pass, score === null ? "?" : String(score))}</strong>
+      <p>{reason?.trim() || t.passReasonMissing}</p>
+    </div>
+  );
+}
+
+function ExternalLink({
+  url,
+  label,
+  className,
+  openUrl,
+}: {
+  url: string;
+  label: string;
+  className?: string;
+  openUrl: (url: string) => Promise<void>;
+}) {
+  return (
+    <a
+      href={url}
+      className={className}
+      target="_blank"
+      rel="noreferrer noopener"
+      onClick={(e) => {
+        e.preventDefault();
+        void openUrl(url).catch(console.error);
+      }}
+    >
+      {label}
+    </a>
+  );
+}
+
+/** The whole ad, both verdicts, and the links — enough to decide without leaving. */
+function MatchDetail({
+  row,
+  openUrl,
+}: {
+  row: MailMatchRow;
+  openUrl: (url: string) => Promise<void>;
+}) {
+  const { url, boardUrl } = draftLinks(row);
+  return (
+    <section
+      className="mail-match__detail"
+      aria-label={t.detailRegion(row.title ?? en.common.untitled)}
+    >
+      <div className="mail-match__links">
+        {url ? <ExternalLink url={url} label={t.openListing} openUrl={openUrl} /> : null}
+        {boardUrl ? (
+          <ExternalLink
+            url={boardUrl}
+            label={t.viaBoard(boardName(boardUrl))}
+            className="mail-match__hint"
+            openUrl={openUrl}
+          />
+        ) : null}
       </div>
+      <section>
+        <h4>{t.detailScores}</h4>
+        <PassLine pass={1} score={row.pass1Score} reason={row.pass1Reason} />
+        <PassLine pass={2} score={row.pass2Score} reason={row.pass2Reason} />
+      </section>
+      {row.enrichmentError ? (
+        <p className="mail-match__reason">{t.enrichmentReason(row.enrichmentError)}</p>
+      ) : null}
+      <section>
+        <h4>{t.detailListingText}</h4>
+        <p className="mail-match__hint">{t.detailListingTextHint}</p>
+        {/* Rendered as a text child — never as HTML. */}
+        <pre className="mail-match__listing-text" tabIndex={0}>
+          {listingText(row)}
+        </pre>
+      </section>
     </section>
   );
 }
@@ -193,9 +305,14 @@ export function MailMatchInboxPanel({
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [filters, setFilters] = useState<MailMatchFilters>(defaultFilters);
   const [expanded, setExpanded] = useState<number | null>(null);
-  const [preview, setPreview] = useState<UpdatePreview | null>(null);
-  const [notice, setNotice] = useState<AcceptNotice | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  /** Inbox ids ticked for a bulk action. Only the ones still shown are acted on. */
+  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
+  const [bulkRunning, setBulkRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The row keyboard triage is on. Real DOM focus follows it (see the effect below). */
+  const [focusedId, setFocusedId] = useState<number | null>(null);
+  const titleButtons = useRef(new Map<number, HTMLButtonElement>());
 
   const refresh = useCallback(
     () =>
@@ -214,13 +331,24 @@ export function MailMatchInboxPanel({
     void refresh();
   }, [refresh, reloadToken]);
 
-  const shown = useMemo(() => visibleRows(rows, filters), [rows, filters]);
+  const shown = useMemo(() => filterRows(rows, filters), [rows, filters]);
   const pairs = useMemo(() => pairNearDuplicates(rows), [rows]);
   const boards = useMemo(() => boardOptions(rows), [rows]);
   const filtersActive = useMemo(
     () => JSON.stringify(filters) !== JSON.stringify(defaultFilters),
     [filters],
   );
+  // A row hidden by a filter is never acted on: the count the confirmation names has
+  // to be the rows the user can see.
+  const selectedShown = useMemo(() => shown.filter((r) => selected.has(r.id)), [shown, selected]);
+  const allShownSelected = shown.length > 0 && selectedShown.length === shown.length;
+
+  /** Where focus goes once `row` leaves the list: the next row, else the previous. */
+  function moveFocusPast(row: MailMatchRow) {
+    if (focusedId !== row.id) return;
+    const i = shown.findIndex((r) => r.id === row.id);
+    setFocusedId(shown[i + 1]?.id ?? shown[i - 1]?.id ?? null);
+  }
 
   async function acceptRow(row: MailMatchRow) {
     try {
@@ -235,6 +363,7 @@ export function MailMatchInboxPanel({
           title: row.title ?? en.common.untitled,
         });
       }
+      moveFocusPast(row);
       onJobsChanged?.();
       await refresh();
     } catch (e) {
@@ -245,7 +374,7 @@ export function MailMatchInboxPanel({
   async function undoAccept(inboxId: number) {
     try {
       await client.undoAccept(inboxId);
-      setNotice({ kind: "undone" });
+      setNotice({ kind: "undone", action: "accept" });
       onJobsChanged?.();
       await refresh();
     } catch (e) {
@@ -253,34 +382,113 @@ export function MailMatchInboxPanel({
     }
   }
 
-  async function reviewUpdate(row: MailMatchRow) {
-    try {
-      setPreview(await client.previewUpdate(row.id));
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  async function applyUpdate() {
-    if (!preview) return;
-    try {
-      await client.acceptUpdate(preview.inboxId);
-      setPreview(null);
-      await refresh();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
   async function dismissRow(row: MailMatchRow) {
-    // One click: the Dismissed tab is the undo, so there is nothing to confirm.
+    // One click: the notice's Undo (and the Dismissed tab) take it back.
     try {
       await client.dismiss(row.id);
+      setNotice({
+        kind: "dismissed",
+        fingerprintId: row.fingerprintId,
+        title: row.title ?? en.common.untitled,
+      });
+      moveFocusPast(row);
       await refresh();
     } catch (e) {
       setError(String(e));
     }
   }
+
+  async function undoDismiss(fingerprintId: string) {
+    try {
+      await client.restore(fingerprintId);
+      setNotice({ kind: "undone", action: "dismiss" });
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  /** Reverse whatever the notice offers to undo — the `u` key and the Undo button. */
+  function undoNotice() {
+    if (notice?.kind === "accepted") void undoAccept(notice.inboxId);
+    else if (notice?.kind === "dismissed") void undoDismiss(notice.fingerprintId);
+  }
+
+  function toggleSelected(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllShown() {
+    setSelected(allShownSelected ? new Set() : new Set(shown.map((r) => r.id)));
+  }
+
+  /**
+   * Accept or dismiss every selected, shown row — one at a time, so a failure is
+   * attributable to its row and the rest still run. The job list reloads once.
+   */
+  async function runBulk(action: Action) {
+    const targets = selectedShown;
+    if (targets.length === 0 || bulkRunning) return;
+    const question =
+      action === "accept" ? t.bulkAcceptConfirm(targets.length) : t.bulkDismissConfirm(targets.length);
+    if (!window.confirm(question)) return;
+
+    setBulkRunning(true);
+    const failures: BulkFailure[] = [];
+    const failedIds = new Set<number>();
+    for (const row of targets) {
+      try {
+        if (action === "accept") await client.acceptNew(row.id);
+        else await client.dismiss(row.id);
+      } catch (e) {
+        failures.push({ title: row.title ?? en.common.untitled, error: String(e) });
+        failedIds.add(row.id);
+      }
+    }
+    const done = targets.length - failures.length;
+    // Failed rows stay selected, ready for a retry.
+    setSelected(failedIds);
+    setNotice({ kind: "bulk", action, done, total: targets.length, failures });
+    if (action === "accept" && done > 0) onJobsChanged?.();
+    await refresh();
+    setBulkRunning(false);
+  }
+
+  function moveFocus(step: 1 | -1) {
+    if (shown.length === 0) return;
+    const i = shown.findIndex((r) => r.id === focusedId);
+    const next = i < 0 ? (step === 1 ? 0 : shown.length - 1) : i + step;
+    setFocusedId(shown[Math.min(Math.max(next, 0), shown.length - 1)].id);
+  }
+
+  // Keyboard triage (Pending tab only). Re-registered every render so the handler
+  // always sees current rows and focus; it is a single cheap listener.
+  useEffect(() => {
+    if (tab !== "pending") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const command = triageCommand(e);
+      if (!command) return;
+      const focused = shown.find((r) => r.id === focusedId) ?? null;
+      if (command === "next" || command === "prev") moveFocus(command === "next" ? 1 : -1);
+      else if (command === "undo") undoNotice();
+      else if (!focused) return;
+      else if (command === "toggle") setExpanded(expanded === focused.id ? null : focused.id);
+      else if (command === "accept") void acceptRow(focused);
+      else if (command === "dismiss") void dismissRow(focused);
+      e.preventDefault();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  });
+
+  useEffect(() => {
+    if (focusedId !== null) titleButtons.current.get(focusedId)?.focus();
+  }, [focusedId]);
 
   async function restoreOne(fingerprintId: string) {
     try {
@@ -308,21 +516,7 @@ export function MailMatchInboxPanel({
 
       {notice ? (
         <div className="mail-match__notice" role="status">
-          {notice.kind === "accepted" ? (
-            <>
-              <span>{t.acceptedNotice(notice.title)}</span>
-              {onOpenJob ? (
-                <button type="button" onClick={() => onOpenJob(notice.jobId)}>
-                  {t.acceptedOpen}
-                </button>
-              ) : null}
-              <button type="button" onClick={() => void undoAccept(notice.inboxId)}>
-                {t.acceptedUndo}
-              </button>
-            </>
-          ) : (
-            <span>{t.undoneNotice}</span>
-          )}
+          <NoticeBody notice={notice} onOpenJob={onOpenJob} onUndo={undoNotice} />
         </div>
       ) : null}
 
@@ -358,19 +552,6 @@ export function MailMatchInboxPanel({
                 placeholder={t.searchPlaceholder}
                 onChange={(e) => setFilters({ ...filters, query: e.target.value })}
               />
-            </label>
-            <label>
-              {t.filterKind}
-              <select
-                value={filters.kind}
-                onChange={(e) =>
-                  setFilters({ ...filters, kind: e.target.value as MailMatchFilters["kind"] })
-                }
-              >
-                <option value="all">{t.filterKindAll}</option>
-                <option value="new">{t.filterKindNew}</option>
-                <option value="update_suggestion">{t.filterKindUpdate}</option>
-              </select>
             </label>
             <label>
               {t.filterBoard}
@@ -425,6 +606,37 @@ export function MailMatchInboxPanel({
             ) : null}
           </div>
 
+          {shown.length > 0 ? (
+            <div className="mail-match__bulk">
+              <label>
+                <input type="checkbox" checked={allShownSelected} onChange={toggleAllShown} />
+                {t.selectAllShown}
+              </label>
+              {selectedShown.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={bulkRunning}
+                    onClick={() => void runBulk("accept")}
+                  >
+                    {t.bulkAccept(selectedShown.length)}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bulkRunning}
+                    onClick={() => void runBulk("dismiss")}
+                  >
+                    {t.bulkDismiss(selectedShown.length)}
+                  </button>
+                  <button type="button" onClick={() => setSelected(new Set())}>
+                    {t.bulkClear}
+                  </button>
+                </>
+              ) : null}
+              <p className="mail-match__shortcuts">{t.shortcutsHint}</p>
+            </div>
+          ) : null}
+
           {shown.length === 0 ? (
             <p className="mail-match__empty">
               {filtersActive || rows.length > 0 ? t.emptyPendingFiltered : t.emptyPending}
@@ -434,14 +646,32 @@ export function MailMatchInboxPanel({
               {shown.map((row) => {
                 const pair = pairs.get(row.id);
                 const isOpen = expanded === row.id;
+                const isFocused = focusedId === row.id;
                 return (
-                  <li key={row.id} className="mail-match__row">
+                  <li
+                    key={row.id}
+                    className={`mail-match__row${isFocused ? " is-focused" : ""}`}
+                    aria-current={isFocused ? "true" : undefined}
+                  >
                     <div className="mail-match__row-main">
+                      <input
+                        type="checkbox"
+                        className="mail-match__select"
+                        aria-label={t.selectRow(row.title ?? en.common.untitled)}
+                        checked={selected.has(row.id)}
+                        onChange={() => toggleSelected(row.id)}
+                      />
                       <ScoreChip row={row} />
                       <button
                         type="button"
                         className="mail-match__row-title"
                         aria-expanded={isOpen}
+                        {...{ [TRIAGE_ROW_ATTR]: "" }}
+                        ref={(el) => {
+                          if (el) titleButtons.current.set(row.id, el);
+                          else titleButtons.current.delete(row.id);
+                        }}
+                        onFocus={() => setFocusedId(row.id)}
                         onClick={() => setExpanded(isOpen ? null : row.id)}
                       >
                         <strong>{row.title ?? en.common.untitled}</strong>
@@ -455,44 +685,16 @@ export function MailMatchInboxPanel({
 
                     {pair ? <p className="mail-match__pair-hint">{t.nearDuplicateHint}</p> : null}
 
-                    {isOpen ? (
-                      <div className="mail-match__detail">
-                        <section>
-                          <h4>{t.detailListingText}</h4>
-                          <p className="mail-match__hint">{t.detailListingTextHint}</p>
-                          {/* Rendered as a text child — never as HTML. */}
-                          <pre className="mail-match__listing-text">{listingText(row)}</pre>
-                        </section>
-                        {row.scoreReason ? (
-                          <p className="mail-match__reason">{row.scoreReason}</p>
-                        ) : null}
-                        {row.enrichmentError ? (
-                          <p className="mail-match__reason">
-                            {t.enrichmentReason(row.enrichmentError)}
-                          </p>
-                        ) : null}
-                        {row.listingUrl ? (
-                          <a href={row.listingUrl} target="_blank" rel="noreferrer noopener">
-                            {t.openListing}
-                          </a>
-                        ) : null}
-                      </div>
-                    ) : null}
+                    {isOpen ? <MatchDetail row={row} openUrl={client.openUrl} /> : null}
 
                     <div className="mail-match__actions">
-                      {row.kind === "update_suggestion" ? (
-                        <button type="button" onClick={() => void reviewUpdate(row)}>
-                          {t.acceptUpdate}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => void acceptRow(row)}
-                          title={t.acceptHint}
-                        >
-                          {t.accept}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => void acceptRow(row)}
+                        title={t.acceptHint}
+                      >
+                        {t.accept}
+                      </button>
                       <button type="button" onClick={() => void dismissRow(row)}>
                         {t.dismiss}
                       </button>
@@ -504,13 +706,6 @@ export function MailMatchInboxPanel({
             </ul>
           )}
 
-          {preview ? (
-            <UpdateDiff
-              preview={preview}
-              onApply={() => void applyUpdate()}
-              onCancel={() => setPreview(null)}
-            />
-          ) : null}
         </>
       ) : null}
 

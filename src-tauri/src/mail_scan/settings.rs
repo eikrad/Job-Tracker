@@ -4,9 +4,13 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::llm::provider::LlmProvider;
 use crate::mail_scan::budget::DEFAULT_MAX_CALLS;
-use crate::mail_scan::scoring::DEFAULT_PASS2_CUTOFF;
-use crate::mail_scan::DEFAULT_SINCE_DAYS;
+use crate::mail_scan::scoring::{ScoringConfig, DEFAULT_PASS2_CUTOFF};
+use crate::mail_scan::status::SourceKind;
+
+/// Days of mail history a scan reads unless Settings says otherwise (spec §5.5).
+pub const DEFAULT_SINCE_DAYS: u32 = 90;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -15,8 +19,8 @@ pub struct MailSource {
     pub label: String,
     /// As the user entered it — may be relative, contain `~`, or be a symlink.
     pub path: String,
-    /// `mbox` | `maildir`, detected from the path.
-    pub kind: String,
+    /// Detected from the path when it is resolved.
+    pub kind: SourceKind,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +63,31 @@ impl Default for MailScanSettings {
     }
 }
 
+impl MailScanSettings {
+    /// How the saved settings score a run. `force_rescore` is the explicit "Re-score
+    /// backlog" action: it bypasses score reuse, never the budget.
+    pub fn scoring_config(&self, force_rescore: bool) -> ScoringConfig {
+        let mut config = ScoringConfig {
+            force_rescore,
+            // Clamped: a hand-edited settings file must not put the cutoff off the scale.
+            pass2_cutoff: self.cutoff.clamp(0, 10),
+            ..ScoringConfig::default()
+        };
+        config.budget.max_calls = self.max_calls;
+        config
+    }
+
+    pub fn provider(&self) -> Result<LlmProvider, String> {
+        LlmProvider::parse(&self.provider)
+    }
+
+    /// The hard floor on message age, as the sidecar's `since`.
+    pub fn since_iso(&self) -> String {
+        let days = i64::from(self.since_days);
+        (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339()
+    }
+}
+
 fn settings_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     use tauri::Manager;
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -94,7 +123,7 @@ pub struct ResolvedSource {
     pub label: String,
     pub entered_path: String,
     pub resolved_path: Option<String>,
-    pub kind: String,
+    pub kind: SourceKind,
     pub exists: bool,
     /// True when the entered path resolved somewhere else — a symlink or `..`.
     pub redirected: bool,
@@ -102,11 +131,11 @@ pub struct ResolvedSource {
 }
 
 /// mbox is a regular file; maildir is a directory containing `cur`/`new`.
-fn detect_kind(resolved: &Path) -> &'static str {
+fn detect_kind(resolved: &Path) -> SourceKind {
     if resolved.is_dir() {
-        "maildir"
+        SourceKind::Maildir
     } else {
-        "mbox"
+        SourceKind::Mbox
     }
 }
 
@@ -128,7 +157,7 @@ pub fn resolve_source(source: &MailSource) -> ResolvedSource {
         label: source.label.clone(),
         entered_path: source.path.clone(),
         resolved_path: None,
-        kind: source.kind.clone(),
+        kind: source.kind,
         exists: false,
         redirected: false,
         error: None,
@@ -142,7 +171,7 @@ pub fn resolve_source(source: &MailSource) -> ResolvedSource {
             }
             out.exists = true;
             out.redirected = resolved != expanded || target != expanded;
-            out.kind = detect_kind(&resolved).to_string();
+            out.kind = detect_kind(&resolved);
             out.resolved_path = Some(resolved.to_string_lossy().into_owned());
         }
         Err(e) => {
@@ -325,6 +354,7 @@ pub fn discover_thunderbird_mailboxes() -> Vec<PathBuf> {
 /// `jobs` is absent and must stay absent: the point of the action is to forget the
 /// scanning, not the applications it produced (spec §6.5).
 const MAIL_SCAN_TABLES: &[&str] = &[
+    "mail_digest_splits",
     "mail_scored_sightings",
     "mail_match_dismissals",
     "mail_match_inbox",
@@ -455,7 +485,7 @@ mod tests {
             id: "s1".into(),
             label: "Indeed".into(),
             path: path.into(),
-            kind: "mbox".into(),
+            kind: SourceKind::Mbox,
         }
     }
 
@@ -496,7 +526,7 @@ mod tests {
 
         let resolved = resolve_source(&source(msf.to_str().unwrap()));
         assert!(resolved.exists);
-        assert_eq!(resolved.kind, "mbox");
+        assert_eq!(resolved.kind, SourceKind::Mbox);
         assert_eq!(
             PathBuf::from(resolved.resolved_path.unwrap()).canonicalize().unwrap(),
             mbox.canonicalize().unwrap()
@@ -532,12 +562,12 @@ mod tests {
 
         // The caller claimed maildir; the filesystem says otherwise.
         let mut s = source(mbox.to_str().unwrap());
-        s.kind = "maildir".into();
-        assert_eq!(resolve_source(&s).kind, "mbox");
+        s.kind = SourceKind::Maildir;
+        assert_eq!(resolve_source(&s).kind, SourceKind::Mbox);
 
         let maildir = dir.path().join("Mail");
         fs::create_dir_all(maildir.join("cur")).unwrap();
-        assert_eq!(resolve_source(&source(maildir.to_str().unwrap())).kind, "maildir");
+        assert_eq!(resolve_source(&source(maildir.to_str().unwrap())).kind, SourceKind::Maildir);
     }
 
     #[test]
@@ -663,6 +693,31 @@ mod tests {
         assert_eq!(defaults.since_days, 90);
         assert_eq!(defaults.max_calls, 600);
         assert!(defaults.sources.is_empty());
+    }
+
+    #[test]
+    fn a_scan_runs_with_the_saved_cutoff_and_call_cap() {
+        let saved = MailScanSettings {
+            cutoff: 8,
+            max_calls: 50,
+            ..MailScanSettings::default()
+        };
+
+        let config = saved.scoring_config(false);
+
+        assert_eq!(config.pass2_cutoff, 8);
+        assert_eq!(config.budget.max_calls, 50);
+        assert!(!config.force_rescore);
+        assert!(saved.scoring_config(true).force_rescore);
+    }
+
+    #[test]
+    fn a_hand_edited_cutoff_is_kept_on_the_score_scale() {
+        let saved = MailScanSettings {
+            cutoff: 42,
+            ..MailScanSettings::default()
+        };
+        assert_eq!(saved.scoring_config(false).pass2_cutoff, 10);
     }
 
     #[test]

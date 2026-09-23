@@ -6,6 +6,7 @@
     { "$ref": "#/$defs/started" },
     { "$ref": "#/$defs/source_started" },
     { "$ref": "#/$defs/listing" },
+    { "$ref": "#/$defs/digest" },
     { "$ref": "#/$defs/source_finished" },
     { "$ref": "#/$defs/warning" },
     { "$ref": "#/$defs/finished" }
@@ -47,7 +48,7 @@
       "required": ["t", "protocol", "run_id", "sidecar_version", "sources"],
       "properties": {
         "t": { "const": "started" },
-        "protocol": { "const": 1 },
+        "protocol": { "const": 2 },
         "run_id": { "type": "string", "minLength": 1 },
         "sidecar_version": { "type": "string", "minLength": 1 },
         "sources": { "type": "integer", "minimum": 0 }
@@ -99,6 +100,46 @@
         "extractor_confidence": { "type": "number", "minimum": 0, "maximum": 1 }
       }
     },
+    "digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "t",
+        "source",
+        "message_id",
+        "message_date",
+        "subject",
+        "sender",
+        "message_fingerprint",
+        "body",
+        "links"
+      ],
+      "properties": {
+        "t": { "const": "digest" },
+        "source": { "type": "string", "minLength": 1 },
+        "message_id": { "type": "string" },
+        "message_date": { "type": "string" },
+        "subject": { "type": "string" },
+        "sender": { "type": "string" },
+        "message_fingerprint": { "type": "string", "pattern": "^msg:[0-9a-f]{32}$" },
+        "body": { "type": "string", "maxLength": 20000 },
+        "links": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 50,
+          "propertyNames": { "pattern": "^L[0-9]{1,3}$" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["url", "fingerprint"],
+            "properties": {
+              "url": { "type": "string", "pattern": "^https?://", "maxLength": 1000 },
+              "fingerprint": { "$ref": "#/$defs/fingerprint" }
+            }
+          }
+        }
+      }
+    },
     "source_finished": {
       "type": "object",
       "additionalProperties": false,
@@ -133,7 +174,8 @@
         "listings_total": { "type": "integer", "minimum": 0 },
         "messages_total": { "type": "integer", "minimum": 0 },
         "duration_ms": { "type": "integer", "minimum": 0 },
-        "cancelled": { "type": "boolean" }
+        "cancelled": { "type": "boolean" },
+        "truncated": { "type": "boolean" }
       }
     }
   }

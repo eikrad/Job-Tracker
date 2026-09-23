@@ -64,8 +64,8 @@ export function RunSummaryCard({
 
       <ul className="run-summary__counters">
         <li>{t.summaryNew(stats.inboxNew)}</li>
-        <li>{t.summaryUpdates(stats.updates)}</li>
         <li>{t.summaryUnderCutoff(stats.underCutoff)}</li>
+        {stats.alreadyTracked > 0 ? <li>{t.summaryAlreadyTracked(stats.alreadyTracked)}</li> : null}
         <li>
           {t.summarySuppressed(stats.suppressedByDismissal)}
           {stats.suppressedByDismissal > 0 && onShowSuppressed ? (
@@ -83,9 +83,9 @@ export function RunSummaryCard({
         <li>{t.summaryCalls(stats.llmCalls)}</li>
       </ul>
 
-      {stats.budgetExhausted ? (
+      {stats.budgetExhausted || stats.listingLimitReached ? (
         <p className="run-summary__notice" role="status">
-          {t.summaryBudgetExhausted}
+          {stats.budgetExhausted ? t.summaryBudgetExhausted : t.summaryListingLimitReached}
           {onContinue ? (
             <>
               {" "}

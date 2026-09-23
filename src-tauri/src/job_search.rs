@@ -296,7 +296,7 @@ fn non_prose_spans(html: &str) -> Vec<(usize, usize)> {
     spans
 }
 
-fn strip_html_to_text(html: &str) -> String {
+pub(crate) fn strip_html_to_text(html: &str) -> String {
     let spans = non_prose_spans(html);
     let mut cleaned = String::with_capacity(html.len());
     let mut in_tag = false;

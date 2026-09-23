@@ -148,3 +148,70 @@ def test_sentinel_mismatch_forces_reset(tmp_path: Path):
     opened = open_source("mbox", path, stored_cursor=bad, **_limits())
     assert opened.cursor_reset is True
     assert opened.reset_reason == "sentinel_mismatch"
+
+
+def _maildir_with(tmp_path: Path, count: int) -> Path:
+    import mailbox
+
+    path = tmp_path / "Jobs"
+    box = mailbox.Maildir(path, create=True)
+    for i in range(count):
+        box.add(
+            f"From: alerts@example.com\nSubject: alert {i}\n"
+            f"Message-ID: <m{i}@example.com>\n"
+            f"Date: Mon, 09 Sep 2026 08:00:0{i} +0000\n\nbody {i}\n"
+        )
+    box.close()
+    return path
+
+
+def test_a_maildir_folder_with_several_mails_is_read_in_full(tmp_path: Path):
+    path = _maildir_with(tmp_path, 3)
+    opened = open_source("maildir", path, stored_cursor=None, **_limits())
+    assert sorted(m.subject for m in opened.messages) == [
+        "alert 0",
+        "alert 1",
+        "alert 2",
+    ]
+
+
+def test_a_maildir_rescan_reads_nothing_twice(tmp_path: Path):
+    path = _maildir_with(tmp_path, 3)
+    first = open_source("maildir", path, stored_cursor=None, **_limits())
+    list(first.messages)
+    cursor = first.finalize()
+
+    again = open_source("maildir", path, stored_cursor=cursor.as_dict(), **_limits())
+    assert list(again.messages) == []
+
+    # A scan that found nothing new must not forget where it was.
+    third = open_source(
+        "maildir", path, stored_cursor=again.finalize().as_dict(), **_limits()
+    )
+    assert list(third.messages) == []
+
+
+def test_a_mailbox_of_large_html_mails_resumes_without_rereading(tmp_path: Path):
+    # Real alert mails are 50-150 KB of HTML: far larger than a small look-back
+    # window, which must not turn every incremental scan into a full re-read.
+    big_body = ("<p>" + "x" * 76 + "</p>\n") * 1500  # ~120 KB
+    path = tmp_path / "LinkedIn"
+    mails = b"".join(
+        (
+            f"From alerts@example.com Mon Sep 09 08:00:0{i} 2026\n"
+            f"From: alerts@example.com\nSubject: alert {i}\n"
+            f"Message-ID: <big{i}@example.com>\n"
+            f"Date: Mon, 09 Sep 2026 08:00:0{i} +0000\n"
+            "Content-Type: text/html\n\n" + big_body
+        ).encode()
+        for i in range(3)
+    )
+    path.write_bytes(mails + b"From closer@example.com Mon Sep 09 09:00:00 2026\n")
+
+    first = open_source("mbox", path, stored_cursor=None, **_limits())
+    assert len(list(first.messages)) == 3
+    cursor = first.finalize()
+
+    again = open_source("mbox", path, stored_cursor=cursor.as_dict(), **_limits())
+    assert again.cursor_reset is False, again.reset_reason
+    assert list(again.messages) == []

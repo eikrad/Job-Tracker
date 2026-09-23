@@ -225,12 +225,23 @@ anything.
 What comes back lands in the **Mail Match Inbox** (`/mail-matches`), separate from the
 Capture Inbox:
 
-- **Pending** — matches sorted by score, with badges for incomplete details, suspicious
-  content, near-duplicates, and repeat sightings. **Accept** opens the job form
-  prefilled; nothing is written until you submit it.
+- **Pending** — matches sorted by score, with badges for incomplete details, "mail
+  snippet only" (boards like Indeed that never serve their page), suspicious content,
+  near-duplicates, and repeat sightings. Click a row to read the full ad, both score
+  reasons, and its links. **Accept** adds it to your jobs as *Interesting* in one
+  click; **Dismiss** hides it. Both show a notice with **Undo**.
 - **Dismissed** — everything you have suppressed, with its reason, restorable in one
   click.
 - **History** — past runs and their counters.
+
+Working through the Pending tab:
+
+- **Keyboard:** `j`/`k` (or ↓/↑) move between rows, `Enter` or `o` opens the detail,
+  `a` accepts, `d` dismisses, `u` undoes the last accept or dismiss. Keys are ignored
+  while you type in the search box.
+- **Bulk:** tick rows (or *Select all shown*), then **Accept N** or **Dismiss N**. The
+  app asks once, naming the count, runs them one by one, and tells you which failed;
+  those stay selected. Only rows the current filters show are included.
 
 Notes on how it behaves:
 
@@ -241,7 +252,8 @@ Notes on how it behaves:
   is flagged rather than trusted. Fetched pages are never rendered in the app.
 - **Re-runs are cheap.** Scores are cached, so a crashed or cancelled scan costs almost
   nothing to repeat. Editing a Candidate Profile re-scores the backlog; *copying* the
-  file does not.
+  file does not. A listing you dismissed, or one already on your board, is skipped
+  before it costs a model call or a page fetch.
 - **Candidate Profiles are CV content.** They live at `$APPDATA/profiles/` mode `0600`,
   are never shown to the web view, and are excluded from export and backup.
 - **Settings → Delete all mail scan data** removes every trace of scanning (inbox,

@@ -7,6 +7,18 @@ import {
 } from "./exportBundle";
 
 describe("parseJobsImportJson", () => {
+  it("keeps the board link a mail-scan job was found through", () => {
+    const json = JSON.stringify([
+      {
+        company: "Acme",
+        url: "https://candidate.hr-manager.net/ad/123",
+        board_url: "https://www.jobindex.dk/c?t=h1000001",
+        status: "Interesting",
+      },
+    ]);
+    expect(parseJobsImportJson(json)[0].board_url).toBe("https://www.jobindex.dk/c?t=h1000001");
+  });
+
   it("parses export-shaped array and maps to NewJob", () => {
     const json = JSON.stringify([
       {

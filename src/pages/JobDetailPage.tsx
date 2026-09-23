@@ -13,6 +13,7 @@ import { JobForm } from "../features/jobs/JobForm";
 import { ListingStatusDot } from "../features/jobs/ListingStatusDot";
 import { en } from "../i18n/en";
 import type { DocType, JobDocument } from "../lib/types";
+import { boardName } from "../lib/jobs/boardName";
 
 const PRIORITY_MAX = 10;
 
@@ -219,6 +220,25 @@ export function JobDetailPage() {
                 {job.url}
               </a>,
               !!job.url,
+            )}
+            {job.board_url?.trim() && (
+              <div className="detailRow">
+                <span className="detailRowLabel" />
+                <a
+                  href={job.board_url}
+                  className="muted"
+                  style={{ fontSize: "0.8rem" }}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const board = job.board_url?.trim();
+                    if (board) void openUrlInBrowser(board).catch(console.error);
+                  }}
+                >
+                  {en.jobDetailPage.viaBoard(boardName(job.board_url.trim()))}
+                </a>
+              </div>
             )}
             {job.url && (
               <div className="detailRow">

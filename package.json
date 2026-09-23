@@ -21,7 +21,7 @@
     "py:test": "uv run pytest -q",
     "verify": "npm run verify:frontend && npm run verify:rust && npm run verify:python",
     "verify:frontend": "npm run lint && npm run test && npm run build",
-    "verify:rust": "pkg-config --exists gdk-3.0 2>/dev/null && (cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml) || echo 'Skipping Rust checks (GTK system libs not found \u2013 run in an environment with Tauri prerequisites installed)'",
+    "verify:rust": "node scripts/verify-rust.mjs",
     "verify:python": "uv sync --quiet && npm run py:lint && npm run py:test",
     "prepare": "husky",
     "sidecar:build": "./scripts/build-sidecar.sh",

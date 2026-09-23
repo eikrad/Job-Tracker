@@ -17,6 +17,7 @@ use crate::mail_scan::injection;
 use crate::mail_scan::profiles::LoadedProfile;
 use crate::mail_scan::protocol::ListingEvent;
 use crate::mail_scan::score_cache::{self, ScoreIdentity};
+use crate::mail_scan::status::{ScoreState, Verdict};
 
 /// Minimum pass-1 score that earns a pass-2 call. Fixed in v1 (spec §11.3).
 pub const PASS1_GATE: i32 = 7;
@@ -382,7 +383,7 @@ pub struct ScoreOutcome {
     pub content_hash: String,
     pub passes: Vec<PassRecord>,
     pub suspicious: bool,
-    pub outcome: &'static str,
+    pub outcome: Verdict,
 }
 
 impl ScoreOutcome {
@@ -398,11 +399,11 @@ impl ScoreOutcome {
         &self.last().reason
     }
 
-    pub fn score_state(&self) -> &'static str {
+    pub fn score_state(&self) -> ScoreState {
         if self.last().score.is_some() {
-            "ok"
+            ScoreState::Ok
         } else {
-            "invalid"
+            ScoreState::Invalid
         }
     }
 }
@@ -431,6 +432,8 @@ pub struct ScoringEngine {
     /// Absent means enrichment is skipped — every match still reaches the inbox, just
     /// without the fetched fields.
     enricher: Option<Box<dyn crate::mail_scan::enrichment::ListingEnricher>>,
+    /// Absent means digests are skipped — unrecognised mail yields no listings.
+    splitter: Option<Box<dyn crate::mail_scan::digest_split::DigestSplitter>>,
     config: ScoringConfig,
     budget: Budget,
 }
@@ -441,6 +444,7 @@ impl ScoringEngine {
             budget: Budget::new(config.budget),
             scorer,
             enricher: None,
+            splitter: None,
             config,
         }
     }
@@ -453,6 +457,67 @@ impl ScoringEngine {
         self
     }
 
+    pub fn with_splitter(
+        mut self,
+        splitter: Box<dyn crate::mail_scan::digest_split::DigestSplitter>,
+    ) -> Self {
+        self.splitter = Some(splitter);
+        self
+    }
+
+    /// Split a digest into listings: cache first, then one budgeted model call.
+    ///
+    /// A cache hit is free. A reply that fails the schema is cached as "no listings"
+    /// so the same mail is not paid for twice; a transient failure is not cached, so
+    /// the next run retries it.
+    pub fn split_digest(
+        &mut self,
+        conn: &Connection,
+        run_id: &str,
+        digest: &crate::mail_scan::protocol::DigestEvent,
+    ) -> Result<crate::mail_scan::digest_split::SplitOutcome, String> {
+        use crate::mail_scan::digest_split::{
+            listings_from_split, lookup_split, parse_split, record_split, SplitOutcome,
+        };
+        let Some(splitter) = self.splitter.as_ref() else {
+            return Ok(SplitOutcome::default());
+        };
+        let version = splitter.prompt_version();
+        if let Some(cached) = lookup_split(conn, &digest.message_fingerprint, &version)? {
+            return Ok(SplitOutcome {
+                listings: listings_from_split(digest, cached.as_deref().unwrap_or_default()),
+                stop: None,
+            });
+        }
+        if let Err(stop) = self.budget.reserve() {
+            return Ok(SplitOutcome {
+                listings: Vec::new(),
+                stop: Some(Self::map_stop(stop)),
+            });
+        }
+        match splitter.split(digest) {
+            Ok(reply) => {
+                self.budget.record_success();
+                let items = match parse_split(&reply) {
+                    Ok(items) => Some(items),
+                    Err(e) => {
+                        log::warn!("mail scan {run_id}: {e}");
+                        None
+                    }
+                };
+                record_split(conn, &digest.message_fingerprint, &version, run_id, items.as_deref())?;
+                Ok(SplitOutcome {
+                    listings: listings_from_split(digest, items.as_deref().unwrap_or_default()),
+                    stop: None,
+                })
+            }
+            Err(e) => Ok(SplitOutcome {
+                listings: Vec::new(),
+                stop: self.map_error(&e),
+            }),
+        }
+    }
+
     /// Enrich a listing that reached the inbox, charging the run budget.
     ///
     /// Budget exhaustion here is not a failure: the match is already useful, so it is
@@ -462,6 +527,10 @@ impl ScoringEngine {
         let Some(enricher) = self.enricher.as_ref() else {
             return Enrichment::skipped();
         };
+        // A listing that is never fetched never reaches the model either.
+        if !crate::mail_scan::enrichment::listing_page_fetchable(listing) {
+            return enricher.enrich(listing);
+        }
         if self.budget.reserve().is_err() {
             return Enrichment::skipped();
         }
@@ -672,15 +741,15 @@ impl ScoringEngine {
             // An invalid pass-1 has no usable gate signal. Surface it in the inbox
             // flagged rather than burying it as under-cutoff on a non-answer.
             let outcome = match p1.score {
-                None => "inbox",
-                Some(s) if s < self.config.pass1_gate => "under_cutoff",
+                None => Verdict::Inbox,
+                Some(s) if s < self.config.pass1_gate => Verdict::UnderCutoff,
                 Some(_) => {
                     match self.resolve_pass2(conn, listings[i], &hashes[i], &mut stop)? {
                         Some(p2) => {
                             let verdict = match p2.score {
-                                None => "inbox",
-                                Some(s2) if s2 >= self.config.pass2_cutoff => "inbox",
-                                Some(_) => "under_cutoff",
+                                None => Verdict::Inbox,
+                                Some(s2) if s2 >= self.config.pass2_cutoff => Verdict::Inbox,
+                                Some(_) => Verdict::UnderCutoff,
                             };
                             passes.push(p2);
                             verdict
@@ -851,7 +920,7 @@ mod tests {
     use crate::mail_scan::protocol::FingerprintKeys;
     use crate::migrations;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     // ----- fixtures -------------------------------------------------------
 
@@ -1055,6 +1124,137 @@ mod tests {
 
     fn engine_with(scorer: &SharedScorer, config: ScoringConfig) -> ScoringEngine {
         ScoringEngine::new(Box::new(scorer.clone()), config)
+    }
+
+    // ----- Enrichment and the run budget ---------------------------------
+
+    struct CountingEnricher(Arc<AtomicUsize>);
+
+    impl crate::mail_scan::enrichment::ListingEnricher for CountingEnricher {
+        fn enrich(&self, listing: &ListingEvent) -> crate::mail_scan::enrichment::Enrichment {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            if crate::mail_scan::enrichment::listing_page_fetchable(listing) {
+                crate::mail_scan::enrichment::Enrichment::from_partial(Default::default())
+            } else {
+                crate::mail_scan::enrichment::Enrichment::not_fetchable()
+            }
+        }
+    }
+
+    #[test]
+    fn a_listing_that_is_never_fetched_costs_no_budget() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let scorer = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(&scorer, ScoringConfig::default())
+            .with_enricher(Box::new(CountingEnricher(calls.clone())));
+
+        // The fixture listings are Indeed links, which are never fetchable.
+        let e = engine.enrich(&listing("Rust Engineer", "great role"));
+
+        assert_eq!(e.error.as_deref(), Some(crate::mail_scan::enrichment::NOT_FETCHABLE));
+        assert_eq!(engine.budget().calls_used(), 0);
+    }
+
+    // ----- Known listings are skipped before they cost anything -----------
+
+    /// One scan over `listings`, through the same driver production uses.
+    fn scan(
+        conn: &mut rusqlite::Connection,
+        run_id: &str,
+        engine: &mut ScoringEngine,
+        listings: &[ListingEvent],
+    ) -> crate::mail_scan::persist::RunStats {
+        let mut stream = String::from(
+            r#"{"t":"started","protocol":2,"run_id":"r","sidecar_version":"1.0.0","sources":1}"#,
+        );
+        for (seq, l) in listings.iter().enumerate() {
+            let line = serde_json::json!({
+                "t": "listing", "source": l.source, "message_id": l.message_id,
+                "message_date": l.message_date, "seq": seq, "title": l.title,
+                "company": l.company, "location": l.location, "url": l.url,
+                "snippet": l.snippet,
+                "fingerprint": {"strong": l.fingerprint.strong, "weak": l.fingerprint.weak},
+                "extractor": l.extractor, "extractor_confidence": l.extractor_confidence,
+            });
+            stream.push('\n');
+            stream.push_str(&line.to_string());
+        }
+        stream.push('\n');
+        crate::mail_scan::consume_event_stream(conn, run_id, stream.as_bytes(), engine).unwrap()
+    }
+
+    #[test]
+    fn a_scan_stopped_by_the_listing_limit_is_reported_so_the_user_can_continue() {
+        let mut conn = db();
+        let scorer = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(&scorer, ScoringConfig::default());
+        let stream = concat!(
+            r#"{"t":"started","protocol":2,"run_id":"r","sidecar_version":"1.0.0","sources":1}"#,
+            "\n",
+            r#"{"t":"finished","listings_total":2000,"messages_total":900,"duration_ms":5,"truncated":true}"#,
+            "\n",
+        );
+
+        let stats =
+            crate::mail_scan::consume_event_stream(&mut conn, "r1", stream.as_bytes(), &mut engine)
+                .unwrap();
+
+        assert!(stats.listing_limit_reached, "{stats:?}");
+    }
+
+    #[test]
+    fn a_listing_already_on_the_board_costs_no_scoring_and_no_fetch() {
+        let mut conn = db();
+        let known = listing("Rust Engineer", "great role");
+        conn.execute(
+            "INSERT INTO jobs (company, title, status, url, created_at, updated_at)
+             VALUES ('Acme', 'Rust Engineer', 'Application Sent', ?1, 't', 't')",
+            [&known.url],
+        )
+        .unwrap();
+        let fetches = Arc::new(AtomicUsize::new(0));
+        let scorer = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(&scorer, ScoringConfig::default())
+            .with_enricher(Box::new(CountingEnricher(fetches.clone())));
+
+        let stats = scan(&mut conn, "r1", &mut engine, &[known]);
+
+        assert_eq!(scorer.total_calls(), 0, "a tracked listing is not worth a model call");
+        assert_eq!(fetches.load(Ordering::SeqCst), 0, "nor a page fetch");
+        assert_eq!(stats.already_tracked, 1, "{stats:?}");
+        assert_eq!(stats.listings_committed, 1, "{stats:?}");
+        assert_eq!(stats.inbox_new, 0, "{stats:?}");
+        assert_eq!(stats.llm_calls, 0, "{stats:?}");
+    }
+
+    #[test]
+    fn a_dismissed_listing_costs_no_scoring_and_no_fetch_even_on_a_rescore() {
+        let mut conn = db();
+        let dismissed = listing("Barista", "coffee");
+        let fresh = listing("Rust Engineer", "great role");
+        let first = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(&first, ScoringConfig::default());
+        scan(&mut conn, "r1", &mut engine, std::slice::from_ref(&dismissed));
+        let fp = dismissed.fingerprint.strong.clone().unwrap();
+        crate::mail_scan::cluster::dismiss(&mut conn, &fp, Some("r1"), None).unwrap();
+
+        // "Re-score backlog" bypasses every cache; a dismissal still has to hold.
+        let fetches = Arc::new(AtomicUsize::new(0));
+        let second = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(
+            &second,
+            ScoringConfig {
+                force_rescore: true,
+                ..ScoringConfig::default()
+            },
+        )
+        .with_enricher(Box::new(CountingEnricher(fetches.clone())));
+        let stats = scan(&mut conn, "r2", &mut engine, &[dismissed, fresh]);
+
+        assert_eq!(second.batch_sizes(), vec![1], "only the fresh listing is scored");
+        assert_eq!(fetches.load(Ordering::SeqCst), 1, "and only it is fetched");
+        assert_eq!(stats.suppressed_by_dismissal, 1, "{stats:?}");
+        assert_eq!(stats.inbox_new, 1, "{stats:?}");
     }
 
     // ----- Step 1: cost control before cost -------------------------------
@@ -1498,9 +1698,9 @@ mod tests {
         let scored = batch.results[0].as_ref().unwrap();
 
         assert_eq!(scored.score(), None);
-        assert_eq!(scored.score_state(), "invalid");
+        assert_eq!(scored.score_state(), ScoreState::Invalid);
         assert_eq!(
-            scored.outcome, "inbox",
+            scored.outcome, Verdict::Inbox,
             "a non-answer must be visible, not silently dropped below the cutoff"
         );
     }
@@ -1536,7 +1736,7 @@ mod tests {
         let batch = score_and_persist(&mut conn, "run1", &mut engine, &listings);
 
         assert_eq!(scorer.pass2_calls(), 0, "the gate is the whole point of pass 1");
-        assert_eq!(batch.results[0].as_ref().unwrap().outcome, "under_cutoff");
+        assert_eq!(batch.results[0].as_ref().unwrap().outcome, Verdict::UnderCutoff);
     }
 
     #[test]
@@ -1549,7 +1749,7 @@ mod tests {
         let batch = score_and_persist(&mut conn, "run1", &mut engine, &listings);
         let scored = batch.results[0].as_ref().unwrap();
 
-        assert_eq!(scored.outcome, "under_cutoff");
+        assert_eq!(scored.outcome, Verdict::UnderCutoff);
         assert_eq!(scored.score(), Some(2), "the deep score is the one that counts");
         let rows: i64 = conn
             .query_row("SELECT COUNT(*) FROM mail_match_inbox", [], |r| r.get(0))
@@ -1571,7 +1771,7 @@ mod tests {
         );
 
         let batch = score_and_persist(&mut conn, "run1", &mut engine, &listings);
-        assert_eq!(batch.results[0].as_ref().unwrap().outcome, "under_cutoff");
+        assert_eq!(batch.results[0].as_ref().unwrap().outcome, Verdict::UnderCutoff);
     }
 
     // ----- prompt assets ---------------------------------------------------

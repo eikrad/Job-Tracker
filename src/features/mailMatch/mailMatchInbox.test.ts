@@ -8,8 +8,6 @@ import {
   pairNearDuplicates,
   parseDraft,
   scoreLabel,
-  sortRows,
-  visibleRows,
   type MailMatchRow,
 } from "./mailMatchInbox";
 
@@ -17,7 +15,6 @@ function row(overrides: Partial<MailMatchRow> = {}): MailMatchRow {
   return {
     id: 1,
     fingerprintId: "fp-1",
-    kind: "new",
     status: "pending",
     jobId: null,
     score: 8,
@@ -27,6 +24,11 @@ function row(overrides: Partial<MailMatchRow> = {}): MailMatchRow {
     nearDuplicateOf: null,
     enrichmentState: "complete",
     enrichmentError: null,
+    snippetOnly: false,
+    pass1Score: null,
+    pass1Reason: null,
+    pass2Score: null,
+    pass2Reason: null,
     draftJson: JSON.stringify({ title: "Rust Engineer", company: "Acme" }),
     sourceBoard: "indeed",
     messageDate: "2026-09-08T06:12:00Z",
@@ -40,39 +42,7 @@ function row(overrides: Partial<MailMatchRow> = {}): MailMatchRow {
   };
 }
 
-describe("ordering", () => {
-  it("sorts by score, then by most recently seen", () => {
-    const rows = [
-      row({ id: 1, score: 4, lastSeenAt: "2026-09-09T00:00:00Z" }),
-      row({ id: 2, score: 9, lastSeenAt: "2026-09-01T00:00:00Z" }),
-      row({ id: 3, score: 9, lastSeenAt: "2026-09-09T00:00:00Z" }),
-    ];
-    expect(sortRows(rows).map((r) => r.id)).toEqual([3, 2, 1]);
-  });
-
-  it("puts an invalid score below every real score", () => {
-    // A `?` outranking a 9 would push the rows we trust least to the top.
-    const rows = [
-      row({ id: 1, score: null, scoreState: "invalid", lastSeenAt: "2026-09-09T00:00:00Z" }),
-      row({ id: 2, score: 2, lastSeenAt: "2026-09-01T00:00:00Z" }),
-    ];
-    expect(sortRows(rows).map((r) => r.id)).toEqual([2, 1]);
-  });
-
-  it("does not mutate the input", () => {
-    const rows = [row({ id: 1, score: 1 }), row({ id: 2, score: 9 })];
-    sortRows(rows);
-    expect(rows.map((r) => r.id)).toEqual([1, 2]);
-  });
-});
-
 describe("filters", () => {
-  it("filters by kind", () => {
-    const rows = [row({ id: 1, kind: "new" }), row({ id: 2, kind: "update_suggestion" })];
-    const out = filterRows(rows, { ...defaultFilters, kind: "update_suggestion" });
-    expect(out.map((r) => r.id)).toEqual([2]);
-  });
-
   it("filters by board", () => {
     const rows = [row({ id: 1, sourceBoard: "indeed" }), row({ id: 2, sourceBoard: "jobindex" })];
     const out = filterRows(rows, { ...defaultFilters, board: "jobindex" });
@@ -112,13 +82,13 @@ describe("filters", () => {
     expect(filterRows(rows, { ...defaultFilters, query: "  " }).map((r) => r.id)).toEqual([1, 2]);
   });
 
-  it("combines filters and ordering in one pass", () => {
+  it("keeps the backend's ranking while filtering", () => {
     const rows = [
+      row({ id: 3, score: 10, sourceBoard: "indeed" }),
       row({ id: 1, score: 9, sourceBoard: "jobindex" }),
       row({ id: 2, score: 8, sourceBoard: "indeed" }),
-      row({ id: 3, score: 10, sourceBoard: "indeed" }),
     ];
-    const out = visibleRows(rows, { ...defaultFilters, board: "indeed" });
+    const out = filterRows(rows, { ...defaultFilters, board: "indeed" });
     expect(out.map((r) => r.id)).toEqual([3, 2]);
   });
 
@@ -177,9 +147,6 @@ describe("badges", () => {
     expect(badge?.count).toBe(3);
   });
 
-  it("marks an update suggestion", () => {
-    expect(badgesFor(row({ kind: "update_suggestion" })).map((b) => b.kind)).toContain("update");
-  });
 });
 
 describe("near-duplicates", () => {
@@ -192,7 +159,7 @@ describe("near-duplicates", () => {
     ];
     const pairs = pairNearDuplicates(rows);
 
-    expect(visibleRows(rows, defaultFilters)).toHaveLength(2);
+    expect(filterRows(rows, defaultFilters)).toHaveLength(2);
     expect(pairs.get(1)?.map((r) => r.fingerprintId)).toEqual(["fp-kbh", "fp-aarhus"]);
   });
 

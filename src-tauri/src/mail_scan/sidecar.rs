@@ -274,8 +274,8 @@ mod tests {
     #[test]
     fn the_bundled_command_drops_interpreter_flags_but_keeps_the_subcommand() {
         // Asserted against the *real* SCAN_ARGV, not a stand-in. An earlier version of
-        // this test used a made-up argv without `--protocol 1`, which hid a filter that
-        // stripped `--protocol` and left its value `1` behind as a stray argument.
+        // this test used a made-up argv without `--protocol N`, which hid a filter that
+        // stripped `--protocol` and left its value behind as a stray argument.
         let (program, args) = command_for(
             &SidecarMode::Bundled {
                 path: "/opt/app/jobtracker-mail-scan".into(),
@@ -286,7 +286,7 @@ mod tests {
         assert_eq!(program, PathBuf::from("/opt/app/jobtracker-mail-scan"));
         assert_eq!(
             args,
-            vec!["scan".to_string(), "--protocol".to_string(), "1".to_string()]
+            vec!["scan".to_string(), "--protocol".to_string(), "2".to_string()]
         );
     }
 
@@ -302,7 +302,7 @@ mod tests {
             let (_, args) = command_for(&mode, crate::mail_scan::spawn::SCAN_ARGV);
             let protocol = args.iter().position(|a| a == "--protocol");
             assert!(protocol.is_some(), "{mode:?} lost --protocol: {args:?}");
-            assert_eq!(args.get(protocol.unwrap() + 1), Some(&"1".to_string()), "{mode:?}");
+            assert_eq!(args.get(protocol.unwrap() + 1), Some(&"2".to_string()), "{mode:?}");
             assert!(args.contains(&"scan".to_string()), "{mode:?} lost the subcommand");
         }
     }

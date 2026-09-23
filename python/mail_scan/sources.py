@@ -8,6 +8,7 @@ import mailbox
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC
+from email.header import decode_header, make_header
 from email.message import Message
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -17,12 +18,22 @@ from mail_scan.html_text import html_to_visible_text, looks_like_html
 
 @dataclass(frozen=True)
 class MailMessage:
+    """One parsed message, as extractors see it.
+
+    ``body_text`` is the visible prose (what the scorer may read). ``html`` and
+    ``plain`` are the decoded ``text/html`` and ``text/plain`` parts, so a board
+    extractor can read the structure and links that visible text throws away. They
+    are for parsing only: markup never goes to the model (spec §6.2).
+    """
+
     message_id: str
     message_date: str
     subject: str
     from_addr: str
     body_text: str
     raw_size: int
+    html: str = ""
+    plain: str = ""
 
 
 @dataclass(frozen=True)
@@ -88,13 +99,18 @@ def _decode_part(part: Message) -> str:
     return ""
 
 
-def _body_text(msg: Message, max_chars: int) -> str:
-    """Best available plain text for a message.
+def _decode_header(raw: str | None) -> str:
+    """RFC 2047 encoded-words (``=?utf-8?q?...?=``) to text; raw on failure."""
+    if not raw:
+        return ""
+    try:
+        return str(make_header(decode_header(raw))).strip()
+    except (LookupError, UnicodeError, ValueError):
+        return raw.strip()
 
-    Prefers `text/plain`. Falls back to the *visible* text of `text/html` — never the
-    markup, and never the parts of it a human reader cannot see (spec §6.2): a hidden
-    block contradicting the visible ad is a prompt-injection vector, not content.
-    """
+
+def _text_parts(msg: Message) -> tuple[list[str], list[str]]:
+    """Decoded ``(plain, html)`` body parts, attachments excluded."""
     plain: list[str] = []
     html: list[str] = []
 
@@ -116,7 +132,20 @@ def _body_text(msg: Message, max_chars: int) -> str:
             html.append(decoded)
         else:
             plain.append(decoded)
+    return plain, html
 
+
+def _body_text(msg: Message, max_chars: int) -> str:
+    """Best available plain text for a message.
+
+    Prefers `text/plain`. Falls back to the *visible* text of `text/html` — never the
+    markup, and never the parts of it a human reader cannot see (spec §6.2): a hidden
+    block contradicting the visible ad is a prompt-injection vector, not content.
+    """
+    return _visible_body(*_text_parts(msg), max_chars)
+
+
+def _visible_body(plain: list[str], html: list[str], max_chars: int) -> str:
     text = "\n".join(p for p in plain if p.strip()).strip()
     if not text and html:
         text = html_to_visible_text("\n".join(html)).strip()
@@ -131,13 +160,16 @@ def _body_text(msg: Message, max_chars: int) -> str:
 
 def _to_mail_message(msg: Message, raw_size: int, max_body_chars: int) -> MailMessage:
     mid = (msg.get("Message-ID") or msg.get("Message-Id") or "").strip()
+    plain, html = _text_parts(msg)
     return MailMessage(
         message_id=mid,
         message_date=_message_date(msg),
-        subject=(msg.get("Subject") or "").strip(),
-        from_addr=(msg.get("From") or "").strip(),
-        body_text=_body_text(msg, max_body_chars),
+        subject=_decode_header(msg.get("Subject")),
+        from_addr=_decode_header(msg.get("From")),
+        body_text=_visible_body(plain, html, max_body_chars),
         raw_size=raw_size,
+        html="\n".join(html),
+        plain="\n".join(plain),
     )
 
 
@@ -201,6 +233,25 @@ def _iter_mbox_bytes(
             # else: skip preamble before the first From (e.g. after resume)
 
 
+def _last_from_line_ending_at(path: Path, offset: int) -> bytes | None:
+    """The ``From `` line of the message that ends at ``offset``.
+
+    Alert mails are routinely 50-150 KB of HTML, so the look-back grows until it
+    reaches the line instead of giving up after a fixed small window. It is not
+    capped at max_message_bytes: an oversized mail is skipped but still consumed,
+    so the cursor can end right after one.
+    """
+    window = 16384
+    with path.open("rb") as handle:
+        while True:
+            window = min(window, offset)
+            handle.seek(offset - window)
+            found = _last_from_line_before(handle.read(window))
+            if found is not None or window >= offset:
+                return found
+            window *= 4
+
+
 def _resolve_resume(
     path: Path, stored: SourceCursor | None
 ) -> tuple[int, bool, str | None]:
@@ -213,12 +264,15 @@ def _resolve_resume(
         return 0, True, "offset_past_eof"
     if stored.offset <= 0:
         return 0, False, None
-    if stored.sentinel_hash:
-        window = min(stored.offset, 16384)
+    if stored.offset < size:
+        # The cursor sits where the next message starts; anything else means the
+        # file was rewritten (compacted) under us.
         with path.open("rb") as handle:
-            handle.seek(stored.offset - window)
-            chunk = handle.read(window)
-        last_from = _last_from_line_before(chunk)
+            handle.seek(stored.offset)
+            if handle.read(5) != b"From ":
+                return 0, True, "sentinel_mismatch"
+    if stored.sentinel_hash:
+        last_from = _last_from_line_ending_at(path, stored.offset)
         if last_from is None or _from_line_hash(last_from) != stored.sentinel_hash:
             return 0, True, "sentinel_mismatch"
     return stored.offset, False, None
@@ -258,12 +312,15 @@ def iter_mbox(
                 body = raw[nl + 1 :]
             msg = email.message_from_bytes(body)
             mail = _to_mail_message(msg, len(raw), max_body_chars)
+            count += 1
+            yield mail
+            # Only reached once the consumer asks for the next mail, i.e. has finished
+            # this one. A scan that stops mid-mail (limit, cancel) leaves the cursor
+            # before it, so the next run reads it again instead of skipping it.
             last_id[0] = mail.message_id or last_id[0]
             last_offset[0] = end_offset
             if from_line:
                 last_sentinel[0] = _from_line_hash(from_line)
-            count += 1
-            yield mail
 
     def finalize() -> SourceCursor:
         size_now, mtime_now = _file_meta(path)
@@ -322,7 +379,7 @@ def iter_maildir(
     if skip_after_id and not cursor_reset:
         try:
             present = False
-            for key in box:
+            for key in box.iterkeys():  # a Mailbox iterates messages, not keys
                 msg = box.get_message(key)
                 mid = (msg.get("Message-ID") or msg.get("Message-Id") or "").strip()
                 if mid == skip_after_id:
@@ -337,14 +394,16 @@ def iter_maildir(
             reset_reason = "maildir_unreadable"
             skip_after_id = None
 
-    last_id: list[str | None] = [None]
     resume_id = None if cursor_reset else skip_after_id
+    # A scan that finds nothing new keeps the anchor it resumed from.
+    last_id: list[str | None] = [resume_id]
 
     def generator() -> Iterator[MailMessage]:
         count = 0
         past_cursor = resume_id is None
         try:
-            for key in sorted(box):
+            # Iterating a Mailbox yields messages, not keys; sort the keys.
+            for key in sorted(box.keys()):
                 if count >= max_messages:
                     break
                 msg = box.get_message(key)
@@ -356,9 +415,10 @@ def iter_maildir(
                     if mail.message_id == resume_id:
                         past_cursor = True
                     continue
-                last_id[0] = mail.message_id or last_id[0]
                 count += 1
                 yield mail
+                # Committed only after the consumer is done with it (see iter_mbox).
+                last_id[0] = mail.message_id or last_id[0]
         finally:
             box.close()
 

@@ -24,7 +24,7 @@ Rev. 1 was directionally right; the changes below are about failure modes, trust
 | 8 | **SSRF/fetch hardening** (§6.3). | Enrichment fetches URLs taken from untrusted email; current Rust fetch helpers have no scheme/IP/size guards. |
 | 9 | **Schema-versioned migration runner** (§7.1). | `db.rs` today migrates by `PRAGMA table_info` sniffing. Four new tables plus indices need `PRAGMA user_version` with ordered steps. |
 | 10 | **`priority` is no longer written from LLM output** (§0.1). | Rev. 1 contradicts the app's existing rule. |
-| 11 | **Cross-language fingerprint conformance fixtures** (§9.3). | Same normalization is needed in Python, Rust and TS; fixtures stop the three from drifting. |
+| 11 | **Fingerprint conformance fixtures** (§9.3). | Fingerprints are computed in the sidecar only; the fixture pins its normalization. |
 | 12 | **Provider registry is data, not code** (§8). | An unverified Scaleway model id becomes a settings edit, not a patch release. |
 
 ### 0.1 Correction carried over from rev. 1
@@ -192,6 +192,17 @@ Rules:
 - **The cursor is only committed after `source_finished`.** A crash mid-source means that source is re-read next run; listings are idempotent by fingerprint, so re-reading is safe (just wasted parse time, not wasted LLM spend — the score cache absorbs it).
 - The sidecar emits listings **streamed as parsed**, never accumulating the full corpus in memory.
 
+**Protocol 2 — `digest` (B2).** Mail no board extractor claims is no longer guessed at (the old `generic` subject-as-title extractor is gone; the fallback is named `digest` in `extractors`). The sidecar emits one event per such mail instead of listings:
+
+```jsonc
+{"t":"digest","source":"jobbank","message_id":"<…>","message_date":"…","subject":"…","sender":"…",
+ "message_fingerprint":"msg:<32 hex, content hash>",
+ "body":"[Geodata Analyst][L1] – Acme, Aarhus …",          // visible text, ≤ max_body_chars
+ "links":{"L1":{"url":"https://…(token-free)","fingerprint":{"strong":"url:…","weak":"url:…"}}}}
+```
+
+Links are admitted by the same URL hygiene as listings (public http(s), tokens stripped, ≤ 50 links, ≤ 1000 chars each); a mail with no admissible link emits nothing. Rust sends subject, sender, body and the link ids with their **host only** (never a URL) to the model with `prompts/split_*` and a strict schema (`title, company, location, link_id, snippet`; `link_id` matches `^L[0-9]{1,3}$`). Unknown ids are dropped; URL and fingerprint come from the table, so fingerprints stay Python-only — a digest listing's weak key is its link key, since the sidecar cannot know the model's company/title. Zero listings is a valid answer. Splits are budgeted like scoring calls and cached in `mail_digest_splits` by message fingerprint + split prompt version (malformed replies are cached as empty). Split listings then take the normal path: dismissal gate → scoring → enrichment → persist.
+
 ### 4.4 Cancellation
 
 Cooperative, three layers:
@@ -214,6 +225,8 @@ Rev. 1's rule (`normalized title+company` **or** canonical URL) is an OR over tw
 
 1. `board:external_id` — Indeed `jk`, LinkedIn `currentJobId`, Jobindex ad id (parsed by the extractor, never by the LLM).
 2. `url:<canonical>` — canonicalized: lowercase scheme+host, strip `www.`, drop `utm_*`/`gclid`/`fbclid`/`from`/`vjk`/`trk`/`refId`/session params, unwrap known redirect wrappers (`indeed.com/rc/clk?jk=`, `lnkd.in`, Jobindex click-through), drop fragment, drop trailing `/`.
+
+> **As built (B1 link rework):** the job ids are Indeed `jk`, the LinkedIn `/jobs/view/<id>` id and the Jobindex `c?t=<id>` id. Per-user tokens (Jobindex `uid`, LinkedIn `midToken`/`otpToken`/`eid`, Indeed `tk`/`alid`, …) are stripped from the emitted listing `url` as well as from the key (`python/mail_scan/urls.py`); board job links are reduced to the one parameter that names the job. A sponsored Indeed `/pagead/clk` link has no job id and changes per mail, so it gets a weak key only.
 
 **Weak key** — `normalize(company) | normalize(title) | normalize(city)`, where `normalize` = NFKD → lowercase → strip diacritics (`ø→o`, `å→a`, `ä→a`) → strip legal suffixes (`a/s`, `aps`, `gmbh`, `ivs`, `ab`, `as`, `ltd`, `inc`) → collapse whitespace/punctuation → drop m/w/d-style gender markers and `(m/w/d)`, `(m/f/d)`, `– remote` suffixes.
 
@@ -241,6 +254,8 @@ The cluster's `fingerprint_id` is the strong key if present, else `weak:<key>`. 
 | Score | Advisory only. Never auto-accepts, never auto-dismisses, never writes `priority` |
 | Near-duplicate | Surfaced, not merged (§5.1) |
 | Report | None in v1 |
+
+> **Superseded in part (C1 cleanup):** Update Suggestions were cut — nothing ever created one, and the accept/preview path was unreachable. The "Existing Job" rule is now: a listing whose fingerprint was accepted into a Job, or whose link a Job carries as `url` or `board_url`, is recorded as a Scored Sighting and kept out of the inbox (run stat `alreadyTracked`). "Accept update" and §5.6's re-diff no longer exist; `mail_match_inbox.kind` stays in the schema for migration safety and is always `new`.
 
 ### 5.3 Dismissal — revocable and attributable
 
@@ -271,6 +286,8 @@ Per source, persist `{size, mtime_ns, offset, last_message_id}`.
 - `since` (default: 90 days, configurable) is a hard floor applied before any parsing work.
 
 ### 5.6 Update Suggestions and the accept-time re-diff
+
+> **Removed (C1 cleanup):** see the note under §5.2. Only the idempotency paragraph at the end of this section still describes the code (`accept_new`).
 
 A suggestion stores the field patch **and** the `job.updated_at` observed when it was computed.
 
@@ -325,6 +342,7 @@ URLs come from email, so the fetch path is an SSRF sink. A single `safe_fetch` m
 - `Content-Type` must be HTML/text/JSON; anything else is discarded unread.
 - No cookie store, no auth headers, no client certs. Per-host concurrency 1, ≥ 750 ms between requests to the same host.
 - Extracted text only — the fetched HTML is **never** rendered in the webview, never injected via `dangerouslySetInnerHTML`, never opened in a Tauri window.
+- **Following to the employer's ad** (B2): a redirect off the board's site (Jobindex `/c?t=` → ATS) makes the final URL the draft's `url`, with the board link kept as `board_url`. On any other board, a thin wrapper page (anchor text like *Se hele annoncen* / *Apply on company site*, or a single non-social external link) earns **exactly one** extra fetch through the same guard; the hop's URL comes from page content, so it is re-validated like any other, and a failed hop keeps the board page. LinkedIn is read from `.show-more-less-html__markup` only; Indeed is never fetched (401 bot challenge) and costs no budget.
 
 ### 6.4 Sidecar process hardening
 
@@ -605,7 +623,9 @@ Extends the existing `tests/` + `uv` setup already wired into `npm run verify:py
 - Redaction: a key injected into an error string never reaches `error_summary` or the log file.
 - LLM client against a local stub server: retry/backoff, circuit breaker, cache hit path, invalid-JSON repair path, out-of-range score rejection.
 
-### 9.3 Cross-language conformance
+### 9.3 Fingerprint conformance
+
+> **Superseded in part:** only the sidecar computes fingerprints — Rust stores the keys it receives and never recomputes them — so the Rust and TS copies were deleted and the fixture (now `tests/fixtures/mail_scan/fingerprints.json`) is run by pytest only.
 
 `tests/fixtures/fingerprints.json` — ~60 cases `{input, expected_strong, expected_weak, expected_cluster}`, covering Danish/German diacritics, legal suffixes, `(m/w/d)`, tracking params, redirect wrappers, and the near-duplicate pair. Executed by **pytest**, **cargo test**, and **vitest** (the TS side reuses it for `duplicateCheck.ts`, whose `url === url || company+title` rule is the same shape and should adopt the same normalization). This is the single highest-value test asset in the feature — it is what keeps three implementations honest.
 
@@ -641,6 +661,8 @@ Stable codes, one user-facing sentence each in `en.ts`, surfaced in the run row 
 | `E_BUDGET_EXHAUSTED` | Run cap reached | Continue button |
 | `E_DB` | SQLite failure | Log path; DB untouched beyond committed items |
 | `W_*` | Non-fatal warnings (unparseable message, cursor reset, fetch failed, enrichment partial) | Counted in the run summary, expandable |
+
+> **As built (C1 cleanup):** the codes a run row can carry are what `mail_scan/mod.rs` writes — `E_SPAWN` (sidecar would not start), `E_PROTOCOL_MISMATCH` (the `E_SIDECAR_VERSION` case), `E_PROTOCOL` / `E_PROTOCOL_OVERSIZE`, `E_IO` / `E_CHILD` / `E_EXIT_<n>` (the sidecar's stream broke or it exited abnormally), `E_LLM_AUTH`, `E_LLM_MODEL`, `E_LLM_UNAVAILABLE`, `E_LLM` (any other provider error) and `E_DB`; `src/features/mailMatch/runErrors.ts` maps exactly those. The budget cap is not a failure (the run `completed` with `budgetExhausted`), so there is no `E_BUDGET_EXHAUSTED`. `E_CONFIG_INCOMPLETE`, `E_PROFILE_UNREADABLE`, `E_SOURCE_UNREADABLE` and `E_SIDECAR_MISSING` are prefixes of messages returned before a run starts (or from Settings' folder test), shown as-is.
 
 Partial failure is the normal case, not an exception: a run that hits warnings still `completed`, with counters. Only the `E_*` codes above end a run `failed`, and **no failure path ever marks a fingerprint dismissed.**
 
