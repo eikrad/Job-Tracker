@@ -22,9 +22,17 @@ _Avoid_: Job, application, capture item
 A tracked application opportunity on the board, with status in the configured workflow.
 _Avoid_: Listing, match, vacancy (when referring to something already saved in the tracker)
 
+**Board Link**:
+The job-board page a Job was found through (`jobs.board_url`), kept as a secondary "via <board>" link when the Job's `url` is the employer's own ad.
+_Avoid_: Source (that is the board's name, not its link), listing URL
+
 **Mail Match Fingerprint**:
-Stable listing identity using tiered keys: a strong key (`board:external_id` or canonical URL) when available, else a weak key (`company|title|city` after normalization). Clustering follows strong-key identity first; weak-only collisions merge; differing strong keys with the same weak key are near-duplicates, not merges.
+Stable listing identity using tiered keys: a strong key (`board:external_id` or canonical URL) when available, else a weak key (`company|title|city` after normalization). Computed only by the Mail Scan sidecar; the app stores the keys it receives. Clustering follows strong-key identity first; weak-only collisions merge; differing strong keys with the same weak key are near-duplicates, not merges.
 _Avoid_: Job id, email message id as sole identity, OR-over-two-keys dedup
+
+**Digest**:
+An alert mail no board extractor recognises, sent by the sidecar as visible text with numbered link references plus a link table; the model splits it into listings and may only point at link ids from the table. Zero listings (marketing mail) is a valid split.
+_Avoid_: Generic listing, subject-as-title fallback
 
 **Near-duplicate**:
 Two listings that share a weak key but have different strong keys; shown together for human dismiss, never auto-merged.
@@ -35,7 +43,7 @@ A fingerprint the user suppressed from the inbox; revocable from the Dismissed v
 _Avoid_: Permanent silent suppress, soft hide without restore
 
 **Enrichment**:
-Filling a Mail Match draft toward Job fields (deadline, contacts, workplace, salary, etc.) from listing text when fetchable; may be complete, partial, or failed.
+Filling a Mail Match draft toward Job fields (deadline, contacts, workplace, salary, etc.) from listing text when fetchable; may be complete, partial, or failed. Enrichment follows a board link to the employer's own ad when it can — a Jobindex link's redirect, or one extra hop out of a thin wrapper page — and then the ad becomes the draft's `url` with the board link kept as its Board Link. LinkedIn is read from its guest description block; Indeed is never fetched (it answers bots with a challenge), which is an expected `skipped`, not a failure.
 _Avoid_: Scoring, Capture URL extraction (different pipeline)
 
 **Candidate Profile**:

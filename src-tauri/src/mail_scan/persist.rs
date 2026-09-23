@@ -161,7 +161,9 @@ pub fn upsert_source_cursor(
 }
 
 /// The Draft a Mail Match becomes a Job from: what the digest said, overlaid on
-/// whatever the listing page added, plus the page text itself.
+/// whatever the listing page added, plus the page text itself. When enrichment followed
+/// the board link to the employer's ad, that ad is the `url` and the board link moves
+/// to `board_url`.
 ///
 /// Where both sources name a title or company, the extractor wins: the board's own
 /// markup is more reliable than a model reading a page. A blank extractor value is not
@@ -179,7 +181,15 @@ fn draft_json(listing: &ListingEvent, enrichment: &Enrichment) -> String {
     };
     prefer_extractor("title", &listing.title);
     prefer_extractor("company", &listing.company);
-    prefer_extractor("url", &listing.url);
+    match enrichment.employer_url.as_deref() {
+        // Followed off the board: the employer's ad is the Job's link, and the board
+        // page stays reachable next to it.
+        Some(ad) => {
+            draft.insert("url".into(), json!(ad));
+            draft.insert("board_url".into(), json!(listing.url));
+        }
+        None => prefer_extractor("url", &listing.url),
+    }
     // The page text when it was fetched; the digest's teaser only as a fallback.
     let raw_text = enrichment.page_text.as_deref().unwrap_or(&listing.snippet);
     draft.insert("raw_text".into(), json!(raw_text));
@@ -426,7 +436,7 @@ mod tests {
     fn crash_mid_stream_keeps_committed_items() {
         let mut conn = db();
         let stream = r#"
-{"t":"started","protocol":1,"run_id":"r1","sidecar_version":"1.0.0","sources":1}
+{"t":"started","protocol":2,"run_id":"r1","sidecar_version":"1.0.0","sources":1}
 {"t":"listing","source":"indeed","message_id":"<a>","message_date":"2026-09-08T06:12:00Z","seq":0,"title":"A","company":"Acme","location":"Kbh","url":"https://example.com/a","snippet":"s","fingerprint":{"strong":"indeed:a","weak":"acme|a|kbh"},"extractor":"indeed","extractor_confidence":0.9}
 {"t":"listing","source":"indeed","message_id":"<b>","message_date":"2026-09-08T06:12:00Z","seq":1,"title":"B","company":"Acme","location":"Kbh","url":"https://example.com/b","snippet":"s","fingerprint":{"strong":"indeed:b","weak":"acme|b|kbh"},"extractor":"indeed","extractor_confidence":0.9}
 {"t":"listing","source":"indeed","message_id":"<c","broken
@@ -704,6 +714,40 @@ mod tests {
         persist_listing(&mut conn, "r1", &l, &scored, &enrichment, &identities()).unwrap();
 
         assert_eq!(stored_draft(&conn)["raw_text"], json!(page));
+    }
+
+    #[test]
+    fn a_followed_listing_drafts_the_employer_ad_and_keeps_the_board_link() {
+        let mut conn = db();
+        start_run(&mut conn, "r1").unwrap();
+        let mut l = listing("Dev", "jobindex:h1", "acme|dev|kbh");
+        l.url = "https://www.jobindex.dk/c?t=h1".into();
+        let scored = scored_for(&l, "inbox");
+        let enrichment = Enrichment {
+            employer_url: Some("https://candidate.hr-manager.net/ad/1".into()),
+            ..Enrichment::from_partial(std::collections::HashMap::new()).with_page_text("ad")
+        };
+
+        persist_listing(&mut conn, "r1", &l, &scored, &enrichment, &identities()).unwrap();
+
+        let draft = stored_draft(&conn);
+        assert_eq!(draft["url"], json!("https://candidate.hr-manager.net/ad/1"));
+        assert_eq!(draft["board_url"], json!("https://www.jobindex.dk/c?t=h1"));
+    }
+
+    #[test]
+    fn an_unfollowed_listing_has_no_board_link() {
+        let mut conn = db();
+        start_run(&mut conn, "r1").unwrap();
+        let l = listing("Dev", "linkedin:1", "acme|dev|kbh");
+        let scored = scored_for(&l, "inbox");
+
+        persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities())
+            .unwrap();
+
+        let draft = stored_draft(&conn);
+        assert_eq!(draft["url"], json!(l.url));
+        assert!(draft.get("board_url").is_none(), "{draft}");
     }
 
     #[test]

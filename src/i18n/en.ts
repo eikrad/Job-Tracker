@@ -365,6 +365,7 @@ export const en = {
     tags: "Tags",
     referenceNumber: "Reference",
     source: "Source",
+    viaBoard: (board: string) => `via ${board}`,
     language: "Language",
     contactName: "Contact",
     contactEmail: "Email",

@@ -1,7 +1,7 @@
 // Documentation schema mirror for frontend typing and migrations.
 export const schema = {
   jobs: [
-    "id", "company", "title", "url", "raw_text", "status",
+    "id", "company", "title", "url", "board_url", "raw_text", "status",
     "deadline", "interview_date", "start_date",
     "tags", "detected_language", "notes",
     "contact_name", "contact_email", "contact_phone",
@@ -39,6 +39,9 @@ export const schema = {
   mail_source_cursors: [
     "source_id", "path", "kind", "size", "mtime_ns", "offset",
     "sentinel_hash", "last_message_id", "updated_at",
+  ],
+  mail_digest_splits: [
+    "message_fingerprint", "prompt_version", "outcome", "items_json", "run_id", "split_at",
   ],
   job_field_provenance: ["job_id", "field", "source", "run_id", "set_at"],
 };

@@ -325,6 +325,7 @@ pub fn discover_thunderbird_mailboxes() -> Vec<PathBuf> {
 /// `jobs` is absent and must stay absent: the point of the action is to forget the
 /// scanning, not the applications it produced (spec §6.5).
 const MAIL_SCAN_TABLES: &[&str] = &[
+    "mail_digest_splits",
     "mail_scored_sightings",
     "mail_match_dismissals",
     "mail_match_inbox",

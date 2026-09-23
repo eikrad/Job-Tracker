@@ -27,6 +27,7 @@ use serde_json::Value;
 pub const PATCHABLE_FIELDS: &[&str] = &[
     "title",
     "url",
+    "board_url",
     "deadline",
     "interview_date",
     "start_date",
@@ -355,6 +356,7 @@ fn job_from_draft(draft: &HashMap<String, Value>, board: Option<&str>) -> crate:
         priority: None,
         reference_number: text("reference_number"),
         source: text("source").or_else(|| board.map(str::to_string)),
+        board_url: text("board_url"),
     }
 }
 
@@ -490,6 +492,7 @@ fn payload_field_is_set(payload: &crate::db::NewJob, field: &str) -> bool {
     match field {
         "title" => get(&payload.title),
         "url" => get(&payload.url),
+        "board_url" => get(&payload.board_url),
         "deadline" => get(&payload.deadline),
         "interview_date" => get(&payload.interview_date),
         "start_date" => get(&payload.start_date),
@@ -811,6 +814,35 @@ mod tests {
             })
             .unwrap();
         assert_eq!(company, UNKNOWN_COMPANY);
+    }
+
+    #[test]
+    fn an_accepted_job_keeps_the_board_link_next_to_the_employer_ad() {
+        let mut conn = db();
+        let mut draft = full_draft();
+        draft["url"] = json!("https://candidate.hr-manager.net/ad/123");
+        draft["board_url"] = json!("https://www.jobindex.dk/c?t=h1000001");
+        let inbox = seed_inbox(&conn, "new", None, draft, None);
+
+        let outcome = accept_new(&mut conn, inbox).unwrap();
+
+        let (url, board_url): (String, Option<String>) = conn
+            .query_row(
+                "SELECT url, board_url FROM jobs WHERE id = ?1",
+                params![outcome.job_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(url, "https://candidate.hr-manager.net/ad/123");
+        assert_eq!(
+            board_url.as_deref(),
+            Some("https://www.jobindex.dk/c?t=h1000001")
+        );
+        assert!(
+            outcome.fields_written.iter().any(|f| f == "board_url"),
+            "provenance must cover the board link: {:?}",
+            outcome.fields_written
+        );
     }
 
     // ----- Step 4: idempotency --------------------------------------------

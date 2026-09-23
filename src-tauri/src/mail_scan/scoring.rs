@@ -431,6 +431,8 @@ pub struct ScoringEngine {
     /// Absent means enrichment is skipped — every match still reaches the inbox, just
     /// without the fetched fields.
     enricher: Option<Box<dyn crate::mail_scan::enrichment::ListingEnricher>>,
+    /// Absent means digests are skipped — unrecognised mail yields no listings.
+    splitter: Option<Box<dyn crate::mail_scan::digest_split::DigestSplitter>>,
     config: ScoringConfig,
     budget: Budget,
 }
@@ -441,6 +443,7 @@ impl ScoringEngine {
             budget: Budget::new(config.budget),
             scorer,
             enricher: None,
+            splitter: None,
             config,
         }
     }
@@ -453,6 +456,67 @@ impl ScoringEngine {
         self
     }
 
+    pub fn with_splitter(
+        mut self,
+        splitter: Box<dyn crate::mail_scan::digest_split::DigestSplitter>,
+    ) -> Self {
+        self.splitter = Some(splitter);
+        self
+    }
+
+    /// Split a digest into listings: cache first, then one budgeted model call.
+    ///
+    /// A cache hit is free. A reply that fails the schema is cached as "no listings"
+    /// so the same mail is not paid for twice; a transient failure is not cached, so
+    /// the next run retries it.
+    pub fn split_digest(
+        &mut self,
+        conn: &Connection,
+        run_id: &str,
+        digest: &crate::mail_scan::protocol::DigestEvent,
+    ) -> Result<crate::mail_scan::digest_split::SplitOutcome, String> {
+        use crate::mail_scan::digest_split::{
+            listings_from_split, lookup_split, parse_split, record_split, SplitOutcome,
+        };
+        let Some(splitter) = self.splitter.as_ref() else {
+            return Ok(SplitOutcome::default());
+        };
+        let version = splitter.prompt_version();
+        if let Some(cached) = lookup_split(conn, &digest.message_fingerprint, &version)? {
+            return Ok(SplitOutcome {
+                listings: listings_from_split(digest, cached.as_deref().unwrap_or_default()),
+                stop: None,
+            });
+        }
+        if let Err(stop) = self.budget.reserve() {
+            return Ok(SplitOutcome {
+                listings: Vec::new(),
+                stop: Some(Self::map_stop(stop)),
+            });
+        }
+        match splitter.split(digest) {
+            Ok(reply) => {
+                self.budget.record_success();
+                let items = match parse_split(&reply) {
+                    Ok(items) => Some(items),
+                    Err(e) => {
+                        log::warn!("mail scan {run_id}: {e}");
+                        None
+                    }
+                };
+                record_split(conn, &digest.message_fingerprint, &version, run_id, items.as_deref())?;
+                Ok(SplitOutcome {
+                    listings: listings_from_split(digest, items.as_deref().unwrap_or_default()),
+                    stop: None,
+                })
+            }
+            Err(e) => Ok(SplitOutcome {
+                listings: Vec::new(),
+                stop: self.map_error(&e),
+            }),
+        }
+    }
+
     /// Enrich a listing that reached the inbox, charging the run budget.
     ///
     /// Budget exhaustion here is not a failure: the match is already useful, so it is
@@ -462,6 +526,10 @@ impl ScoringEngine {
         let Some(enricher) = self.enricher.as_ref() else {
             return Enrichment::skipped();
         };
+        // A listing that is never fetched never reaches the model either.
+        if !crate::mail_scan::enrichment::listing_page_fetchable(listing) {
+            return enricher.enrich(listing);
+        }
         if self.budget.reserve().is_err() {
             return Enrichment::skipped();
         }
@@ -851,7 +919,7 @@ mod tests {
     use crate::mail_scan::protocol::FingerprintKeys;
     use crate::migrations;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     // ----- fixtures -------------------------------------------------------
 
@@ -1055,6 +1123,35 @@ mod tests {
 
     fn engine_with(scorer: &SharedScorer, config: ScoringConfig) -> ScoringEngine {
         ScoringEngine::new(Box::new(scorer.clone()), config)
+    }
+
+    // ----- Enrichment and the run budget ---------------------------------
+
+    struct CountingEnricher(Arc<AtomicUsize>);
+
+    impl crate::mail_scan::enrichment::ListingEnricher for CountingEnricher {
+        fn enrich(&self, listing: &ListingEvent) -> crate::mail_scan::enrichment::Enrichment {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            if crate::mail_scan::enrichment::listing_page_fetchable(listing) {
+                crate::mail_scan::enrichment::Enrichment::from_partial(Default::default())
+            } else {
+                crate::mail_scan::enrichment::Enrichment::not_fetchable()
+            }
+        }
+    }
+
+    #[test]
+    fn a_listing_that_is_never_fetched_costs_no_budget() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let scorer = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(&scorer, ScoringConfig::default())
+            .with_enricher(Box::new(CountingEnricher(calls.clone())));
+
+        // The fixture listings are Indeed links, which are never fetchable.
+        let e = engine.enrich(&listing("Rust Engineer", "great role"));
+
+        assert_eq!(e.error.as_deref(), Some(crate::mail_scan::enrichment::NOT_FETCHABLE));
+        assert_eq!(engine.budget().calls_used(), 0);
     }
 
     // ----- Step 1: cost control before cost -------------------------------

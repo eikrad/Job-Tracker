@@ -19,12 +19,12 @@ import re
 from html.parser import HTMLParser
 
 # Content of these elements is never prose.
-_DROPPED_ELEMENTS = frozenset(
+DROPPED_ELEMENTS = frozenset(
     {"script", "style", "head", "title", "meta", "link", "noscript", "template"}
 )
 
 # Elements that imply a line break in the rendered output.
-_BLOCK_ELEMENTS = frozenset(
+BLOCK_ELEMENTS = frozenset(
     {
         "address",
         "article",
@@ -66,7 +66,7 @@ _BLOCK_ELEMENTS = frozenset(
 )
 
 # Void elements never have an end tag, so they must never push a skip frame.
-_VOID_ELEMENTS = frozenset(
+VOID_ELEMENTS = frozenset(
     {
         "area",
         "base",
@@ -146,25 +146,25 @@ class _VisibleTextParser(HTMLParser):
     # -- HTMLParser hooks -------------------------------------------------
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
-        if tag in _VOID_ELEMENTS:
+        if tag in VOID_ELEMENTS:
             # No end tag will ever arrive, so pushing one would strand the stack.
-            if not self._skipping and tag in _BLOCK_ELEMENTS:
+            if not self._skipping and tag in BLOCK_ELEMENTS:
                 self._emit("\n")
             return
         if self._skipping:
             # Track nesting so the matching end tag pops the right frame.
             self._skip_stack.append(tag)
             return
-        if tag in _DROPPED_ELEMENTS or is_hidden(dict(attrs)):
+        if tag in DROPPED_ELEMENTS or is_hidden(dict(attrs)):
             self._skip_stack.append(tag)
             return
-        if tag in _BLOCK_ELEMENTS:
+        if tag in BLOCK_ELEMENTS:
             self._emit("\n")
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if self._skipping or is_hidden(dict(attrs)):
             return
-        if tag.lower() in _BLOCK_ELEMENTS:
+        if tag.lower() in BLOCK_ELEMENTS:
             self._emit("\n")
 
     def handle_endtag(self, tag: str) -> None:
@@ -177,7 +177,7 @@ class _VisibleTextParser(HTMLParser):
                     del self._skip_stack[i:]
                     return
             return
-        if tag in _BLOCK_ELEMENTS:
+        if tag in BLOCK_ELEMENTS:
             self._emit("\n")
 
     def handle_data(self, data: str) -> None:
@@ -185,10 +185,14 @@ class _VisibleTextParser(HTMLParser):
             self._emit(data)
 
     def text(self) -> str:
-        joined = "".join(self._chunks)
-        joined = _WHITESPACE.sub(" ", joined)
-        joined = "\n".join(line.strip() for line in joined.split("\n"))
-        return _BLANK_LINES.sub("\n\n", joined).strip()
+        return normalize_rendered_text("".join(self._chunks))
+
+
+def normalize_rendered_text(joined: str) -> str:
+    """Collapse runs of spaces, trim lines, and cap blank lines at one."""
+    joined = _WHITESPACE.sub(" ", joined)
+    joined = "\n".join(line.strip() for line in joined.split("\n"))
+    return _BLANK_LINES.sub("\n\n", joined).strip()
 
 
 def html_to_visible_text(html: str) -> str:

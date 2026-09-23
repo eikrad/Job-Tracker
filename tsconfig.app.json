@@ -25,5 +25,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src", "tests/fixtures/fingerprints.json"]
+  "include": ["src"]
 }

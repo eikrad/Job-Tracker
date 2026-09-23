@@ -39,24 +39,24 @@ def event_schema():
 
 
 def test_probe_prints_capabilities_and_exits_zero():
-    proc = _run_sidecar(["probe", "--protocol", "1"])
+    proc = _run_sidecar(["probe", "--protocol", "2"])
     assert proc.returncode == 0, proc.stderr
     data = json.loads(proc.stdout.strip())
     assert data["t"] == "capabilities"
-    assert data["protocol"] == 1
+    assert data["protocol"] == 2
     assert "sidecar_version" in data
     assert "indeed" in data.get("extractors", [])
 
 
 def test_scan_invalid_config_exits_20():
-    proc = _run_sidecar(["scan", "--protocol", "1"], stdin="{not json")
+    proc = _run_sidecar(["scan", "--protocol", "2"], stdin="{not json")
     assert proc.returncode == 20
 
 
 def test_scan_unreadable_source_exits_30(tmp_path: Path):
     missing = tmp_path / "missing.mbox"
     cfg = {
-        "protocol": 1,
+        "protocol": 2,
         "run_id": "test-run",
         "sources": [
             {
@@ -66,7 +66,7 @@ def test_scan_unreadable_source_exits_30(tmp_path: Path):
                 "cursor": None,
             }
         ],
-        "extractors": ["indeed", "generic"],
+        "extractors": ["indeed", "digest"],
         "limits": {
             "max_messages_per_source": 100,
             "max_message_bytes": 2_097_152,
@@ -76,7 +76,7 @@ def test_scan_unreadable_source_exits_30(tmp_path: Path):
         "since": None,
         "cancel_file": str(tmp_path / "cancel"),
     }
-    proc = _run_sidecar(["scan", "--protocol", "1"], stdin=json.dumps(cfg))
+    proc = _run_sidecar(["scan", "--protocol", "2"], stdin=json.dumps(cfg))
     assert proc.returncode == 30
 
 
@@ -85,7 +85,7 @@ def test_cancel_file_stops_between_messages(tmp_path: Path, event_schema):
     # Pre-create cancel so the first between-message check aborts quickly after started.
     cancel.write_text("1", encoding="utf-8")
     cfg = {
-        "protocol": 1,
+        "protocol": 2,
         "run_id": "cancel-run",
         "sources": [
             {
@@ -95,7 +95,7 @@ def test_cancel_file_stops_between_messages(tmp_path: Path, event_schema):
                 "cursor": None,
             }
         ],
-        "extractors": ["indeed", "generic"],
+        "extractors": ["indeed", "digest"],
         "limits": {
             "max_messages_per_source": 5000,
             "max_message_bytes": 2_097_152,
@@ -105,7 +105,7 @@ def test_cancel_file_stops_between_messages(tmp_path: Path, event_schema):
         "since": None,
         "cancel_file": str(cancel),
     }
-    proc = _run_sidecar(["scan", "--protocol", "1"], stdin=json.dumps(cfg))
+    proc = _run_sidecar(["scan", "--protocol", "2"], stdin=json.dumps(cfg))
     assert proc.returncode == 10, proc.stderr
     lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
     assert lines, proc.stdout
@@ -121,7 +121,7 @@ def test_fixture_scan_events_validate_and_are_deterministic(
     tmp_path: Path, event_schema
 ):
     cfg = {
-        "protocol": 1,
+        "protocol": 2,
         "run_id": "det-run",
         "sources": [
             {
@@ -131,7 +131,7 @@ def test_fixture_scan_events_validate_and_are_deterministic(
                 "cursor": None,
             }
         ],
-        "extractors": ["indeed", "generic"],
+        "extractors": ["indeed", "digest"],
         "limits": {
             "max_messages_per_source": 5000,
             "max_message_bytes": 2_097_152,
@@ -155,9 +155,9 @@ def test_fixture_scan_events_validate_and_are_deterministic(
             events.append(ev)
         return events
 
-    a = _run_sidecar(["scan", "--protocol", "1"], stdin=json.dumps(cfg))
+    a = _run_sidecar(["scan", "--protocol", "2"], stdin=json.dumps(cfg))
     b = _run_sidecar(
-        ["scan", "--protocol", "1"],
+        ["scan", "--protocol", "2"],
         stdin=json.dumps({**cfg, "run_id": "det-run-2"}),
     )
     assert a.returncode == 0, a.stderr
@@ -184,3 +184,17 @@ def test_mail_scan_package_bans_network_imports():
             if re.search(pattern, text):
                 offenders.append(f"{path.relative_to(ROOT)}:{name}")
     assert offenders == []
+
+
+def test_the_app_requests_every_extractor_the_sidecar_ships():
+    """Rust sends its own extractor list in the scan config, in dispatch order.
+
+    A board extractor missing from that list never runs, however well it parses.
+    """
+    from mail_scan.extractors.base import DEFAULT_EXTRACTORS
+
+    mod_rs = (ROOT / "src-tauri" / "src" / "mail_scan" / "mod.rs").read_text("utf-8")
+    m = re.search(r"pub const DEFAULT_EXTRACTORS: &\[&str\] = &\[([^\]]*)\];", mod_rs)
+    assert m, "DEFAULT_EXTRACTORS not found in mod.rs"
+    rust = re.findall(r'"([^"]+)"', m.group(1))
+    assert rust == DEFAULT_EXTRACTORS

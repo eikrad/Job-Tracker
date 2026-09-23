@@ -1,4 +1,8 @@
-"""Cross-language fingerprint fixture (spec §9.3)."""
+"""Fingerprint fixture (spec §9.3).
+
+The sidecar is the only place fingerprints are computed; Rust stores the keys it
+receives and never recomputes them.
+"""
 
 from __future__ import annotations
 
@@ -8,10 +12,10 @@ from pathlib import Path
 from mail_scan.fingerprint import fingerprint
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURE = ROOT / "tests" / "fixtures" / "fingerprints.json"
+FIXTURE = ROOT / "tests" / "fixtures" / "mail_scan" / "fingerprints.json"
 
 
-def test_fingerprints_fixture_matches_python():
+def test_sidecar_fingerprints_match_the_fixture_cases():
     data = json.loads(FIXTURE.read_text(encoding="utf-8"))
     for case in data["cases"]:
         inp = case["input"]

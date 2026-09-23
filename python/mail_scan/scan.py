@@ -7,11 +7,16 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from mail_scan import __version__
+from mail_scan.digest import build_digest
 from mail_scan.events import emit_event, log_warn
 from mail_scan.exit_codes import EXIT_CANCELLED, EXIT_OK
-from mail_scan.extractors.base import DEFAULT_EXTRACTORS, extract_listings
+from mail_scan.extractors.base import DEFAULT_EXTRACTORS, DIGEST, extract_listings
 from mail_scan.fingerprint import fingerprint
 from mail_scan.sources import SourceCursor, open_source
+from mail_scan.urls import clean_url
+
+# Protocol 2 added the `digest` event (mail no board extractor recognises).
+PROTOCOL = 2
 
 
 def _cancel_requested(cancel_file: str | None) -> bool:
@@ -21,9 +26,10 @@ def _cancel_requested(cancel_file: str | None) -> bool:
 
 
 def _require_config(config: dict[str, Any]) -> dict[str, Any]:
-    if config.get("protocol") != 1:
+    if config.get("protocol") != PROTOCOL:
         raise ValueError(
-            f"config protocol mismatch: got {config.get('protocol')!r}, expected 1"
+            f"config protocol mismatch: got {config.get('protocol')!r}, "
+            f"expected {PROTOCOL}"
         )
     if not isinstance(config.get("run_id"), str) or not config["run_id"]:
         raise ValueError("run_id is required")
@@ -57,7 +63,7 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
         emit,
         {
             "t": "started",
-            "protocol": 1,
+            "protocol": PROTOCOL,
             "run_id": cfg["run_id"],
             "sidecar_version": __version__,
             "sources": len(sources),
@@ -67,6 +73,10 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
     listings_total = 0
     messages_total = 0
     cancelled = False
+    # IMAP folders hold copies of one message under the same Message-ID (a label
+    # applied twice, a move that left the original behind). One message is one set
+    # of listings, however many copies the scan walks past.
+    seen_message_ids: set[str] = set()
 
     for source in sources:
         if _cancel_requested(cancel_file):
@@ -132,11 +142,37 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
                 skipped += 1
                 continue
 
+            if mail.message_id:
+                if mail.message_id in seen_message_ids:
+                    skipped += 1
+                    continue
+                seen_message_ids.add(mail.message_id)
+
             if listings_total >= int(limits["max_listings_per_run"]):
                 skipped += 1
                 continue
 
             extracted = extract_listings(mail, extractors)
+            if extracted is None and DIGEST in extractors:
+                digest = build_digest(mail, int(limits["max_body_chars"]))
+                if digest is None:
+                    skipped += 1
+                    continue
+                emit_event(
+                    emit,
+                    {
+                        "t": "digest",
+                        "source": source_id,
+                        "message_id": mail.message_id,
+                        "message_date": mail.message_date,
+                        "subject": mail.subject,
+                        "sender": mail.from_addr,
+                        "message_fingerprint": digest.fingerprint,
+                        "body": digest.body,
+                        "links": digest.links,
+                    },
+                )
+                continue
             if not extracted:
                 skipped += 1
                 continue
@@ -145,10 +181,12 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
                 if listings_total >= int(limits["max_listings_per_run"]):
                     skipped += 1
                     break
+                # Whatever an extractor found, no per-user token is emitted.
+                url = clean_url(item.url)
                 fp = fingerprint(
                     board=item.board,
                     external_id=item.external_id,
-                    url=item.url,
+                    url=url if item.url_is_identity else "",
                     company=item.company,
                     title=item.title,
                     location=item.location,
@@ -162,7 +200,7 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
                     "title": item.title,
                     "company": item.company,
                     "location": item.location,
-                    "url": item.url,
+                    "url": url,
                     "snippet": item.snippet[: int(limits["max_body_chars"])],
                     "posted_at": item.posted_at,
                     "fingerprint": fp,
