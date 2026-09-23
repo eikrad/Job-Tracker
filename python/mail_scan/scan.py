@@ -12,7 +12,7 @@ from mail_scan.events import emit_event, log_warn
 from mail_scan.exit_codes import EXIT_CANCELLED, EXIT_OK
 from mail_scan.extractors.base import DEFAULT_EXTRACTORS, DIGEST, extract_listings
 from mail_scan.fingerprint import fingerprint
-from mail_scan.sources import SourceCursor, open_source
+from mail_scan.sources import open_source
 from mail_scan.urls import clean_url
 
 # Protocol 2 added the `digest` event (mail no board extractor recognises).
@@ -73,6 +73,10 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
     listings_total = 0
     messages_total = 0
     cancelled = False
+    # Set when max_listings_per_run stops the scan. The source being read keeps a
+    # cursor on the last mail it finished; later sources are not touched at all, so
+    # the next scan continues where this one stopped instead of losing that mail.
+    truncated = False
     # IMAP folders hold copies of one message under the same Message-ID (a label
     # applied twice, a move that left the original behind). One message is one set
     # of listings, however many copies the scan walks past.
@@ -127,7 +131,6 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
         messages_read = 0
         listings = 0
         skipped = 0
-        last_message_id: str | None = None
 
         for mail in messages:
             if _cancel_requested(cancel_file):
@@ -136,7 +139,6 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
 
             messages_read += 1
             messages_total += 1
-            last_message_id = mail.message_id or last_message_id
 
             if since and mail.message_date and mail.message_date < since:
                 skipped += 1
@@ -149,8 +151,10 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
                 seen_message_ids.add(mail.message_id)
 
             if listings_total >= int(limits["max_listings_per_run"]):
-                skipped += 1
-                continue
+                # This mail stays unread: breaking before asking for the next one
+                # keeps the source cursor on the last mail that was finished.
+                truncated = True
+                break
 
             extracted = extract_listings(mail, extractors)
             if extracted is None and DIGEST in extractors:
@@ -177,10 +181,9 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
                 skipped += 1
                 continue
 
+            # A started mail is always finished: splitting one would re-send its first
+            # listings next run, and a mail larger than the limit would never pass.
             for item in extracted:
-                if listings_total >= int(limits["max_listings_per_run"]):
-                    skipped += 1
-                    break
                 # Whatever an extractor found, no per-user token is emitted.
                 url = clean_url(item.url)
                 fp = fingerprint(
@@ -217,16 +220,6 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
                 listings_total += 1
 
         cursor = finalize()
-        # Prefer last message id observed in this run.
-        if last_message_id:
-            cursor = SourceCursor(
-                size=cursor.size,
-                mtime_ns=cursor.mtime_ns,
-                offset=cursor.offset,
-                last_message_id=last_message_id,
-                sentinel_hash=cursor.sentinel_hash,
-            )
-
         emit_event(
             emit,
             {
@@ -239,7 +232,7 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
             },
         )
 
-        if cancelled:
+        if cancelled or truncated:
             break
 
     duration_ms = int((time.monotonic() - started) * 1000)
@@ -251,6 +244,8 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
     }
     if cancelled:
         finished["cancelled"] = True
+    if truncated:
+        finished["truncated"] = True
     emit_event(emit, finished)
 
     if cancelled:

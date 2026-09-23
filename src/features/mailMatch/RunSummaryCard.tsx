@@ -83,9 +83,9 @@ export function RunSummaryCard({
         <li>{t.summaryCalls(stats.llmCalls)}</li>
       </ul>
 
-      {stats.budgetExhausted ? (
+      {stats.budgetExhausted || stats.listingLimitReached ? (
         <p className="run-summary__notice" role="status">
-          {t.summaryBudgetExhausted}
+          {stats.budgetExhausted ? t.summaryBudgetExhausted : t.summaryListingLimitReached}
           {onContinue ? (
             <>
               {" "}

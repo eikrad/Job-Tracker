@@ -161,7 +161,11 @@ export function ScanControl({ sources, cutoff, onRunFinished }: ScanControlProps
         <RunSummaryCard
           view={view}
           onCancel={running ? () => void cancel() : undefined}
-          onContinue={view.stats.budgetExhausted ? () => void openSheet() : undefined}
+          onContinue={
+            view.stats.budgetExhausted || view.stats.listingLimitReached
+              ? () => void openSheet()
+              : undefined
+          }
         />
       ) : null}
     </section>

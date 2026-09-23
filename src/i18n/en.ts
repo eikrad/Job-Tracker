@@ -538,6 +538,7 @@ export const en = {
     summaryEnrichmentFailures: (n: number) => `${n} could not be fetched`,
     summaryCalls: (n: number) => `${n} model call${n === 1 ? "" : "s"}`,
     summaryBudgetExhausted: "The scan stopped at its call budget. Run it again to continue where it left off.",
+    summaryListingLimitReached: "The scan stopped at its listing limit. Older mail is still unread — run it again to continue where it left off.",
     summaryContinue: "Continue scan",
     statusRunning: "Running",
     statusCompleted: "Completed",

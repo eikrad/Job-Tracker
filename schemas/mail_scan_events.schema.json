@@ -174,7 +174,8 @@
         "listings_total": { "type": "integer", "minimum": 0 },
         "messages_total": { "type": "integer", "minimum": 0 },
         "duration_ms": { "type": "integer", "minimum": 0 },
-        "cancelled": { "type": "boolean" }
+        "cancelled": { "type": "boolean" },
+        "truncated": { "type": "boolean" }
       }
     }
   }

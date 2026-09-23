@@ -31,6 +31,9 @@ pub struct RunStats {
     pub errors: u32,
     /// Run hit the call cap. Not a failure — the run still `completed`.
     pub budget_exhausted: bool,
+    /// The sidecar stopped at its listing limit. Cursors stop at the last finished
+    /// mail, so running the scan again reads the rest.
+    pub listing_limit_reached: bool,
 }
 
 impl RunStats {

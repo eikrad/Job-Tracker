@@ -149,6 +149,8 @@ pub struct FinishedEvent {
     pub messages_total: u32,
     pub duration_ms: u32,
     pub cancelled: Option<bool>,
+    /// The sidecar stopped at `max_listings_per_run`; unread mail waits for the next run.
+    pub truncated: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

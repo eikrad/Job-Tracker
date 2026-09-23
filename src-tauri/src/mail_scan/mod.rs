@@ -357,6 +357,7 @@ fn apply_event(
             if ev.cancelled.unwrap_or(false) {
                 state.status = RunStatus::Cancelled;
             }
+            state.stats.listing_limit_reached = ev.truncated.unwrap_or(false);
             Ok(true)
         }
     }

@@ -19,6 +19,7 @@ export type RunStats = {
   enrichmentFailures: number;
   errors: number;
   budgetExhausted: boolean;
+  listingLimitReached: boolean;
 };
 
 export const emptyStats: RunStats = {
@@ -33,6 +34,7 @@ export const emptyStats: RunStats = {
   enrichmentFailures: 0,
   errors: 0,
   budgetExhausted: false,
+  listingLimitReached: false,
 };
 
 export type RunStatus = "running" | "completed" | "cancelled" | "failed";
@@ -83,6 +85,7 @@ export function parseStats(raw: unknown): RunStats {
     enrichmentFailures: asNumber(source.enrichmentFailures),
     errors: asNumber(source.errors),
     budgetExhausted: source.budgetExhausted === true,
+    listingLimitReached: source.listingLimitReached === true,
   };
 }
 

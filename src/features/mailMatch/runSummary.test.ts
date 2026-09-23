@@ -41,6 +41,11 @@ describe("parseStats", () => {
     expect(parseStats('{"budgetExhausted":"yes"}').budgetExhausted).toBe(false);
     expect(parseStats("{}").budgetExhausted).toBe(false);
   });
+
+  it("knows when a scan stopped at its listing limit", () => {
+    expect(parseStats('{"listingLimitReached":true}').listingLimitReached).toBe(true);
+    expect(parseStats("{}").listingLimitReached).toBe(false);
+  });
 });
 
 describe("live progress", () => {

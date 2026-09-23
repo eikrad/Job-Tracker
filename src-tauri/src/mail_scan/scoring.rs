@@ -1184,6 +1184,25 @@ mod tests {
     }
 
     #[test]
+    fn a_scan_stopped_by_the_listing_limit_is_reported_so_the_user_can_continue() {
+        let mut conn = db();
+        let scorer = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(&scorer, ScoringConfig::default());
+        let stream = concat!(
+            r#"{"t":"started","protocol":2,"run_id":"r","sidecar_version":"1.0.0","sources":1}"#,
+            "\n",
+            r#"{"t":"finished","listings_total":2000,"messages_total":900,"duration_ms":5,"truncated":true}"#,
+            "\n",
+        );
+
+        let stats =
+            crate::mail_scan::consume_event_stream(&mut conn, "r1", stream.as_bytes(), &mut engine)
+                .unwrap();
+
+        assert!(stats.listing_limit_reached, "{stats:?}");
+    }
+
+    #[test]
     fn a_listing_already_on_the_board_costs_no_scoring_and_no_fetch() {
         let mut conn = db();
         let known = listing("Rust Engineer", "great role");

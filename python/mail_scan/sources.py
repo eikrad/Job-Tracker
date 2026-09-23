@@ -290,12 +290,15 @@ def iter_mbox(
                 body = raw[nl + 1 :]
             msg = email.message_from_bytes(body)
             mail = _to_mail_message(msg, len(raw), max_body_chars)
+            count += 1
+            yield mail
+            # Only reached once the consumer asks for the next mail, i.e. has finished
+            # this one. A scan that stops mid-mail (limit, cancel) leaves the cursor
+            # before it, so the next run reads it again instead of skipping it.
             last_id[0] = mail.message_id or last_id[0]
             last_offset[0] = end_offset
             if from_line:
                 last_sentinel[0] = _from_line_hash(from_line)
-            count += 1
-            yield mail
 
     def finalize() -> SourceCursor:
         size_now, mtime_now = _file_meta(path)
@@ -388,9 +391,10 @@ def iter_maildir(
                     if mail.message_id == resume_id:
                         past_cursor = True
                     continue
-                last_id[0] = mail.message_id or last_id[0]
                 count += 1
                 yield mail
+                # Committed only after the consumer is done with it (see iter_mbox).
+                last_id[0] = mail.message_id or last_id[0]
         finally:
             box.close()
 
