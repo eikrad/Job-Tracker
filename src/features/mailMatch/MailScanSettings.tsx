@@ -88,7 +88,7 @@ export function MailScanSettings() {
   }, [load]);
 
   useEffect(() => {
-    void mailScanEstimate({})
+    void mailScanEstimate()
       .then((e) => setBacklog(e.backlogUnderCutoff))
       .catch(() => setBacklog(0));
   }, [settings?.provider]);
@@ -185,16 +185,8 @@ export function MailScanSettings() {
   }
 
   async function rescoreBacklog() {
-    if (!settings) return;
     try {
-      await mailScanStart({
-        sources: settings.sources,
-        provider: settings.provider,
-        cutoff: settings.cutoff,
-        sinceDays: settings.sinceDays,
-        maxCalls: settings.maxCalls,
-        forceRescore: true,
-      });
+      await mailScanStart({ forceRescore: true });
     } catch (e) {
       setError(String(e));
     }

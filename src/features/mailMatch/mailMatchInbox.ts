@@ -1,7 +1,7 @@
 /**
  * Pure view logic for the Mail Match Inbox (spec §11.1).
  *
- * Kept separate from the component so ordering, filtering, and badge rules are
+ * Kept separate from the component so filtering and badge rules are
  * asserted directly rather than through the DOM. Distinct from the Capture Inbox
  * (ADR 0003), which stays untouched.
  */
@@ -9,17 +9,26 @@
 export type MailMatchRow = {
   id: number;
   fingerprintId: string;
-  kind: "new" | "update_suggestion";
-  status: "pending" | "accepted" | "dismissed" | "superseded";
+  status: "pending" | "accepted" | "dismissed";
   jobId: number | null;
   /** `null` when `scoreState` is `invalid` — rendered as `?`, never as a number. */
   score: number | null;
   scoreReason: string | null;
   scoreState: "ok" | "invalid" | "skipped";
+  /** Latest screening (pass 1) and full-profile (pass 2) verdicts; null if not run. */
+  pass1Score: number | null;
+  pass1Reason: string | null;
+  pass2Score: number | null;
+  pass2Reason: string | null;
   suspicious: boolean;
   nearDuplicateOf: string | null;
   enrichmentState: "complete" | "partial" | "failed" | "skipped";
   enrichmentError: string | null;
+  /**
+   * The board never serves its listing page (Indeed), so the mail snippet is all
+   * there is — expected, unlike a skipped or failed fetch.
+   */
+  snippetOnly: boolean;
   draftJson: string;
   sourceBoard: string | null;
   messageDate: string | null;
@@ -32,7 +41,6 @@ export type MailMatchRow = {
 };
 
 export type MailMatchFilters = {
-  kind: "all" | "new" | "update_suggestion";
   minScore: number;
   board: string;
   enrichment: "all" | "complete" | "partial" | "failed" | "skipped";
@@ -40,29 +48,11 @@ export type MailMatchFilters = {
 };
 
 export const defaultFilters: MailMatchFilters = {
-  kind: "all",
   minScore: 0,
   board: "all",
   enrichment: "all",
   query: "",
 };
-
-/**
- * Score desc, then most recently seen (spec §11.1).
- *
- * An `invalid` score has no number to rank by, so it sorts below every real score
- * rather than above them — the backend orders the same way, and this keeps a
- * client-side re-sort from contradicting it.
- */
-export function sortRows(rows: MailMatchRow[]): MailMatchRow[] {
-  return [...rows].sort((a, b) => {
-    const sa = a.score ?? -1;
-    const sb = b.score ?? -1;
-    if (sa !== sb) return sb - sa;
-    if (a.lastSeenAt !== b.lastSeenAt) return a.lastSeenAt < b.lastSeenAt ? 1 : -1;
-    return b.id - a.id;
-  });
-}
 
 function matchesQuery(row: MailMatchRow, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -72,9 +62,14 @@ function matchesQuery(row: MailMatchRow, query: string): boolean {
     .some((v) => v.toLowerCase().includes(q));
 }
 
+/**
+ * The rows the current filters let through, in the order they came.
+ *
+ * Ranking (score desc, invalid scores last, then most recently seen) is the backend's
+ * job (`inbox.rs`), and every mutation here reloads from it, so nothing re-sorts.
+ */
 export function filterRows(rows: MailMatchRow[], filters: MailMatchFilters): MailMatchRow[] {
   return rows.filter((row) => {
-    if (filters.kind !== "all" && row.kind !== filters.kind) return false;
     if (filters.board !== "all" && (row.sourceBoard ?? "") !== filters.board) return false;
     if (filters.enrichment !== "all" && row.enrichmentState !== filters.enrichment) return false;
     // An invalid score has no number, so a minimum-score filter cannot judge it.
@@ -82,10 +77,6 @@ export function filterRows(rows: MailMatchRow[], filters: MailMatchFilters): Mai
     if (filters.minScore > 0 && row.score !== null && row.score < filters.minScore) return false;
     return matchesQuery(row, filters.query);
   });
-}
-
-export function visibleRows(rows: MailMatchRow[], filters: MailMatchFilters): MailMatchRow[] {
-  return sortRows(filterRows(rows, filters));
 }
 
 /** Boards present in the data, for the filter dropdown. */
@@ -98,7 +89,7 @@ export function boardOptions(rows: MailMatchRow[]): string[] {
 }
 
 export type BadgeKind =
-  | "update"
+  | "snippetOnly"
   | "incompleteEnrichment"
   | "enrichmentFailed"
   | "nearDuplicate"
@@ -110,8 +101,8 @@ export type Badge = { kind: BadgeKind; count?: number };
 /** Badges for one row, in the order they should read (spec §11.1). */
 export function badgesFor(row: MailMatchRow): Badge[] {
   const badges: Badge[] = [];
-  if (row.kind === "update_suggestion") badges.push({ kind: "update" });
   if (row.enrichmentState === "failed") badges.push({ kind: "enrichmentFailed" });
+  else if (row.snippetOnly) badges.push({ kind: "snippetOnly" });
   else if (row.enrichmentState === "partial" || row.enrichmentState === "skipped") {
     badges.push({ kind: "incompleteEnrichment" });
   }
@@ -166,4 +157,21 @@ export function listingText(row: MailMatchRow): string {
   const draft = parseDraft(row);
   const raw = draft.raw_text;
   return typeof raw === "string" ? raw : "";
+}
+
+function draftString(draft: Record<string, unknown>, field: string): string | null {
+  const value = draft[field];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Where the match links to: the draft's `url` (the employer's ad when enrichment
+ * followed the board link) and its Board Link. Falls back to the listing URL the
+ * mail carried when the draft has none.
+ */
+export function draftLinks(row: MailMatchRow): { url: string | null; boardUrl: string | null } {
+  const draft = parseDraft(row);
+  const url = draftString(draft, "url") ?? (row.listingUrl?.trim() || null);
+  const boardUrl = draftString(draft, "board_url");
+  return { url, boardUrl: boardUrl === url ? null : boardUrl };
 }

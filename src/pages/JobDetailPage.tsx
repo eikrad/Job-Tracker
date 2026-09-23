@@ -13,17 +13,9 @@ import { JobForm } from "../features/jobs/JobForm";
 import { ListingStatusDot } from "../features/jobs/ListingStatusDot";
 import { en } from "../i18n/en";
 import type { DocType, JobDocument } from "../lib/types";
+import { boardName } from "../lib/jobs/boardName";
 
 const PRIORITY_MAX = 10;
-
-/** `https://www.jobindex.dk/c?t=…` → `jobindex.dk`; the raw string if it is not a URL. */
-function boardName(boardUrl: string): string {
-  try {
-    return new URL(boardUrl).hostname.replace(/^www\./, "");
-  } catch {
-    return boardUrl;
-  }
-}
 
 const DOC_TYPES: { value: DocType; label: string }[] = [
   { value: "cv", label: en.detail.docTypeCv },

@@ -1,6 +1,4 @@
 //! Mail-scan orchestration: sidecar spawn, NDJSON protocol, scoring, persistence.
-//!
-//! Behind `mailScanEnabled` (default off) until the flag comes off in C4.
 
 pub mod accept;
 pub mod budget;
@@ -20,6 +18,7 @@ pub mod settings;
 pub mod sidecar;
 pub mod scoring;
 pub mod spawn;
+pub mod status;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -33,8 +32,8 @@ use crate::db;
 use crate::secrets::redact;
 
 use self::persist::{
-    finish_run, persist_listing, record_run_identity, start_run, update_run_stats,
-    upsert_source_cursor, PersistOutcome, RunStats, ScoringIdentities,
+    finish_run, gate_listing, persist_listing, record_run_identity, start_run, update_run_stats,
+    upsert_source_cursor, RunStats, ScoringIdentities,
 };
 use self::enrichment::{Enrichment, LlmEnricher};
 use self::profiles::{load_profile, ProfileKind};
@@ -43,6 +42,8 @@ use self::protocol::{
     read_event_line, Event, ListingEvent, ProtocolError, MAX_LINE_BYTES, PROTOCOL,
 };
 use self::scoring::{LlmScorer, RunStop, ScoringConfig, ScoringEngine};
+use self::settings::MailSource;
+use self::status::{EnrichmentState, RunStatus, SourceKind, Verdict};
 use self::spawn::{spawn_scan, watch_cancel_escalation, SpawnedScan};
 use crate::llm::overrides::resolved_spec;
 use crate::llm::provider::LlmProvider;
@@ -67,26 +68,26 @@ pub struct MailScanProgress {
     pub run_id: String,
     pub listings_committed: u32,
     pub messages_seen: u32,
-    pub status: String,
+    pub status: RunStatus,
 }
 
 struct DriveState {
     stats: RunStats,
-    status: String,
+    status: RunStatus,
     error_code: Option<String>,
     error_summary: Option<String>,
-    /// source_id → (path, kind) for cursor commits
-    sources: HashMap<String, (String, String)>,
+    /// The configured folders by id, for cursor commits.
+    sources: HashMap<String, MailSource>,
     /// Listings held back so pass 1 can be batched (spec §8.3). Bounded by the batch
     /// size, and each one is still committed in its own transaction after scoring.
     buffer: Vec<ListingEvent>,
 }
 
 impl DriveState {
-    fn new(sources: HashMap<String, (String, String)>) -> Self {
+    fn new(sources: HashMap<String, MailSource>) -> Self {
         Self {
             stats: RunStats::default(),
-            status: "completed".into(),
+            status: RunStatus::Completed,
             error_code: None,
             error_summary: None,
             sources,
@@ -95,7 +96,7 @@ impl DriveState {
     }
 
     fn fail(&mut self, code: &str, summary: String) {
-        self.status = "failed".into();
+        self.status = RunStatus::Failed;
         self.error_code = Some(code.to_string());
         self.error_summary = Some(redact(&summary));
     }
@@ -214,26 +215,16 @@ fn flush_buffer(
         let Some(scored) = scored else { continue };
         // Only what reached the inbox is worth a fetch; under-cutoff listings are
         // recorded as sightings and never enriched.
-        let enrichment = if scored.outcome == "inbox" {
+        let enrichment = if scored.outcome == Verdict::Inbox {
             engine.enrich(listing)
         } else {
             Enrichment::skipped()
         };
-        if enrichment.state == "failed" {
+        if enrichment.state == EnrichmentState::Failed {
             state.stats.enrichment_failures += 1;
         }
         match persist_listing(conn, run_id, listing, scored, &enrichment, &identities) {
-            Ok(PersistOutcome::Committed) => {
-                state.stats.listings_committed += 1;
-                state.stats.inbox_new += 1;
-            }
-            Ok(PersistOutcome::UnderCutoff) => {
-                state.stats.listings_committed += 1;
-                state.stats.under_cutoff += 1;
-            }
-            Ok(PersistOutcome::SuppressedByDismissal) => {
-                state.stats.suppressed_by_dismissal += 1;
-            }
+            Ok(outcome) => state.stats.count(outcome),
             Err(e) => {
                 state.fail("E_DB", e);
                 return Ok(false);
@@ -242,6 +233,36 @@ fn flush_buffer(
     }
     state.stats.llm_calls = engine.budget().calls_used();
     Ok(continue_after(batch.stop, run_id, state))
+}
+
+/// Queue a listing for scoring, unless the gate already settled it. Returns false when
+/// the run must stop.
+///
+/// The gate runs here, before the listing takes a place in a pass-1 batch: a listing
+/// that is dismissed or already a Job costs no model call and no page fetch.
+fn admit_listing(
+    conn: &mut rusqlite::Connection,
+    run_id: &str,
+    listing: ListingEvent,
+    engine: &mut ScoringEngine,
+    state: &mut DriveState,
+) -> Result<bool, String> {
+    match gate_listing(conn, &listing) {
+        Ok(Some(outcome)) => {
+            state.stats.count(outcome);
+            return Ok(true);
+        }
+        Ok(None) => {}
+        Err(e) => {
+            state.fail("E_DB", e);
+            return Ok(false);
+        }
+    }
+    state.buffer.push(listing);
+    if state.buffer.len() >= engine.batch_size() {
+        return flush_buffer(conn, run_id, engine, state);
+    }
+    Ok(true)
 }
 
 /// Apply a stop signal from scoring or splitting. Returns false when the run must stop.
@@ -282,7 +303,7 @@ fn apply_event(
         }
         Event::Started(ev) => {
             if ev.protocol != PROTOCOL {
-                state.status = "failed".into();
+                state.status = RunStatus::Failed;
                 state.error_code = Some("E_PROTOCOL_MISMATCH".into());
                 state.error_summary = Some(format!(
                     "protocol mismatch: sidecar={}, expected={PROTOCOL}",
@@ -292,23 +313,14 @@ fn apply_event(
             }
             Ok(true)
         }
-        Event::Listing(listing) => {
-            state.buffer.push(*listing);
-            if state.buffer.len() >= engine.batch_size() {
-                return flush_buffer(conn, run_id, engine, state);
-            }
-            Ok(true)
-        }
+        Event::Listing(listing) => admit_listing(conn, run_id, *listing, engine, state),
         Event::Digest(digest) => {
             // Split listings join the same buffer as extracted ones, so they pass the
             // same dismissal gate, scoring, enrichment, and per-item commit.
             let split = engine.split_digest(conn, run_id, &digest)?;
             state.stats.llm_calls = engine.budget().calls_used();
             for listing in split.listings {
-                state.buffer.push(listing);
-                if state.buffer.len() >= engine.batch_size()
-                    && !flush_buffer(conn, run_id, engine, state)?
-                {
+                if !admit_listing(conn, run_id, listing, engine, state)? {
                     return Ok(false);
                 }
             }
@@ -321,16 +333,12 @@ fn apply_event(
             if !flush_buffer(conn, run_id, engine, state)? {
                 return Ok(false);
             }
-            let (path, kind) = state
-                .sources
-                .get(&ev.source)
-                .cloned()
-                .unwrap_or_else(|| (String::new(), String::from("mbox")));
+            let source = state.sources.get(&ev.source);
             let _ = upsert_source_cursor(
                 conn,
                 &ev.source,
-                &path,
-                &kind,
+                source.map_or("", |s| s.path.as_str()),
+                source.map_or(SourceKind::Mbox, |s| s.kind),
                 ev.cursor.size as i64,
                 ev.cursor.mtime_ns as i64,
                 ev.cursor.offset as i64,
@@ -347,7 +355,7 @@ fn apply_event(
         Event::Finished(ev) => {
             state.stats.messages_seen = ev.messages_total;
             if ev.cancelled.unwrap_or(false) {
-                state.status = "cancelled".into();
+                state.status = RunStatus::Cancelled;
             }
             Ok(true)
         }
@@ -374,19 +382,19 @@ fn consume_reader<R: std::io::Read>(
                 }
             }
             Err(ProtocolError::Oversize) => {
-                state.status = "failed".into();
+                state.status = RunStatus::Failed;
                 state.error_code = Some("E_PROTOCOL_OVERSIZE".into());
                 state.error_summary = Some("NDJSON line exceeded 256 KiB".into());
                 break;
             }
             Err(ProtocolError::Malformed(detail)) => {
-                state.status = "failed".into();
+                state.status = RunStatus::Failed;
                 state.error_code = Some("E_PROTOCOL".into());
                 state.error_summary = Some(redact(&detail));
                 break;
             }
             Err(ProtocolError::Io(e)) => {
-                state.status = "failed".into();
+                state.status = RunStatus::Failed;
                 state.error_code = Some("E_IO".into());
                 state.error_summary = Some(redact(&e));
                 break;
@@ -410,68 +418,13 @@ fn consume_reader<R: std::io::Read>(
     Ok(())
 }
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StartScanRequest {
-    pub sources: Vec<SourceConfig>,
-    /// Scoring provider id; defaults to Scaleway when the caller does not say.
-    #[serde(default)]
-    pub provider: Option<String>,
-    /// Minimum pass-2 score to reach the inbox (spec §11.3 default 7).
-    #[serde(default)]
-    pub cutoff: Option<i32>,
-    /// Hard floor on message age, in days (spec §5.5 default 90).
-    #[serde(default)]
-    pub since_days: Option<u32>,
-    /// Per-run call cap.
-    #[serde(default)]
-    pub max_calls: Option<u32>,
-    /// Explicit "Re-score backlog" — bypasses score reuse, not the budget.
-    #[serde(default)]
-    pub force_rescore: Option<bool>,
-}
-
-/// Days of mail history considered when the caller does not override it.
-pub const DEFAULT_SINCE_DAYS: u32 = 90;
-
-impl StartScanRequest {
-    fn scoring_config(&self) -> ScoringConfig {
-        let mut config = ScoringConfig {
-            force_rescore: self.force_rescore.unwrap_or(false),
-            ..Default::default()
-        };
-        if let Some(cutoff) = self.cutoff {
-            config.pass2_cutoff = cutoff.clamp(0, 10);
-        }
-        if let Some(max_calls) = self.max_calls {
-            config.budget.max_calls = max_calls;
-        }
-        config
-    }
-
-    fn provider(&self) -> Result<LlmProvider, String> {
-        LlmProvider::parse(self.provider.as_deref().unwrap_or("scaleway_deepseek"))
-    }
-
-    fn since_iso(&self) -> String {
-        let days = i64::from(self.since_days.unwrap_or(DEFAULT_SINCE_DAYS));
-        (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339()
-    }
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SourceConfig {
-    pub id: String,
-    pub kind: String,
-    pub path: String,
-}
-
+/// Start a scan with the saved Settings. The only thing a caller chooses is
+/// `force_rescore`, the explicit "Re-score backlog" action.
 #[tauri::command]
 pub fn mail_scan_start(
     app: AppHandle,
     runtime: State<'_, MailScanRuntime>,
-    request: StartScanRequest,
+    force_rescore: Option<bool>,
 ) -> Result<String, String> {
     {
         let guard = runtime.inner.lock().map_err(|e| e.to_string())?;
@@ -483,8 +436,12 @@ pub fn mail_scan_start(
     // Fail before doing any work if the profiles or the key are missing — a scan that
     // reads a whole mail folder and only then discovers it cannot score is worse than
     // one that never starts.
-    let provider = request.provider()?;
-    let (engine, engine_identity) = build_engine(&app, provider, request.scoring_config())?;
+    let settings = settings::load_settings(&app)?;
+    let (engine, engine_identity) = build_engine(
+        &app,
+        settings.provider()?,
+        settings.scoring_config(force_rescore.unwrap_or(false)),
+    )?;
 
     let run_id = new_run_id();
     let cancel_dir = std::env::temp_dir().join("jobtracker-mail-scan");
@@ -504,8 +461,8 @@ pub fn mail_scan_start(
 
     let mut source_meta = HashMap::new();
     let mut sources_json = Vec::new();
-    for s in &request.sources {
-        source_meta.insert(s.id.clone(), (s.path.clone(), s.kind.clone()));
+    for s in &settings.sources {
+        source_meta.insert(s.id.clone(), s.clone());
         let cursor = load_cursor_json(&conn, &s.id)?;
         sources_json.push(serde_json::json!({
             "id": s.id,
@@ -526,7 +483,7 @@ pub fn mail_scan_start(
             "max_listings_per_run": 2000,
             "max_body_chars": 20_000,
         },
-        "since": request.since_iso(),
+        "since": settings.since_iso(),
         "cancel_file": cancel_file.to_string_lossy(),
     });
 
@@ -536,7 +493,7 @@ pub fn mail_scan_start(
         Ok(c) => c,
         Err(e) => {
             let mut c = db::connection(&app)?;
-            let _ = finish_run(&mut c, &run_id, "failed", Some("E_SPAWN"), Some(&redact(&e)));
+            let _ = finish_run(&mut c, &run_id, RunStatus::Failed, Some("E_SPAWN"), Some(&redact(&e)));
             return Err(e);
         }
     };
@@ -588,14 +545,11 @@ pub struct ScanEstimate {
 #[tauri::command]
 pub fn mail_scan_estimate(
     app: AppHandle,
-    provider: Option<String>,
     expected_listings: Option<u32>,
-    max_calls: Option<u32>,
 ) -> Result<ScanEstimate, String> {
-    let provider = LlmProvider::parse(provider.as_deref().unwrap_or("scaleway_deepseek"))?;
+    let settings = settings::load_settings(&app)?;
     let dir = app_data_dir(&app)?;
     let conn = db::connection(&app)?;
-    let cap = max_calls.unwrap_or(budget::DEFAULT_MAX_CALLS);
 
     Ok(ScanEstimate {
         estimate: budget::estimate_calls(
@@ -604,10 +558,10 @@ pub fn mail_scan_estimate(
             // Coarse prior for the share clearing the pass-1 gate; shown as an
             // estimate, never billed against.
             0.34,
-            cap,
+            settings.max_calls,
         ),
         backlog_under_cutoff: score_cache::count_under_cutoff(&conn)?,
-        model_id: resolved_spec(&app, provider)?.model_id,
+        model_id: resolved_spec(&app, settings.provider()?)?.model_id,
         profile_short: profiles::profile_status(&dir, ProfileKind::Short),
         profile_full: profiles::profile_status(&dir, ProfileKind::Full),
     })
@@ -628,7 +582,7 @@ fn drive_scan(
     run_id: &str,
     child: &mut SpawnedScan,
     cancel_file: &Path,
-    sources: HashMap<String, (String, String)>,
+    sources: HashMap<String, MailSource>,
     engine: &mut ScoringEngine,
 ) -> Result<(), String> {
     let mut conn = db::connection(app)?;
@@ -661,7 +615,7 @@ fn drive_scan(
                         run_id: run_id.to_string(),
                         listings_committed: st.stats.listings_committed,
                         messages_seen: st.stats.messages_seen,
-                        status: "running".into(),
+                        status: RunStatus::Running,
                     },
                 );
                 last_emit = std::time::Instant::now();
@@ -672,18 +626,18 @@ fn drive_scan(
     let exit = child.wait();
     match exit {
         Ok(Some(10)) => {
-            if state.status == "completed" {
-                state.status = "cancelled".into();
+            if state.status == RunStatus::Completed {
+                state.status = RunStatus::Cancelled;
             }
         }
         Ok(Some(0)) => {}
-        Ok(Some(code)) if state.status == "completed" => {
-            state.status = "failed".into();
+        Ok(Some(code)) if state.status == RunStatus::Completed => {
+            state.status = RunStatus::Failed;
             state.error_code = state.error_code.or(Some(format!("E_EXIT_{code}")));
         }
         Ok(None) | Err(_) => {
-            if state.status == "completed" {
-                state.status = "failed".into();
+            if state.status == RunStatus::Completed {
+                state.status = RunStatus::Failed;
                 state.error_code = state.error_code.or(Some("E_CHILD".into()));
             }
         }
@@ -694,7 +648,7 @@ fn drive_scan(
     finish_run(
         &mut conn,
         run_id,
-        &state.status,
+        state.status,
         state.error_code.as_deref(),
         state.error_summary.as_deref(),
     )?;
@@ -704,7 +658,7 @@ fn drive_scan(
             run_id: run_id.to_string(),
             listings_committed: state.stats.listings_committed,
             messages_seen: state.stats.messages_seen,
-            status: state.status.clone(),
+            status: state.status,
         },
     );
     Ok(())
@@ -725,7 +679,7 @@ pub fn consume_event_stream<R: std::io::Read>(
     finish_run(
         conn,
         run_id,
-        &state.status,
+        state.status,
         state.error_code.as_deref(),
         state.error_summary.as_deref(),
     )?;

@@ -22,23 +22,15 @@ import { RunSummaryCard } from "./RunSummaryCard";
 const t = en.mailMatch;
 
 export type ScanControlProps = {
+  /** Shown in the pre-run sheet; the backend reads the saved Settings itself. */
   sources: MailSource[];
-  provider?: string;
+  /** Shown in the pre-run sheet. */
   cutoff: number;
-  sinceDays: number;
-  maxCalls: number;
   /** Refresh the inbox when a run reaches a terminal state. */
   onRunFinished?: () => void;
 };
 
-export function ScanControl({
-  sources,
-  provider,
-  cutoff,
-  sinceDays,
-  maxCalls,
-  onRunFinished,
-}: ScanControlProps) {
+export function ScanControl({ sources, cutoff, onRunFinished }: ScanControlProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [estimate, setEstimate] = useState<ScanEstimate | null>(null);
   const [view, setView] = useState<RunView | null>(null);
@@ -64,18 +56,12 @@ export function ScanControl({
     setError(null);
     setSheetOpen(true);
     try {
-      setEstimate(
-        await mailScanEstimate({
-          provider,
-          // Coarse prior for a first look; the run's own budget is the real bound.
-          expectedListings: 120,
-          maxCalls,
-        }),
-      );
+      // Coarse prior for a first look; the run's own budget is the real bound.
+      setEstimate(await mailScanEstimate(120));
     } catch (e) {
       setError(String(e));
     }
-  }, [provider, maxCalls]);
+  }, []);
 
   const profilesReady =
     estimate?.profileShort.configured === true && estimate?.profileFull.configured === true;
@@ -85,7 +71,7 @@ export function ScanControl({
     try {
       setSheetOpen(false);
       setView(null);
-      await mailScanStart({ sources, provider, cutoff, sinceDays, maxCalls });
+      await mailScanStart();
     } catch (e) {
       setError(String(e));
     }

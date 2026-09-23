@@ -429,10 +429,6 @@ export const en = {
     tabCount: (n: number) => `${n}`,
 
     // Filters
-    filterKind: "Kind",
-    filterKindAll: "All kinds",
-    filterKindNew: "New listings",
-    filterKindUpdate: "Update suggestions",
     filterBoard: "Board",
     filterBoardAll: "All boards",
     filterEnrichment: "Details",
@@ -457,9 +453,10 @@ export const en = {
     scoreAria: (score: string) => `Match score ${score} out of 10`,
     scoreInvalidTitle: "The model's answer could not be read, so there is no score for this one. Review it yourself.",
     seenTimes: (n: number) => `seen ${n}×`,
-    badgeUpdate: "Update suggestion",
     badgeIncompleteEnrichment: "Incomplete details",
     badgeEnrichmentFailed: "Could not fetch details",
+    badgeSnippetOnly: "Mail snippet only",
+    badgeSnippetOnlyTitle: "This board does not let the app read its listing pages, so only the text from the alert mail is available. Open the listing to read the full ad.",
     badgeNearDuplicate: "Near-duplicate",
     badgeSuspicious: "Suspicious content",
     badgeSuspiciousTitle: "This listing contains text that tries to instruct the scoring model. The score is shown but should be treated with caution.",
@@ -470,10 +467,14 @@ export const en = {
     // Detail
     detailListingText: "Listing text",
     detailListingTextHint: "Extracted text only. Pages from your mail are never rendered.",
-    detailDraft: "Prefilled job",
-    detailScores: "Scores",
-    passLabel: (pass: number) => `Pass ${pass}`,
+    detailRegion: (title: string) => `Details for ${title}`,
+    detailScores: "Why it scored this way",
+    passScore: (pass: number, score: string) =>
+      `${pass === 1 ? "Screening" : "Full profile"} · ${score}/10`,
+    passNotRun: (pass: number) =>
+      `${pass === 1 ? "Screening" : "Full profile"} · not scored`,
     passReasonMissing: "No reason given.",
+    viaBoard: (board: string) => `via ${board}`,
     enrichmentReason: (reason: string) => `Details: ${reason}`,
 
     // Actions
@@ -483,22 +484,31 @@ export const en = {
     acceptedOpen: "Open",
     acceptedUndo: "Undo",
     undoneNotice: "Accept undone. The match is back in the inbox.",
-    acceptUpdate: "Review update…",
     dismiss: "Dismiss",
+    dismissedNotice: (title: string) => `Dismissed “${title}”.`,
+    dismissUndoneNotice: "Dismiss undone. The match is back in the inbox.",
+    selectRow: (title: string) => `Select ${title}`,
+    selectAllShown: "Select all shown",
+    bulkAccept: (n: number) => `Accept ${n}`,
+    bulkDismiss: (n: number) => `Dismiss ${n}`,
+    bulkClear: "Clear selection",
+    bulkAcceptConfirm: (n: number) =>
+      `Add ${n} match${n === 1 ? "" : "es"} to your jobs as Interesting?`,
+    bulkDismissConfirm: (n: number) =>
+      `Dismiss ${n} match${n === 1 ? "" : "es"}? You can restore them from the Dismissed tab.`,
+    bulkAcceptedNotice: (done: number, total: number) =>
+      done === total
+        ? `Added ${done} match${done === 1 ? "" : "es"} to your jobs as Interesting.`
+        : `Added ${done} of ${total} matches to your jobs as Interesting. The rest stay selected.`,
+    bulkDismissedNotice: (done: number, total: number) =>
+      done === total
+        ? `Dismissed ${done} match${done === 1 ? "" : "es"}.`
+        : `Dismissed ${done} of ${total} matches. The rest stay selected.`,
+    bulkFailure: (title: string, error: string) => `“${title}”: ${error}`,
+    shortcutsHint: "Keys: j/k move · Enter or o opens · a accept · d dismiss · u undo",
     restore: "Restore",
     restoredAt: (when: string) => `Dismissed ${when}`,
     dismissedNoReason: "No reason given",
-
-    // Update diff
-    diffTitle: "Update suggestion",
-    diffJobChanged: "This job changed since the scan. The suggestion below was recomputed against the current version.",
-    diffWillWrite: "Will be filled in",
-    diffSkipped: "Skipped — you already filled this in",
-    diffCurrent: (value: string) => `Currently: ${value}`,
-    diffNothingToDo: "Nothing left to fill in — you have already entered everything this suggested.",
-    diffApply: (n: number) => `Fill in ${n} field${n === 1 ? "" : "s"}`,
-    diffCancel: "Cancel",
-    diffFieldLabel: (field: string) => field.replace(/_/g, " "),
 
     // Scan control
     scanButton: "Scan job emails",
@@ -521,7 +531,7 @@ export const en = {
     // Run summary
     summaryTitle: "Scan finished",
     summaryNew: (n: number) => `${n} new match${n === 1 ? "" : "es"}`,
-    summaryUpdates: (n: number) => `${n} update suggestion${n === 1 ? "" : "s"}`,
+    summaryAlreadyTracked: (n: number) => `${n} already on your board`,
     summaryUnderCutoff: (n: number) => `${n} below cutoff`,
     summarySuppressed: (n: number) => `${n} suppressed by a dismissal`,
     summarySuppressedLink: "Show what was suppressed",
@@ -535,16 +545,14 @@ export const en = {
     statusFailed: "Failed",
 
     // Errors (spec §10)
-    errorConfigIncomplete: "Add your mail folders and both candidate profiles in Settings first.",
-    errorProfileUnreadable: "A candidate profile could not be read. Re-select it in Settings.",
-    errorSourceUnreadable: "A mail folder could not be read. Check the path in Settings.",
     errorSidecarMissing: "The mail scanner could not be started. Try reinstalling the app.",
     errorSidecarVersion: "The mail scanner is out of date with the app. Try reinstalling.",
+    errorSidecarStopped: "The mail scanner stopped unexpectedly. Results so far are kept — try again.",
     errorProtocol: "The mail scanner sent something unexpected. Nothing was lost — please report this.",
     errorLlmAuth: "The provider rejected the API key. Check it in Settings.",
     errorLlmModel: "The provider did not recognise the model. Check the model id in Settings.",
     errorLlmUnavailable: "The provider was unreachable, so the scan stopped early. Results so far are kept — try again later.",
-    errorBudgetExhausted: "The scan reached its call budget and stopped. Results so far are kept.",
+    errorLlmOther: "The provider answered with an unexpected error, so the scan stopped. Results so far are kept.",
     errorDb: "The database could not be written. Nothing beyond the saved items was changed.",
     errorUnknown: "The scan failed.",
   },

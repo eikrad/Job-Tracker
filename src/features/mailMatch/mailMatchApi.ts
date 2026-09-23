@@ -24,30 +24,6 @@ export type RunRow = {
   modelId: string | null;
 };
 
-export type SightingRow = {
-  pass: number;
-  score: number | null;
-  reason: string | null;
-  outcome: string;
-  scoredAt: string;
-  modelId: string;
-};
-
-export type FieldSuggestion = {
-  field: string;
-  suggested: string;
-  current: string | null;
-  applicable: boolean;
-};
-
-export type UpdatePreview = {
-  inboxId: number;
-  jobId: number;
-  /** True when the job was edited after the scan computed this suggestion. */
-  jobChangedSinceScan: boolean;
-  fields: FieldSuggestion[];
-};
-
 export type AcceptOutcome = {
   jobId: number;
   fieldsWritten: string[];
@@ -79,7 +55,10 @@ export type ScanEstimate = {
   profileFull: ProfileStatus;
 };
 
-export type MailSource = { id: string; label: string; kind: string; path: string };
+/** On-disk layout of a mail folder; the backend detects it when the path is resolved. */
+export type MailSourceKind = "mbox" | "maildir";
+
+export type MailSource = { id: string; label: string; kind: MailSourceKind; path: string };
 
 export type MailScanSettingsPayload = {
   sources: MailSource[];
@@ -95,7 +74,7 @@ export type ResolvedSource = {
   enteredPath: string;
   /** Where the entered path actually points — shown before the folder is read. */
   resolvedPath: string | null;
-  kind: string;
+  kind: MailSourceKind;
   exists: boolean;
   redirected: boolean;
   error: string | null;
@@ -130,24 +109,12 @@ export async function mailScanListRuns(limit = 20): Promise<RunRow[]> {
   return invoke("mail_scan_list_runs", { limit });
 }
 
-export async function mailMatchSightings(fingerprintId: string): Promise<SightingRow[]> {
-  return invoke("mail_match_sightings", { fingerprintId });
-}
-
 export async function mailMatchDismiss(inboxId: number, reason?: string): Promise<void> {
   await invoke("mail_match_dismiss", { inboxId, reason: reason ?? null });
 }
 
 export async function mailMatchRestore(fingerprintId: string): Promise<void> {
   await invoke("mail_match_restore", { fingerprintId });
-}
-
-export async function mailMatchPreviewUpdate(inboxId: number): Promise<UpdatePreview> {
-  return invoke("mail_match_preview_update", { inboxId });
-}
-
-export async function mailMatchAcceptUpdate(inboxId: number): Promise<AcceptOutcome> {
-  return invoke("mail_match_accept_update", { inboxId });
 }
 
 /** Creates the Job straight from the match's stored draft — one click, no form. */
@@ -160,27 +127,18 @@ export async function mailMatchUndoAccept(inboxId: number): Promise<void> {
   await invoke("mail_match_undo_accept", { inboxId });
 }
 
-export async function mailScanEstimate(params: {
-  provider?: string;
-  expectedListings?: number;
-  maxCalls?: number;
-}): Promise<ScanEstimate> {
-  return invoke("mail_scan_estimate", {
-    provider: params.provider ?? null,
-    expectedListings: params.expectedListings ?? null,
-    maxCalls: params.maxCalls ?? null,
-  });
+/** Cost preview for a scan with the saved Settings (provider and call cap). */
+export async function mailScanEstimate(expectedListings?: number): Promise<ScanEstimate> {
+  return invoke("mail_scan_estimate", { expectedListings: expectedListings ?? null });
 }
 
-export async function mailScanStart(request: {
-  sources: MailSource[];
-  provider?: string;
-  cutoff?: number;
-  sinceDays?: number;
-  maxCalls?: number;
-  forceRescore?: boolean;
-}): Promise<string> {
-  return invoke("mail_scan_start", { request });
+/**
+ * Starts a scan with the saved Settings — folders, provider, cutoff, age floor and call
+ * cap are read by the backend, not sent from here. `forceRescore` is the explicit
+ * "Re-score backlog" action.
+ */
+export async function mailScanStart(options: { forceRescore?: boolean } = {}): Promise<string> {
+  return invoke("mail_scan_start", { forceRescore: options.forceRescore ?? null });
 }
 
 export async function mailScanCancel(): Promise<void> {

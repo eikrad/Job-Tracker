@@ -13,7 +13,8 @@ export type RunStats = {
   suppressedByDismissal: number;
   underCutoff: number;
   inboxNew: number;
-  updates: number;
+  /** Listings that are already Jobs on the board — seen, not queued again. */
+  alreadyTracked: number;
   llmCalls: number;
   enrichmentFailures: number;
   errors: number;
@@ -27,7 +28,7 @@ export const emptyStats: RunStats = {
   suppressedByDismissal: 0,
   underCutoff: 0,
   inboxNew: 0,
-  updates: 0,
+  alreadyTracked: 0,
   llmCalls: 0,
   enrichmentFailures: 0,
   errors: 0,
@@ -77,7 +78,7 @@ export function parseStats(raw: unknown): RunStats {
     suppressedByDismissal: asNumber(source.suppressedByDismissal),
     underCutoff: asNumber(source.underCutoff),
     inboxNew: asNumber(source.inboxNew),
-    updates: asNumber(source.updates),
+    alreadyTracked: asNumber(source.alreadyTracked),
     llmCalls: asNumber(source.llmCalls),
     enrichmentFailures: asNumber(source.enrichmentFailures),
     errors: asNumber(source.errors),
