@@ -55,7 +55,10 @@ export type ScanEstimate = {
   profileFull: ProfileStatus;
 };
 
-export type MailSource = { id: string; label: string; kind: string; path: string };
+/** On-disk layout of a mail folder; the backend detects it when the path is resolved. */
+export type MailSourceKind = "mbox" | "maildir";
+
+export type MailSource = { id: string; label: string; kind: MailSourceKind; path: string };
 
 export type MailScanSettingsPayload = {
   sources: MailSource[];
@@ -71,7 +74,7 @@ export type ResolvedSource = {
   enteredPath: string;
   /** Where the entered path actually points — shown before the folder is read. */
   resolvedPath: string | null;
-  kind: string;
+  kind: MailSourceKind;
   exists: boolean;
   redirected: boolean;
   error: string | null;

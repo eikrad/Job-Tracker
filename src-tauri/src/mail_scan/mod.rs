@@ -18,6 +18,7 @@ pub mod settings;
 pub mod sidecar;
 pub mod scoring;
 pub mod spawn;
+pub mod status;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -41,6 +42,8 @@ use self::protocol::{
     read_event_line, Event, ListingEvent, ProtocolError, MAX_LINE_BYTES, PROTOCOL,
 };
 use self::scoring::{LlmScorer, RunStop, ScoringConfig, ScoringEngine};
+use self::settings::MailSource;
+use self::status::{EnrichmentState, RunStatus, SourceKind, Verdict};
 use self::spawn::{spawn_scan, watch_cancel_escalation, SpawnedScan};
 use crate::llm::overrides::resolved_spec;
 use crate::llm::provider::LlmProvider;
@@ -65,26 +68,26 @@ pub struct MailScanProgress {
     pub run_id: String,
     pub listings_committed: u32,
     pub messages_seen: u32,
-    pub status: String,
+    pub status: RunStatus,
 }
 
 struct DriveState {
     stats: RunStats,
-    status: String,
+    status: RunStatus,
     error_code: Option<String>,
     error_summary: Option<String>,
-    /// source_id → (path, kind) for cursor commits
-    sources: HashMap<String, (String, String)>,
+    /// The configured folders by id, for cursor commits.
+    sources: HashMap<String, MailSource>,
     /// Listings held back so pass 1 can be batched (spec §8.3). Bounded by the batch
     /// size, and each one is still committed in its own transaction after scoring.
     buffer: Vec<ListingEvent>,
 }
 
 impl DriveState {
-    fn new(sources: HashMap<String, (String, String)>) -> Self {
+    fn new(sources: HashMap<String, MailSource>) -> Self {
         Self {
             stats: RunStats::default(),
-            status: "completed".into(),
+            status: RunStatus::Completed,
             error_code: None,
             error_summary: None,
             sources,
@@ -93,7 +96,7 @@ impl DriveState {
     }
 
     fn fail(&mut self, code: &str, summary: String) {
-        self.status = "failed".into();
+        self.status = RunStatus::Failed;
         self.error_code = Some(code.to_string());
         self.error_summary = Some(redact(&summary));
     }
@@ -212,12 +215,12 @@ fn flush_buffer(
         let Some(scored) = scored else { continue };
         // Only what reached the inbox is worth a fetch; under-cutoff listings are
         // recorded as sightings and never enriched.
-        let enrichment = if scored.outcome == "inbox" {
+        let enrichment = if scored.outcome == Verdict::Inbox {
             engine.enrich(listing)
         } else {
             Enrichment::skipped()
         };
-        if enrichment.state == "failed" {
+        if enrichment.state == EnrichmentState::Failed {
             state.stats.enrichment_failures += 1;
         }
         match persist_listing(conn, run_id, listing, scored, &enrichment, &identities) {
@@ -284,7 +287,7 @@ fn apply_event(
         }
         Event::Started(ev) => {
             if ev.protocol != PROTOCOL {
-                state.status = "failed".into();
+                state.status = RunStatus::Failed;
                 state.error_code = Some("E_PROTOCOL_MISMATCH".into());
                 state.error_summary = Some(format!(
                     "protocol mismatch: sidecar={}, expected={PROTOCOL}",
@@ -323,16 +326,12 @@ fn apply_event(
             if !flush_buffer(conn, run_id, engine, state)? {
                 return Ok(false);
             }
-            let (path, kind) = state
-                .sources
-                .get(&ev.source)
-                .cloned()
-                .unwrap_or_else(|| (String::new(), String::from("mbox")));
+            let source = state.sources.get(&ev.source);
             let _ = upsert_source_cursor(
                 conn,
                 &ev.source,
-                &path,
-                &kind,
+                source.map_or("", |s| s.path.as_str()),
+                source.map_or(SourceKind::Mbox, |s| s.kind),
                 ev.cursor.size as i64,
                 ev.cursor.mtime_ns as i64,
                 ev.cursor.offset as i64,
@@ -349,7 +348,7 @@ fn apply_event(
         Event::Finished(ev) => {
             state.stats.messages_seen = ev.messages_total;
             if ev.cancelled.unwrap_or(false) {
-                state.status = "cancelled".into();
+                state.status = RunStatus::Cancelled;
             }
             Ok(true)
         }
@@ -376,19 +375,19 @@ fn consume_reader<R: std::io::Read>(
                 }
             }
             Err(ProtocolError::Oversize) => {
-                state.status = "failed".into();
+                state.status = RunStatus::Failed;
                 state.error_code = Some("E_PROTOCOL_OVERSIZE".into());
                 state.error_summary = Some("NDJSON line exceeded 256 KiB".into());
                 break;
             }
             Err(ProtocolError::Malformed(detail)) => {
-                state.status = "failed".into();
+                state.status = RunStatus::Failed;
                 state.error_code = Some("E_PROTOCOL".into());
                 state.error_summary = Some(redact(&detail));
                 break;
             }
             Err(ProtocolError::Io(e)) => {
-                state.status = "failed".into();
+                state.status = RunStatus::Failed;
                 state.error_code = Some("E_IO".into());
                 state.error_summary = Some(redact(&e));
                 break;
@@ -456,7 +455,7 @@ pub fn mail_scan_start(
     let mut source_meta = HashMap::new();
     let mut sources_json = Vec::new();
     for s in &settings.sources {
-        source_meta.insert(s.id.clone(), (s.path.clone(), s.kind.clone()));
+        source_meta.insert(s.id.clone(), s.clone());
         let cursor = load_cursor_json(&conn, &s.id)?;
         sources_json.push(serde_json::json!({
             "id": s.id,
@@ -487,7 +486,7 @@ pub fn mail_scan_start(
         Ok(c) => c,
         Err(e) => {
             let mut c = db::connection(&app)?;
-            let _ = finish_run(&mut c, &run_id, "failed", Some("E_SPAWN"), Some(&redact(&e)));
+            let _ = finish_run(&mut c, &run_id, RunStatus::Failed, Some("E_SPAWN"), Some(&redact(&e)));
             return Err(e);
         }
     };
@@ -576,7 +575,7 @@ fn drive_scan(
     run_id: &str,
     child: &mut SpawnedScan,
     cancel_file: &Path,
-    sources: HashMap<String, (String, String)>,
+    sources: HashMap<String, MailSource>,
     engine: &mut ScoringEngine,
 ) -> Result<(), String> {
     let mut conn = db::connection(app)?;
@@ -609,7 +608,7 @@ fn drive_scan(
                         run_id: run_id.to_string(),
                         listings_committed: st.stats.listings_committed,
                         messages_seen: st.stats.messages_seen,
-                        status: "running".into(),
+                        status: RunStatus::Running,
                     },
                 );
                 last_emit = std::time::Instant::now();
@@ -620,18 +619,18 @@ fn drive_scan(
     let exit = child.wait();
     match exit {
         Ok(Some(10)) => {
-            if state.status == "completed" {
-                state.status = "cancelled".into();
+            if state.status == RunStatus::Completed {
+                state.status = RunStatus::Cancelled;
             }
         }
         Ok(Some(0)) => {}
-        Ok(Some(code)) if state.status == "completed" => {
-            state.status = "failed".into();
+        Ok(Some(code)) if state.status == RunStatus::Completed => {
+            state.status = RunStatus::Failed;
             state.error_code = state.error_code.or(Some(format!("E_EXIT_{code}")));
         }
         Ok(None) | Err(_) => {
-            if state.status == "completed" {
-                state.status = "failed".into();
+            if state.status == RunStatus::Completed {
+                state.status = RunStatus::Failed;
                 state.error_code = state.error_code.or(Some("E_CHILD".into()));
             }
         }
@@ -642,7 +641,7 @@ fn drive_scan(
     finish_run(
         &mut conn,
         run_id,
-        &state.status,
+        state.status,
         state.error_code.as_deref(),
         state.error_summary.as_deref(),
     )?;
@@ -652,7 +651,7 @@ fn drive_scan(
             run_id: run_id.to_string(),
             listings_committed: state.stats.listings_committed,
             messages_seen: state.stats.messages_seen,
-            status: state.status.clone(),
+            status: state.status,
         },
     );
     Ok(())
@@ -673,7 +672,7 @@ pub fn consume_event_stream<R: std::io::Read>(
     finish_run(
         conn,
         run_id,
-        &state.status,
+        state.status,
         state.error_code.as_deref(),
         state.error_summary.as_deref(),
     )?;

@@ -11,6 +11,7 @@ use crate::mail_scan::enrichment::Enrichment;
 use crate::mail_scan::protocol::ListingEvent;
 use crate::mail_scan::score_cache::{record_sighting, ScoreIdentity};
 use crate::mail_scan::scoring::ScoreOutcome;
+use crate::mail_scan::status::{InboxStatus, RunStatus, SourceKind, Verdict};
 
 /// Counters mirrored into `mail_scan_runs.stats_json` so the History view can render a
 /// finished run through the same component as a live one (spec §8.4).
@@ -65,8 +66,8 @@ pub fn start_run(conn: &mut Connection, run_id: &str) -> Result<(), String> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "INSERT INTO mail_scan_runs (run_id, status, started_at, stats_json)
-         VALUES (?1, 'running', ?2, '{}')",
-        params![run_id, now],
+         VALUES (?1, ?2, ?3, '{}')",
+        params![run_id, RunStatus::Running, now],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -107,7 +108,7 @@ pub fn update_run_stats(
 pub fn finish_run(
     conn: &mut Connection,
     run_id: &str,
-    status: &str,
+    status: RunStatus,
     error_code: Option<&str>,
     error_summary: Option<&str>,
 ) -> Result<(), String> {
@@ -127,7 +128,7 @@ pub fn upsert_source_cursor(
     conn: &mut Connection,
     source_id: &str,
     path: &str,
-    kind: &str,
+    kind: SourceKind,
     size: i64,
     mtime_ns: i64,
     offset: i64,
@@ -230,9 +231,9 @@ fn is_tracked(
     let accepted: Option<i64> = conn
         .query_row(
             "SELECT 1 FROM mail_match_inbox
-             WHERE fingerprint_id = ?1 AND status = 'accepted' AND job_id IS NOT NULL
+             WHERE fingerprint_id = ?1 AND status = ?2 AND job_id IS NOT NULL
              LIMIT 1",
-            params![fingerprint_id],
+            params![fingerprint_id, InboxStatus::Accepted],
             |r| r.get(0),
         )
         .optional()
@@ -280,13 +281,13 @@ pub fn persist_listing(
 
     // A dismissal suppresses the row but never rewrites the score history — the
     // Dismissed tab has to be able to show what was suppressed and why.
-    let effective_outcome = if dismissed { "under_cutoff" } else { scored.outcome };
+    let effective_outcome = if dismissed { Verdict::UnderCutoff } else { scored.outcome };
 
     // Earlier passes record that the listing advanced; the last pass carries the
     // verdict, which is what `count_under_cutoff` and the re-score backlog read.
     let last = scored.passes.len().saturating_sub(1);
     for (i, pass) in scored.passes.iter().enumerate() {
-        let pass_outcome = if i == last { effective_outcome } else { "inbox" };
+        let pass_outcome = if i == last { effective_outcome } else { Verdict::Inbox };
         record_sighting(
             &tx,
             run_id,
@@ -313,14 +314,14 @@ pub fn persist_listing(
     let existing: Option<i64> = tx
         .query_row(
             "SELECT id FROM mail_match_inbox
-             WHERE fingerprint_id = ?1 AND status = 'pending'",
-            params![&fp_id],
+             WHERE fingerprint_id = ?1 AND status = ?2",
+            params![&fp_id, InboxStatus::Pending],
             |r| r.get(0),
         )
         .optional()
         .map_err(|e| e.to_string())?;
 
-    if effective_outcome != "inbox" {
+    if effective_outcome != Verdict::Inbox {
         // Below cutoff: recorded as a sighting, no new row. An already-pending row for
         // the same listing is refreshed rather than left showing a stale score, but a
         // listing that never reached the inbox does not enter it now.
@@ -385,7 +386,7 @@ pub fn persist_listing(
                 enrichment_error, source_board, message_id, message_date, listing_url,
                 first_run_id, last_run_id, created_at, updated_at
              ) VALUES (
-                ?1, 'new', 'pending', ?2, ?3, ?4,
+                ?1, 'new', ?16, ?2, ?3, ?4,
                 ?5, ?6, ?7, ?8,
                 ?9, ?10, ?11, ?12, ?13,
                 ?14, ?14, ?15, ?15
@@ -405,7 +406,8 @@ pub fn persist_listing(
                 &listing.message_date,
                 &listing.url,
                 run_id,
-                &now
+                &now,
+                InboxStatus::Pending
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -453,7 +455,7 @@ mod tests {
         }
     }
 
-    fn outcome(score: i32, verdict: &'static str) -> ScoreOutcome {
+    fn outcome(score: i32, verdict: Verdict) -> ScoreOutcome {
         ScoreOutcome {
             content_hash: format!("hash-{score}-{verdict}"),
             passes: vec![PassRecord {
@@ -467,7 +469,7 @@ mod tests {
         }
     }
 
-    fn scored_for(listing: &ListingEvent, verdict: &'static str) -> ScoreOutcome {
+    fn scored_for(listing: &ListingEvent, verdict: Verdict) -> ScoreOutcome {
         ScoreOutcome {
             content_hash: crate::mail_scan::scoring::listing_content_hash(listing),
             passes: vec![PassRecord {
@@ -521,7 +523,7 @@ mod tests {
         let mut conn = db();
         start_run(&mut conn, "r1").unwrap();
         let l = listing("Dev", "indeed:x", "acme|dev|kbh");
-        let scored = scored_for(&l, "inbox");
+        let scored = scored_for(&l, Verdict::Inbox);
         persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities()).unwrap();
         persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities()).unwrap();
 
@@ -549,8 +551,8 @@ mod tests {
         start_run(&mut conn, "r1").unwrap();
         let a = listing("Dev", "indeed:keep", "acme|dev|kbh");
         let b = listing("Other", "indeed:other", "other|role|kbh");
-        let sa = scored_for(&a, "inbox");
-        let sb = scored_for(&b, "inbox");
+        let sa = scored_for(&a, Verdict::Inbox);
+        let sb = scored_for(&b, Verdict::Inbox);
         let ids = identities();
 
         assert_eq!(
@@ -636,7 +638,7 @@ mod tests {
         start_run(&mut conn, "r1").unwrap();
         let l = listing("Dev", "indeed:tracked", "acme|dev|kbh");
         track_job(&conn, Some(&l.url), None);
-        let scored = scored_for(&l, "inbox");
+        let scored = scored_for(&l, Verdict::Inbox);
 
         let outcome =
             persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities())
@@ -659,7 +661,7 @@ mod tests {
         start_run(&mut conn, "r1").unwrap();
         let l = listing("Dev", "jobindex:h7", "acme|dev|kbh");
         track_job(&conn, Some("https://careers.acme.example/ad/7"), Some(&l.url));
-        let scored = scored_for(&l, "inbox");
+        let scored = scored_for(&l, Verdict::Inbox);
 
         let outcome =
             persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities())
@@ -674,7 +676,7 @@ mod tests {
         let mut conn = db();
         start_run(&mut conn, "r1").unwrap();
         let l = listing("Dev", "indeed:accepted", "acme|dev|kbh");
-        let scored = scored_for(&l, "inbox");
+        let scored = scored_for(&l, Verdict::Inbox);
         persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities())
             .unwrap();
         let inbox_id: i64 = conn
@@ -701,7 +703,7 @@ mod tests {
         start_run(&mut conn, "r1").unwrap();
         track_job(&conn, Some("https://dk.indeed.com/viewjob?jk=indeed:other"), None);
         let l = listing("Dev", "indeed:new-one", "acme|dev|kbh");
-        let scored = scored_for(&l, "inbox");
+        let scored = scored_for(&l, Verdict::Inbox);
 
         let outcome =
             persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities())
@@ -716,7 +718,7 @@ mod tests {
         let mut conn = db();
         start_run(&mut conn, "r1").unwrap();
         let l = listing("Dev", "indeed:low", "acme|dev|kbh");
-        let mut scored = outcome(3, "under_cutoff");
+        let mut scored = outcome(3, Verdict::UnderCutoff);
         scored.content_hash = crate::mail_scan::scoring::listing_content_hash(&l);
 
         assert_eq!(
@@ -751,7 +753,7 @@ mod tests {
                 PassRecord { pass: 2, score: Some(9), reason: "deep".into(), cached: false },
             ],
             suspicious: false,
-            outcome: "inbox",
+            outcome: Verdict::Inbox,
         };
         let ids = ScoringIdentities {
             pass1: ScoreIdentity {
@@ -806,7 +808,7 @@ mod tests {
             let mut conn = db();
             start_run(&mut conn, "r1").unwrap();
             let l = listing("Dev", &format!("indeed:{}", reason.len()), "acme|dev|kbh");
-            let scored = scored_for(&l, "inbox");
+            let scored = scored_for(&l, Verdict::Inbox);
 
             let outcome = persist_listing(
                 &mut conn,
@@ -836,7 +838,7 @@ mod tests {
         let mut conn = db();
         start_run(&mut conn, "r1").unwrap();
         let l = listing("Dev", "indeed:enriched", "acme|dev|kbh");
-        let scored = scored_for(&l, "inbox");
+        let scored = scored_for(&l, Verdict::Inbox);
 
         let mut partial = std::collections::HashMap::new();
         partial.insert("deadline".to_string(), json!("2026-10-01"));
@@ -870,7 +872,7 @@ mod tests {
         let mut conn = db();
         start_run(&mut conn, "r1").unwrap();
         let l = listing("Dev", "indeed:page", "acme|dev|kbh");
-        let scored = scored_for(&l, "inbox");
+        let scored = scored_for(&l, Verdict::Inbox);
         let page = "Rust Developer at Acme. You will build the ingestion pipeline. \
                     Apply by 1 October.";
         let enrichment = Enrichment::from_partial(std::collections::HashMap::new())
@@ -887,7 +889,7 @@ mod tests {
         start_run(&mut conn, "r1").unwrap();
         let mut l = listing("Dev", "jobindex:h1", "acme|dev|kbh");
         l.url = "https://www.jobindex.dk/c?t=h1".into();
-        let scored = scored_for(&l, "inbox");
+        let scored = scored_for(&l, Verdict::Inbox);
         let enrichment = Enrichment {
             employer_url: Some("https://candidate.hr-manager.net/ad/1".into()),
             ..Enrichment::from_partial(std::collections::HashMap::new()).with_page_text("ad")
@@ -905,7 +907,7 @@ mod tests {
         let mut conn = db();
         start_run(&mut conn, "r1").unwrap();
         let l = listing("Dev", "linkedin:1", "acme|dev|kbh");
-        let scored = scored_for(&l, "inbox");
+        let scored = scored_for(&l, Verdict::Inbox);
 
         persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities())
             .unwrap();
@@ -920,7 +922,7 @@ mod tests {
         let mut conn = db();
         start_run(&mut conn, "r1").unwrap();
         let l = listing("Dev", "indeed:nopage", "acme|dev|kbh");
-        let scored = scored_for(&l, "inbox");
+        let scored = scored_for(&l, Verdict::Inbox);
 
         persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::failed("timeout"), &identities())
             .unwrap();
@@ -937,7 +939,7 @@ mod tests {
         let mut l = listing("Dev", "indeed:generic", "acme|dev|kbh");
         l.company = String::new();
         l.location = "  ".into();
-        let scored = scored_for(&l, "inbox");
+        let scored = scored_for(&l, Verdict::Inbox);
 
         let mut partial = std::collections::HashMap::new();
         partial.insert("company".to_string(), json!("Acme A/S"));
@@ -966,7 +968,7 @@ mod tests {
                 cached: false,
             }],
             suspicious: true,
-            outcome: "inbox",
+            outcome: Verdict::Inbox,
         };
 
         persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities()).unwrap();

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::llm::provider::LlmProvider;
 use crate::mail_scan::budget::DEFAULT_MAX_CALLS;
 use crate::mail_scan::scoring::{ScoringConfig, DEFAULT_PASS2_CUTOFF};
+use crate::mail_scan::status::SourceKind;
 
 /// Days of mail history a scan reads unless Settings says otherwise (spec §5.5).
 pub const DEFAULT_SINCE_DAYS: u32 = 90;
@@ -18,8 +19,8 @@ pub struct MailSource {
     pub label: String,
     /// As the user entered it — may be relative, contain `~`, or be a symlink.
     pub path: String,
-    /// `mbox` | `maildir`, detected from the path.
-    pub kind: String,
+    /// Detected from the path when it is resolved.
+    pub kind: SourceKind,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,7 +123,7 @@ pub struct ResolvedSource {
     pub label: String,
     pub entered_path: String,
     pub resolved_path: Option<String>,
-    pub kind: String,
+    pub kind: SourceKind,
     pub exists: bool,
     /// True when the entered path resolved somewhere else — a symlink or `..`.
     pub redirected: bool,
@@ -130,11 +131,11 @@ pub struct ResolvedSource {
 }
 
 /// mbox is a regular file; maildir is a directory containing `cur`/`new`.
-fn detect_kind(resolved: &Path) -> &'static str {
+fn detect_kind(resolved: &Path) -> SourceKind {
     if resolved.is_dir() {
-        "maildir"
+        SourceKind::Maildir
     } else {
-        "mbox"
+        SourceKind::Mbox
     }
 }
 
@@ -156,7 +157,7 @@ pub fn resolve_source(source: &MailSource) -> ResolvedSource {
         label: source.label.clone(),
         entered_path: source.path.clone(),
         resolved_path: None,
-        kind: source.kind.clone(),
+        kind: source.kind,
         exists: false,
         redirected: false,
         error: None,
@@ -170,7 +171,7 @@ pub fn resolve_source(source: &MailSource) -> ResolvedSource {
             }
             out.exists = true;
             out.redirected = resolved != expanded || target != expanded;
-            out.kind = detect_kind(&resolved).to_string();
+            out.kind = detect_kind(&resolved);
             out.resolved_path = Some(resolved.to_string_lossy().into_owned());
         }
         Err(e) => {
@@ -484,7 +485,7 @@ mod tests {
             id: "s1".into(),
             label: "Indeed".into(),
             path: path.into(),
-            kind: "mbox".into(),
+            kind: SourceKind::Mbox,
         }
     }
 
@@ -525,7 +526,7 @@ mod tests {
 
         let resolved = resolve_source(&source(msf.to_str().unwrap()));
         assert!(resolved.exists);
-        assert_eq!(resolved.kind, "mbox");
+        assert_eq!(resolved.kind, SourceKind::Mbox);
         assert_eq!(
             PathBuf::from(resolved.resolved_path.unwrap()).canonicalize().unwrap(),
             mbox.canonicalize().unwrap()
@@ -561,12 +562,12 @@ mod tests {
 
         // The caller claimed maildir; the filesystem says otherwise.
         let mut s = source(mbox.to_str().unwrap());
-        s.kind = "maildir".into();
-        assert_eq!(resolve_source(&s).kind, "mbox");
+        s.kind = SourceKind::Maildir;
+        assert_eq!(resolve_source(&s).kind, SourceKind::Mbox);
 
         let maildir = dir.path().join("Mail");
         fs::create_dir_all(maildir.join("cur")).unwrap();
-        assert_eq!(resolve_source(&source(maildir.to_str().unwrap())).kind, "maildir");
+        assert_eq!(resolve_source(&source(maildir.to_str().unwrap())).kind, SourceKind::Maildir);
     }
 
     #[test]

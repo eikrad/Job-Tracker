@@ -14,6 +14,8 @@ use std::collections::HashMap;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
+use crate::mail_scan::status::InboxStatus;
+
 /// Job fields a scan-created Job may take from its Draft; each one written gets a
 /// provenance row.
 ///
@@ -68,9 +70,9 @@ fn claim_pending(tx: &Connection, inbox_id: i64, job_id: i64, now: &str) -> Resu
     let changed = tx
         .execute(
             "UPDATE mail_match_inbox
-             SET status = 'accepted', job_id = ?1, updated_at = ?2
-             WHERE id = ?3 AND status = 'pending'",
-            params![job_id, now, inbox_id],
+             SET status = ?4, job_id = ?1, updated_at = ?2
+             WHERE id = ?3 AND status = ?5",
+            params![job_id, now, inbox_id, InboxStatus::Accepted, InboxStatus::Pending],
         )
         .map_err(|e| e.to_string())?;
     Ok(changed == 1)
@@ -165,7 +167,7 @@ pub fn accept_new(conn: &mut Connection, inbox_id: i64) -> Result<AcceptOutcome,
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     // Claim first: if this loses the race, no Job is created at all.
-    type Row = (String, Option<i64>, String, Option<String>, Option<String>);
+    type Row = (InboxStatus, Option<i64>, String, Option<String>, Option<String>);
     let row: Option<Row> = tx
         .query_row(
             "SELECT status, job_id, draft_json, source_board, last_run_id
@@ -178,7 +180,7 @@ pub fn accept_new(conn: &mut Connection, inbox_id: i64) -> Result<AcceptOutcome,
     let Some((status, existing_job, draft_json, board, run_id)) = row else {
         return Err("That inbox row no longer exists.".into());
     };
-    if status != "pending" {
+    if status != InboxStatus::Pending {
         tx.rollback().map_err(|e| e.to_string())?;
         return Ok(AcceptOutcome {
             job_id: existing_job.unwrap_or_default(),
@@ -230,7 +232,7 @@ pub fn undo_accept(conn: &mut Connection, inbox_id: i64) -> Result<(), String> {
     let now = chrono::Utc::now().to_rfc3339();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    let row: Option<(String, Option<i64>)> = tx
+    let row: Option<(InboxStatus, Option<i64>)> = tx
         .query_row(
             "SELECT status, job_id FROM mail_match_inbox WHERE id = ?1",
             params![inbox_id],
@@ -243,7 +245,7 @@ pub fn undo_accept(conn: &mut Connection, inbox_id: i64) -> Result<(), String> {
     let Some((status, job_id)) = row else {
         return Err("That match is gone; its job was probably deleted already.".into());
     };
-    let (true, Some(job_id)) = (status == "accepted", job_id) else {
+    let (true, Some(job_id)) = (status == InboxStatus::Accepted, job_id) else {
         return Err(format!("That match is {status}, not accepted."));
     };
 
@@ -261,9 +263,9 @@ pub fn undo_accept(conn: &mut Connection, inbox_id: i64) -> Result<(), String> {
     // Unlink first: deleting the Job while the row still points at it would cascade
     // the row away too.
     tx.execute(
-        "UPDATE mail_match_inbox SET status = 'pending', job_id = NULL, updated_at = ?1
+        "UPDATE mail_match_inbox SET status = ?3, job_id = NULL, updated_at = ?1
          WHERE id = ?2",
-        params![&now, inbox_id],
+        params![&now, inbox_id, InboxStatus::Pending],
     )
     .map_err(|e| e.to_string())?;
     for sql in [

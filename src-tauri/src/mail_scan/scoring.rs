@@ -17,6 +17,7 @@ use crate::mail_scan::injection;
 use crate::mail_scan::profiles::LoadedProfile;
 use crate::mail_scan::protocol::ListingEvent;
 use crate::mail_scan::score_cache::{self, ScoreIdentity};
+use crate::mail_scan::status::{ScoreState, Verdict};
 
 /// Minimum pass-1 score that earns a pass-2 call. Fixed in v1 (spec §11.3).
 pub const PASS1_GATE: i32 = 7;
@@ -382,7 +383,7 @@ pub struct ScoreOutcome {
     pub content_hash: String,
     pub passes: Vec<PassRecord>,
     pub suspicious: bool,
-    pub outcome: &'static str,
+    pub outcome: Verdict,
 }
 
 impl ScoreOutcome {
@@ -398,11 +399,11 @@ impl ScoreOutcome {
         &self.last().reason
     }
 
-    pub fn score_state(&self) -> &'static str {
+    pub fn score_state(&self) -> ScoreState {
         if self.last().score.is_some() {
-            "ok"
+            ScoreState::Ok
         } else {
-            "invalid"
+            ScoreState::Invalid
         }
     }
 }
@@ -740,15 +741,15 @@ impl ScoringEngine {
             // An invalid pass-1 has no usable gate signal. Surface it in the inbox
             // flagged rather than burying it as under-cutoff on a non-answer.
             let outcome = match p1.score {
-                None => "inbox",
-                Some(s) if s < self.config.pass1_gate => "under_cutoff",
+                None => Verdict::Inbox,
+                Some(s) if s < self.config.pass1_gate => Verdict::UnderCutoff,
                 Some(_) => {
                     match self.resolve_pass2(conn, listings[i], &hashes[i], &mut stop)? {
                         Some(p2) => {
                             let verdict = match p2.score {
-                                None => "inbox",
-                                Some(s2) if s2 >= self.config.pass2_cutoff => "inbox",
-                                Some(_) => "under_cutoff",
+                                None => Verdict::Inbox,
+                                Some(s2) if s2 >= self.config.pass2_cutoff => Verdict::Inbox,
+                                Some(_) => Verdict::UnderCutoff,
                             };
                             passes.push(p2);
                             verdict
@@ -1595,9 +1596,9 @@ mod tests {
         let scored = batch.results[0].as_ref().unwrap();
 
         assert_eq!(scored.score(), None);
-        assert_eq!(scored.score_state(), "invalid");
+        assert_eq!(scored.score_state(), ScoreState::Invalid);
         assert_eq!(
-            scored.outcome, "inbox",
+            scored.outcome, Verdict::Inbox,
             "a non-answer must be visible, not silently dropped below the cutoff"
         );
     }
@@ -1633,7 +1634,7 @@ mod tests {
         let batch = score_and_persist(&mut conn, "run1", &mut engine, &listings);
 
         assert_eq!(scorer.pass2_calls(), 0, "the gate is the whole point of pass 1");
-        assert_eq!(batch.results[0].as_ref().unwrap().outcome, "under_cutoff");
+        assert_eq!(batch.results[0].as_ref().unwrap().outcome, Verdict::UnderCutoff);
     }
 
     #[test]
@@ -1646,7 +1647,7 @@ mod tests {
         let batch = score_and_persist(&mut conn, "run1", &mut engine, &listings);
         let scored = batch.results[0].as_ref().unwrap();
 
-        assert_eq!(scored.outcome, "under_cutoff");
+        assert_eq!(scored.outcome, Verdict::UnderCutoff);
         assert_eq!(scored.score(), Some(2), "the deep score is the one that counts");
         let rows: i64 = conn
             .query_row("SELECT COUNT(*) FROM mail_match_inbox", [], |r| r.get(0))
@@ -1668,7 +1669,7 @@ mod tests {
         );
 
         let batch = score_and_persist(&mut conn, "run1", &mut engine, &listings);
-        assert_eq!(batch.results[0].as_ref().unwrap().outcome, "under_cutoff");
+        assert_eq!(batch.results[0].as_ref().unwrap().outcome, Verdict::UnderCutoff);
     }
 
     // ----- prompt assets ---------------------------------------------------

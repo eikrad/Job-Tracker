@@ -23,6 +23,7 @@ use serde_json::Value;
 use crate::llm::provider::ProviderSpec;
 use crate::mail_scan::listing_page::{self, Board};
 use crate::mail_scan::protocol::ListingEvent;
+use crate::mail_scan::status::EnrichmentState;
 use crate::net;
 use crate::secrets::redact;
 
@@ -45,8 +46,7 @@ const MAX_PAGE_CHARS: usize = 12_000;
 pub struct Enrichment {
     /// Normalized `NewJob` fields. Empty when enrichment failed.
     pub partial: HashMap<String, Value>,
-    /// `complete` | `partial` | `failed` | `skipped`
-    pub state: &'static str,
+    pub state: EnrichmentState,
     /// Why it is not `complete`, in a sentence the inbox row can show.
     pub error: Option<String>,
     /// The listing page as text (already bounded by [`MAX_PAGE_CHARS`]), kept so the
@@ -66,7 +66,7 @@ impl Enrichment {
     pub fn skipped() -> Self {
         Self {
             partial: HashMap::new(),
-            state: "skipped",
+            state: EnrichmentState::Skipped,
             error: None,
             page_text: None,
             employer_url: None,
@@ -85,7 +85,7 @@ impl Enrichment {
     pub fn failed(reason: impl Into<String>) -> Self {
         Self {
             partial: HashMap::new(),
-            state: "failed",
+            state: EnrichmentState::Failed,
             error: Some(redact(&reason.into())),
             page_text: None,
             employer_url: None,
@@ -102,10 +102,10 @@ impl Enrichment {
         };
         let missing: Vec<&str> = ENRICHMENT_FIELDS.iter().copied().filter(|f| !has(f)).collect();
         let (state, error) = if missing.is_empty() {
-            ("complete", None)
+            (EnrichmentState::Complete, None)
         } else {
             (
-                "partial",
+                EnrichmentState::Partial,
                 Some(format!("not found on the listing page: {}", missing.join(", "))),
             )
         };
@@ -128,7 +128,7 @@ impl Enrichment {
     }
 
     pub fn is_usable(&self) -> bool {
-        matches!(self.state, "complete" | "partial")
+        matches!(self.state, EnrichmentState::Complete | EnrichmentState::Partial)
     }
 }
 
@@ -331,14 +331,14 @@ mod tests {
     fn all_fields_present_is_complete() {
         let full: Vec<(&str, &str)> = ENRICHMENT_FIELDS.iter().map(|f| (*f, "value")).collect();
         let e = Enrichment::from_partial(partial_of(&full));
-        assert_eq!(e.state, "complete");
+        assert_eq!(e.state, EnrichmentState::Complete);
         assert_eq!(e.error, None);
     }
 
     #[test]
     fn some_fields_present_is_partial_and_names_what_is_missing() {
         let e = Enrichment::from_partial(partial_of(&[("deadline", "2026-10-01")]));
-        assert_eq!(e.state, "partial");
+        assert_eq!(e.state, EnrichmentState::Partial);
         let reason = e.error.unwrap();
         assert!(reason.contains("salary_range"), "{reason}");
         assert!(
@@ -350,14 +350,14 @@ mod tests {
     #[test]
     fn a_blank_string_does_not_count_as_found() {
         let e = Enrichment::from_partial(partial_of(&[("deadline", "   ")]));
-        assert_eq!(e.state, "partial");
+        assert_eq!(e.state, EnrichmentState::Partial);
         assert!(e.error.unwrap().contains("deadline"));
     }
 
     #[test]
     fn failure_keeps_the_listing_usable_but_marks_the_state() {
         let e = Enrichment::failed("connection timed out");
-        assert_eq!(e.state, "failed");
+        assert_eq!(e.state, EnrichmentState::Failed);
         assert!(e.partial.is_empty());
         assert!(!e.is_usable());
         assert!(e.error.unwrap().contains("timed out"));
@@ -450,7 +450,7 @@ mod fetch_guard_tests {
             "file:///etc/passwd",
         ] {
             let result = enricher().enrich(&listing_with_url(hostile));
-            assert_eq!(result.state, "failed", "{hostile}");
+            assert_eq!(result.state, EnrichmentState::Failed, "{hostile}");
             assert!(
                 result.error.unwrap().contains("fetch guard"),
                 "{hostile} must be refused by the guard, not attempted"
@@ -461,7 +461,7 @@ mod fetch_guard_tests {
     #[test]
     fn a_listing_with_no_link_fails_cleanly() {
         let result = enricher().enrich(&listing_with_url("   "));
-        assert_eq!(result.state, "failed");
+        assert_eq!(result.state, EnrichmentState::Failed);
         assert!(result.error.unwrap().contains("no link"));
     }
 
@@ -575,7 +575,7 @@ mod following_tests {
         assert_eq!(e.employer_url.as_deref(), Some(EMPLOYER_AD));
         assert!(e.page_text.unwrap().contains("Apply by 1 October"));
         assert!(reader.read.lock().unwrap()[0].contains("Geodata Analyst"));
-        assert_eq!(e.state, "partial");
+        assert_eq!(e.state, EnrichmentState::Partial);
     }
 
     #[test]
@@ -629,7 +629,7 @@ mod following_tests {
 
         assert!(fetcher.asked().is_empty(), "Indeed answers bots with a 401 challenge");
         assert!(reader.read.lock().unwrap().is_empty());
-        assert_ne!(e.state, "failed", "an expected outcome is not a failure");
+        assert_ne!(e.state, EnrichmentState::Failed, "an expected outcome is not a failure");
         assert!(e.error.unwrap().contains("not fetchable"));
     }
 
@@ -713,7 +713,7 @@ mod following_tests {
 
         let e = enrich(&fetcher, &FakeReader::default(), &listing(board, "jobbank"));
 
-        assert_eq!(e.state, "partial", "the listing is still enriched from the board page");
+        assert_eq!(e.state, EnrichmentState::Partial, "the listing is still enriched from the board page");
         assert_eq!(e.employer_url, None);
         assert!(e.page_text.unwrap().contains("Teaser text"));
     }

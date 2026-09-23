@@ -2,6 +2,8 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::mail_scan::status::InboxStatus;
+
 /// Resolve a fingerprint id through aliases (weak id → canonical).
 pub fn resolve_id(conn: &Connection, fingerprint_id: &str) -> Result<String, String> {
     let canonical: Option<String> = conn
@@ -189,9 +191,9 @@ pub fn dismiss(
     )
     .map_err(|e| e.to_string())?;
     tx.execute(
-        "UPDATE mail_match_inbox SET status = 'dismissed', updated_at = ?1
-         WHERE fingerprint_id = ?2 AND status = 'pending'",
-        params![now, canonical],
+        "UPDATE mail_match_inbox SET status = ?3, updated_at = ?1
+         WHERE fingerprint_id = ?2 AND status = ?4",
+        params![now, canonical, InboxStatus::Dismissed, InboxStatus::Pending],
     )
     .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;

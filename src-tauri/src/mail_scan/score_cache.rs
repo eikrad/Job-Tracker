@@ -13,6 +13,8 @@
 
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::mail_scan::status::Verdict;
+
 /// What identifies one scoring call. Pass 1 carries the short profile's hash, pass 2
 /// the full profile's, so editing only the long CV re-scores only the deep pass.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,7 +30,7 @@ pub struct CachedScore {
     /// to be told the same nonsense twice.
     pub score: Option<i32>,
     pub reason: String,
-    pub outcome: String,
+    pub outcome: Verdict,
 }
 
 fn row_to_cached(row: &rusqlite::Row<'_>) -> rusqlite::Result<CachedScore> {
@@ -101,7 +103,7 @@ pub fn record_sighting(
     id: &ScoreIdentity,
     score: Option<i32>,
     reason: &str,
-    outcome: &str,
+    outcome: Verdict,
     now: &str,
 ) -> Result<(), String> {
     tx.execute(
@@ -136,8 +138,8 @@ pub fn record_sighting(
 pub fn count_under_cutoff(conn: &Connection) -> Result<i64, String> {
     conn.query_row(
         "SELECT COUNT(DISTINCT fingerprint_id) FROM mail_scored_sightings
-         WHERE outcome = 'under_cutoff'",
-        [],
+         WHERE outcome = ?1",
+        [Verdict::UnderCutoff],
         |r| r.get(0),
     )
     .map_err(|e| e.to_string())
@@ -174,7 +176,7 @@ mod tests {
         }
     }
 
-    fn seed(conn: &Connection, id: &ScoreIdentity, score: i32, outcome: &str) {
+    fn seed(conn: &Connection, id: &ScoreIdentity, score: i32, outcome: Verdict) {
         record_sighting(
             conn, "r1", "fp1", "hash-a", 1, id, Some(score), "because", outcome, "2026-09-09T00:00:00Z",
         )
@@ -185,25 +187,25 @@ mod tests {
     fn exact_key_hits() {
         let conn = db();
         let id = identity("p1", "v1", "m1");
-        seed(&conn, &id, 8, "inbox");
+        seed(&conn, &id, 8, Verdict::Inbox);
 
         let hit = lookup_exact(&conn, "hash-a", 1, &id).unwrap().unwrap();
         assert_eq!(hit.score, Some(8));
-        assert_eq!(hit.outcome, "inbox");
+        assert_eq!(hit.outcome, Verdict::Inbox);
     }
 
     #[test]
     fn a_different_pass_is_a_different_cache_entry() {
         let conn = db();
         let id = identity("p1", "v1", "m1");
-        seed(&conn, &id, 8, "inbox");
+        seed(&conn, &id, 8, Verdict::Inbox);
         assert!(lookup_exact(&conn, "hash-a", 2, &id).unwrap().is_none());
     }
 
     #[test]
     fn profile_content_change_misses_and_forces_a_rescore() {
         let conn = db();
-        seed(&conn, &identity("p1", "v1", "m1"), 3, "under_cutoff");
+        seed(&conn, &identity("p1", "v1", "m1"), 3, Verdict::UnderCutoff);
 
         // Same listing, same prompt, same model — but the CV was edited.
         assert!(lookup_reusable(&conn, "hash-a", 1, "p2-edited", "v1")
@@ -214,7 +216,7 @@ mod tests {
     #[test]
     fn prompt_version_change_misses_and_forces_a_rescore() {
         let conn = db();
-        seed(&conn, &identity("p1", "v1", "m1"), 3, "under_cutoff");
+        seed(&conn, &identity("p1", "v1", "m1"), 3, Verdict::UnderCutoff);
         assert!(lookup_reusable(&conn, "hash-a", 1, "p1", "v2")
             .unwrap()
             .is_none());
@@ -223,7 +225,7 @@ mod tests {
     #[test]
     fn model_change_alone_still_reuses_the_existing_score() {
         let conn = db();
-        seed(&conn, &identity("p1", "v1", "m1"), 3, "under_cutoff");
+        seed(&conn, &identity("p1", "v1", "m1"), 3, Verdict::UnderCutoff);
 
         // Provider switch. The exact cache misses...
         assert!(lookup_exact(&conn, "hash-a", 1, &identity("p1", "v1", "m2-new"))
@@ -238,7 +240,7 @@ mod tests {
     fn invalid_scores_are_cached_as_null_rather_than_re_paid_for() {
         let conn = db();
         let id = identity("p1", "v1", "m1");
-        record_sighting(&conn, "r1", "fp1", "hash-b", 1, &id, None, "invalid", "inbox", "t")
+        record_sighting(&conn, "r1", "fp1", "hash-b", 1, &id, None, "invalid", Verdict::Inbox, "t")
             .unwrap();
 
         let hit = lookup_exact(&conn, "hash-b", 1, &id).unwrap().unwrap();
@@ -249,8 +251,8 @@ mod tests {
     fn re_recording_the_same_key_updates_rather_than_duplicating() {
         let conn = db();
         let id = identity("p1", "v1", "m1");
-        seed(&conn, &id, 3, "under_cutoff");
-        seed(&conn, &id, 9, "inbox");
+        seed(&conn, &id, 3, Verdict::UnderCutoff);
+        seed(&conn, &id, 9, Verdict::Inbox);
 
         let n: i64 = conn
             .query_row(
@@ -266,10 +268,10 @@ mod tests {
     #[test]
     fn backlog_count_reports_distinct_under_cutoff_listings() {
         let conn = db();
-        seed(&conn, &identity("p1", "v1", "m1"), 3, "under_cutoff");
+        seed(&conn, &identity("p1", "v1", "m1"), 3, Verdict::UnderCutoff);
         record_sighting(
             &conn, "r1", "fp1", "hash-c", 1, &identity("p1", "v1", "m1"),
-            Some(9), "good", "inbox", "t",
+            Some(9), "good", Verdict::Inbox, "t",
         )
         .unwrap();
         assert_eq!(count_under_cutoff(&conn).unwrap(), 1);
