@@ -169,14 +169,15 @@ pub fn normalize_llm_job_partial(raw: &Map<String, Value>) -> HashMap<String, Va
 fn parse_raw_json_object(text: &str) -> Option<Map<String, Value>> {
     let trimmed = text.trim();
     let without_think = strip_think_blocks(trimmed);
-    let unfenced = without_think
+    let repaired = repair_spurious_double_opening_brace(&without_think);
+    let unfenced = repaired
         .trim_start_matches("```json")
         .trim_start_matches("```JSON")
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
 
-    for candidate in [unfenced, without_think.as_str(), trimmed] {
+    for candidate in [unfenced, repaired.as_str(), without_think.as_str(), trimmed] {
         if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(candidate) {
             return Some(map);
         }
@@ -187,6 +188,20 @@ fn parse_raw_json_object(text: &str) -> Option<Map<String, Value>> {
         }
     }
     None
+}
+
+/// DeepSeek on Scaleway sometimes emits `{{\n  "company": ...}` (one extra `{`).
+fn repair_spurious_double_opening_brace(text: &str) -> String {
+    let trimmed = text.trim();
+    let Some(after_first) = trimmed.strip_prefix('{') else {
+        return trimmed.to_string();
+    };
+    let after_ws = after_first.trim_start();
+    if after_ws.starts_with('{') {
+        after_ws.to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// Scaleway/DeepSeek reasoning models often wrap the answer as
@@ -284,6 +299,15 @@ mod tests {
         let text = "Here is the result:\n\n{\"company\":\"Gamma\",\"title\":\"SRE\"}\nThanks.";
         let out = parse_partial_new_job_from_llm_text(text);
         assert_eq!(out.get("company").and_then(|v| v.as_str()), Some("Gamma"));
+    }
+
+    #[test]
+    fn repairs_spurious_double_opening_brace() {
+        // Live Scaleway/DeepSeek often emits `{{\n  "company": ...}` which is not JSON.
+        let text = "{\n{\n  \"company\": \"Acme\",\n  \"title\": \"Rust engineer\"\n}";
+        let out = parse_partial_new_job_from_llm_text(text);
+        assert_eq!(out.get("company").and_then(|v| v.as_str()), Some("Acme"));
+        assert_eq!(out.get("title").and_then(|v| v.as_str()), Some("Rust engineer"));
     }
 
     #[test]

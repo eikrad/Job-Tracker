@@ -162,6 +162,9 @@ fn openai_body(req: &ChatRequest<'_>) -> Value {
         }
         (JsonMode::ResponseMimeType, _) => unreachable!("gemini takes the other path"),
     }
+    if let Some(effort) = req.spec.reasoning_effort {
+        body["reasoning_effort"] = json!(effort);
+    }
     body
 }
 

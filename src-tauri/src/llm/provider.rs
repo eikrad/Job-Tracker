@@ -50,6 +50,10 @@ pub struct ProviderSpec {
     pub model_id: String,
     pub auth: AuthStyle,
     pub json_mode: JsonMode,
+    /// OpenAI-compatible `reasoning_effort` (Scaleway). `None` omits the field.
+    /// DeepSeek-V4 defaults to thinking; without `"none"`, extract often burns the
+    /// token budget on `reasoning` and returns empty `content`.
+    pub reasoning_effort: Option<&'static str>,
 }
 
 impl ProviderSpec {
@@ -74,18 +78,21 @@ pub fn provider_spec(provider: LlmProvider) -> ProviderSpec {
             model_id: "deepseek-v4-flash-0731".into(),
             auth: AuthStyle::Bearer,
             json_mode: JsonMode::Schema,
+            reasoning_effort: Some("none"),
         },
         LlmProvider::Mistral => ProviderSpec {
             base_url: "https://api.mistral.ai/v1".into(),
             model_id: "mistral-small-latest".into(),
             auth: AuthStyle::Bearer,
             json_mode: JsonMode::JsonObject,
+            reasoning_effort: None,
         },
         LlmProvider::Gemini => ProviderSpec {
             base_url: "https://generativelanguage.googleapis.com/v1beta".into(),
             model_id: "gemini-2.0-flash".into(),
             auth: AuthStyle::Header("x-goog-api-key"),
             json_mode: JsonMode::ResponseMimeType,
+            reasoning_effort: None,
         },
     }
 }
