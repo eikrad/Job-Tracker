@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// Fixed argv for the sidecar — config is stdin-only.
-pub const SCAN_ARGV: &[&str] = &["-m", "mail_scan", "scan", "--protocol", "1"];
+pub const SCAN_ARGV: &[&str] = &["-m", "mail_scan", "scan", "--protocol", "2"];
 
 pub struct SpawnedScan {
     child: Arc<Mutex<Child>>,
@@ -184,7 +184,8 @@ mod tests {
 
     #[test]
     fn scan_argv_is_stdin_config_only() {
-        assert_eq!(SCAN_ARGV, &["-m", "mail_scan", "scan", "--protocol", "1"]);
+        assert_eq!(SCAN_ARGV, &["-m", "mail_scan", "scan", "--protocol", "2"]);
+        assert_eq!(SCAN_ARGV[4], crate::mail_scan::protocol::PROTOCOL.to_string());
         assert!(
             !SCAN_ARGV.iter().any(|a| a.contains('{') || a.contains("run_id")),
             "config must not appear on argv"

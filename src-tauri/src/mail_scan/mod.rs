@@ -5,6 +5,7 @@
 pub mod accept;
 pub mod budget;
 pub mod cluster;
+pub mod digest_split;
 #[cfg(test)]
 mod corpus;
 pub mod enrichment;
@@ -37,7 +38,10 @@ use self::persist::{
 };
 use self::enrichment::{Enrichment, LlmEnricher};
 use self::profiles::{load_profile, ProfileKind};
-use self::protocol::{read_event_line, Event, ListingEvent, ProtocolError, MAX_LINE_BYTES};
+use self::digest_split::LlmSplitter;
+use self::protocol::{
+    read_event_line, Event, ListingEvent, ProtocolError, MAX_LINE_BYTES, PROTOCOL,
+};
 use self::scoring::{LlmScorer, RunStop, ScoringConfig, ScoringEngine};
 use self::spawn::{spawn_scan, watch_cancel_escalation, SpawnedScan};
 use crate::llm::overrides::resolved_spec;
@@ -46,7 +50,7 @@ use crate::secrets;
 
 /// Extractor names shipped with the sidecar, in dispatch order (pinned to Python
 /// `DEFAULT_EXTRACTORS` by `tests/test_mail_scan_sidecar.py`).
-pub const DEFAULT_EXTRACTORS: &[&str] = &["jobindex", "linkedin", "indeed", "generic"];
+pub const DEFAULT_EXTRACTORS: &[&str] = &["jobindex", "linkedin", "indeed", "digest"];
 
 #[derive(Clone, Default)]
 pub struct MailScanRuntime {
@@ -148,9 +152,12 @@ fn build_engine(
         profile_full_hash: full.content_hash.clone(),
     };
     let scorer = LlmScorer::new(spec.clone(), key.clone(), short, full);
+    let splitter = LlmSplitter::new(spec.clone(), key.clone());
     let enricher = LlmEnricher::new(spec, key);
     Ok((
-        ScoringEngine::new(Box::new(scorer), config).with_enricher(Box::new(enricher)),
+        ScoringEngine::new(Box::new(scorer), config)
+            .with_enricher(Box::new(enricher))
+            .with_splitter(Box::new(splitter)),
         identity,
     ))
 }
@@ -234,24 +241,28 @@ fn flush_buffer(
         }
     }
     state.stats.llm_calls = engine.budget().calls_used();
+    Ok(continue_after(batch.stop, run_id, state))
+}
 
-    match batch.stop {
-        None => Ok(true),
+/// Apply a stop signal from scoring or splitting. Returns false when the run must stop.
+fn continue_after(stop: Option<RunStop>, run_id: &str, state: &mut DriveState) -> bool {
+    match stop {
+        None => true,
         // The cap is a successful stop: the run completes, keeps its results, and the
         // UI offers Continue. Treating it as a failure would train the user to ignore
         // failures.
         Some(RunStop::BudgetExhausted) => {
             state.stats.budget_exhausted = true;
             log::info!("mail scan {run_id}: call budget exhausted, stopping cleanly");
-            Ok(false)
+            false
         }
         Some(RunStop::Unavailable(detail)) => {
             state.fail("E_LLM_UNAVAILABLE", detail);
-            Ok(false)
+            false
         }
         Some(RunStop::Fatal { code, detail }) => {
             state.fail(code, detail);
-            Ok(false)
+            false
         }
     }
 }
@@ -270,11 +281,11 @@ fn apply_event(
             Ok(true)
         }
         Event::Started(ev) => {
-            if ev.protocol != 1 {
+            if ev.protocol != PROTOCOL {
                 state.status = "failed".into();
                 state.error_code = Some("E_PROTOCOL_MISMATCH".into());
                 state.error_summary = Some(format!(
-                    "protocol mismatch: sidecar={}, expected=1",
+                    "protocol mismatch: sidecar={}, expected={PROTOCOL}",
                     ev.protocol
                 ));
                 return Ok(false);
@@ -287,6 +298,21 @@ fn apply_event(
                 return flush_buffer(conn, run_id, engine, state);
             }
             Ok(true)
+        }
+        Event::Digest(digest) => {
+            // Split listings join the same buffer as extracted ones, so they pass the
+            // same dismissal gate, scoring, enrichment, and per-item commit.
+            let split = engine.split_digest(conn, run_id, &digest)?;
+            state.stats.llm_calls = engine.budget().calls_used();
+            for listing in split.listings {
+                state.buffer.push(listing);
+                if state.buffer.len() >= engine.batch_size()
+                    && !flush_buffer(conn, run_id, engine, state)?
+                {
+                    return Ok(false);
+                }
+            }
+            Ok(continue_after(split.stop, run_id, state))
         }
         Event::SourceFinished(ev) => {
             // Commit the cursor only after everything read from this source is on
@@ -490,7 +516,7 @@ pub fn mail_scan_start(
     }
 
     let config = serde_json::json!({
-        "protocol": 1,
+        "protocol": PROTOCOL,
         "run_id": run_id,
         "sources": sources_json,
         "extractors": DEFAULT_EXTRACTORS,

@@ -436,7 +436,7 @@ mod tests {
     fn crash_mid_stream_keeps_committed_items() {
         let mut conn = db();
         let stream = r#"
-{"t":"started","protocol":1,"run_id":"r1","sidecar_version":"1.0.0","sources":1}
+{"t":"started","protocol":2,"run_id":"r1","sidecar_version":"1.0.0","sources":1}
 {"t":"listing","source":"indeed","message_id":"<a>","message_date":"2026-09-08T06:12:00Z","seq":0,"title":"A","company":"Acme","location":"Kbh","url":"https://example.com/a","snippet":"s","fingerprint":{"strong":"indeed:a","weak":"acme|a|kbh"},"extractor":"indeed","extractor_confidence":0.9}
 {"t":"listing","source":"indeed","message_id":"<b>","message_date":"2026-09-08T06:12:00Z","seq":1,"title":"B","company":"Acme","location":"Kbh","url":"https://example.com/b","snippet":"s","fingerprint":{"strong":"indeed:b","weak":"acme|b|kbh"},"extractor":"indeed","extractor_confidence":0.9}
 {"t":"listing","source":"indeed","message_id":"<c","broken

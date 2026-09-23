@@ -33,6 +33,10 @@ const MIGRATIONS: &[Migration] = &[
         version: 4,
         up: m0004_jobs_board_url,
     },
+    Migration {
+        version: 5,
+        up: m0005_mail_digest_splits,
+    },
 ];
 
 /// Latest schema version applied by this module.
@@ -385,6 +389,23 @@ fn m0004_jobs_board_url(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+/// The model's split of an unrecognised alert mail, keyed by the mail's content
+/// fingerprint and the split prompt version, so a re-scan does not pay twice.
+fn m0005_mail_digest_splits(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS mail_digest_splits (
+           message_fingerprint TEXT NOT NULL,
+           prompt_version      TEXT NOT NULL,
+           outcome             TEXT NOT NULL CHECK (outcome IN ('ok','invalid')),
+           items_json          TEXT NOT NULL,
+           run_id              TEXT,
+           split_at            TEXT NOT NULL,
+           PRIMARY KEY (message_fingerprint, prompt_version)
+         );",
+    )
+    .map_err(|e| format!("m0005 failed: {e}"))
+}
+
 /// Apply every migration newer than the database's `user_version`.
 ///
 /// Each step runs in its own transaction and stamps `user_version` on commit, so a
@@ -552,6 +573,7 @@ mod tests {
             "mail_match_dismissals",
             "mail_scored_sightings",
             "mail_source_cursors",
+            "mail_digest_splits",
             "job_field_provenance",
         ] {
             assert!(

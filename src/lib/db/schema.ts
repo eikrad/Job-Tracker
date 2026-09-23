@@ -40,5 +40,8 @@ export const schema = {
     "source_id", "path", "kind", "size", "mtime_ns", "offset",
     "sentinel_hash", "last_message_id", "updated_at",
   ],
+  mail_digest_splits: [
+    "message_fingerprint", "prompt_version", "outcome", "items_json", "run_id", "split_at",
+  ],
   job_field_provenance: ["job_id", "field", "source", "run_id", "set_at"],
 };

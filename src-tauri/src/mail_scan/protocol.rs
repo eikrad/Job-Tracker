@@ -25,11 +25,15 @@ impl std::fmt::Display for ProtocolError {
     }
 }
 
+/// Sidecar protocol this build speaks. 2 added [`Event::Digest`].
+pub const PROTOCOL: u32 = 2;
+
 #[derive(Debug)]
 pub enum Event {
     Started(StartedEvent),
     SourceStarted(SourceStartedEvent),
     Listing(Box<ListingEvent>),
+    Digest(Box<DigestEvent>),
     SourceFinished(SourceFinishedEvent),
     Warning(WarningEvent),
     Finished(FinishedEvent),
@@ -69,6 +73,30 @@ pub struct ListingEvent {
     pub fingerprint: FingerprintKeys,
     pub extractor: String,
     pub extractor_confidence: f64,
+}
+
+/// Mail no board extractor recognised: its visible text with links replaced by
+/// `[text][L3]` references, and the table those ids resolve through. The model may
+/// only name ids from `links`; URLs and fingerprint keys come from the sidecar.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DigestEvent {
+    pub source: String,
+    pub message_id: String,
+    pub message_date: String,
+    pub subject: String,
+    pub sender: String,
+    /// Content hash of the digest; the split cache key.
+    pub message_fingerprint: String,
+    pub body: String,
+    pub links: std::collections::BTreeMap<String, DigestLink>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DigestLink {
+    pub url: String,
+    pub fingerprint: FingerprintKeys,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -145,6 +173,7 @@ pub fn parse_event_line(line: &str) -> Result<Event, ProtocolError> {
         "started" => Ok(Event::Started(parse_payload(line)?)),
         "source_started" => Ok(Event::SourceStarted(parse_payload(line)?)),
         "listing" => Ok(Event::Listing(Box::new(parse_payload(line)?))),
+        "digest" => Ok(Event::Digest(Box::new(parse_payload(line)?))),
         "source_finished" => Ok(Event::SourceFinished(parse_payload(line)?)),
         "warning" => Ok(Event::Warning(parse_payload(line)?)),
         "finished" => Ok(Event::Finished(parse_payload(line)?)),
@@ -230,7 +259,7 @@ mod tests {
     #[test]
     fn unknown_field_on_known_event_aborts() {
         let err = parse_event_line(
-            r#"{"t":"started","protocol":1,"run_id":"r1","sidecar_version":"1.0.0","sources":1,"extra":true}"#,
+            r#"{"t":"started","protocol":2,"run_id":"r1","sidecar_version":"1.0.0","sources":1,"extra":true}"#,
         )
         .unwrap_err();
         assert!(matches!(err, ProtocolError::Malformed(_)));
@@ -250,11 +279,11 @@ mod tests {
     #[test]
     fn protocol_started_parses() {
         let ev = parse_event_line(
-            r#"{"t":"started","protocol":1,"run_id":"r1","sidecar_version":"1.0.0","sources":1}"#,
+            r#"{"t":"started","protocol":2,"run_id":"r1","sidecar_version":"1.0.0","sources":1}"#,
         )
         .unwrap();
         match ev {
-            Event::Started(s) => assert_eq!(s.protocol, 1),
+            Event::Started(s) => assert_eq!(s.protocol, PROTOCOL),
             _ => panic!("expected started"),
         }
     }

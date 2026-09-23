@@ -19,7 +19,7 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "mail_scan"
 
 def scan_events(mbox: Path, extractors: list[str] | None = None) -> list[dict]:
     config = {
-        "protocol": 1,
+        "protocol": 2,
         "run_id": "extraction-test",
         "sources": [{"id": "src", "kind": "mbox", "path": str(mbox), "cursor": None}],
         "limits": {
@@ -73,10 +73,11 @@ def test_encoded_subject_headers_are_decoded() -> None:
 
 
 def test_imap_copies_of_one_message_are_scanned_once() -> None:
-    events = scan_events(FIXTURES / "imap_copies.mbox", ["generic"])
-    listings = [e for e in events if e["t"] == "listing"]
+    events = scan_events(FIXTURES / "imap_copies.mbox", ["digest"])
+    digests = [e for e in events if e["t"] == "digest"]
 
-    assert [e["url"] for e in listings] == ["https://careers.example.org/jobs/4711"]
+    [digest] = digests
+    assert digest["links"]["L1"]["url"] == "https://careers.example.org/jobs/4711"
     [finished] = [e for e in events if e["t"] == "source_finished"]
     assert finished["messages_read"] == 2
     assert finished["skipped"] == 1
@@ -335,7 +336,7 @@ def test_indeed_listings_never_carry_the_user_token() -> None:
 # --- URL hygiene -------------------------------------------------------------
 
 
-def test_a_generic_listing_url_is_emitted_without_tracking_tokens(
+def test_a_digest_link_is_emitted_without_tracking_tokens(
     tmp_path: Path,
 ) -> None:
     mbox = tmp_path / "careers.mbox"
@@ -354,9 +355,11 @@ def test_a_generic_listing_url_is_emitted_without_tracking_tokens(
         encoding="utf-8",
     )
 
-    [listing] = scan_listings(mbox)
+    [digest] = [e for e in scan_events(mbox) if e["t"] == "digest"]
+    [link] = digest["links"].values()
 
-    assert listing["url"] == "https://careers.example.org/jobs/77?ref=newsletter"
-    assert listing["fingerprint"]["strong"] == (
+    assert link["url"] == "https://careers.example.org/jobs/77?ref=newsletter"
+    assert link["fingerprint"]["strong"] == (
         "url:https://careers.example.org/jobs/77?ref=newsletter"
     )
+    assert "FAKE" not in json.dumps(digest)

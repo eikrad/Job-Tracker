@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from mail_scan.digest import build_digest
 from mail_scan.extractors.base import extract_listings
 from mail_scan.html_text import html_to_visible_text, is_hidden
 from mail_scan.sources import _body_text, _to_mail_message
@@ -178,19 +179,22 @@ def test_plain_text_part_is_preferred_over_html() -> None:
 
 
 def test_internal_urls_never_become_listings() -> None:
-    """The extractor's anchors are what enrichment later fetches.
+    """The extractor's anchors and a digest's links are what enrichment later fetches.
 
     Rust's `fetch_untrusted` is the authoritative guard, but a listing row pointing
     at the metadata endpoint is already a link a user could click.
     """
     msg = load_message("ssrf_apply_url.eml")
     mail = _to_mail_message(msg, raw_size=len(str(msg)), max_body_chars=MAX_BODY_CHARS)
-    listings = extract_listings(mail, ["indeed", "generic"])
+    listings = extract_listings(mail, ["indeed", "digest"]) or []
+    digest = build_digest(mail, MAX_BODY_CHARS)
+    urls = [listing.url for listing in listings]
+    urls += [link["url"] for link in (digest.links.values() if digest else [])]
 
-    for listing in listings:
-        assert "169.254.169.254" not in listing.url
-        assert "127.0.0.1" not in listing.url
-        assert is_public_http_url(listing.url), f"emitted non-public URL {listing.url}"
+    for url in urls:
+        assert "169.254.169.254" not in url
+        assert "127.0.0.1" not in url
+        assert is_public_http_url(url), f"emitted non-public URL {url}"
 
 
 @pytest.mark.parametrize(
@@ -232,7 +236,11 @@ def test_the_control_still_produces_a_usable_listing() -> None:
     # Every defence above is only worth having if the ordinary case still works.
     msg = load_message("clean_control.eml")
     mail = _to_mail_message(msg, raw_size=len(str(msg)), max_body_chars=MAX_BODY_CHARS)
-    listings = extract_listings(mail, ["indeed", "generic"])
+    # No board extractor claims this plain-text mail, so it goes to the model as a
+    # digest whose link table carries the ad.
+    assert extract_listings(mail, ["indeed", "digest"]) is None
+    digest = build_digest(mail, MAX_BODY_CHARS)
 
-    assert listings, "the control message must yield a listing"
-    assert any("jobindex.dk" in listing.url for listing in listings)
+    assert digest is not None, "the control message must yield a digest"
+    assert any("jobindex.dk" in link["url"] for link in digest.links.values())
+    assert "Senior Rust Engineer" in digest.body

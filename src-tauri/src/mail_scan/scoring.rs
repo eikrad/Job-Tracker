@@ -431,6 +431,8 @@ pub struct ScoringEngine {
     /// Absent means enrichment is skipped — every match still reaches the inbox, just
     /// without the fetched fields.
     enricher: Option<Box<dyn crate::mail_scan::enrichment::ListingEnricher>>,
+    /// Absent means digests are skipped — unrecognised mail yields no listings.
+    splitter: Option<Box<dyn crate::mail_scan::digest_split::DigestSplitter>>,
     config: ScoringConfig,
     budget: Budget,
 }
@@ -441,6 +443,7 @@ impl ScoringEngine {
             budget: Budget::new(config.budget),
             scorer,
             enricher: None,
+            splitter: None,
             config,
         }
     }
@@ -451,6 +454,67 @@ impl ScoringEngine {
     ) -> Self {
         self.enricher = Some(enricher);
         self
+    }
+
+    pub fn with_splitter(
+        mut self,
+        splitter: Box<dyn crate::mail_scan::digest_split::DigestSplitter>,
+    ) -> Self {
+        self.splitter = Some(splitter);
+        self
+    }
+
+    /// Split a digest into listings: cache first, then one budgeted model call.
+    ///
+    /// A cache hit is free. A reply that fails the schema is cached as "no listings"
+    /// so the same mail is not paid for twice; a transient failure is not cached, so
+    /// the next run retries it.
+    pub fn split_digest(
+        &mut self,
+        conn: &Connection,
+        run_id: &str,
+        digest: &crate::mail_scan::protocol::DigestEvent,
+    ) -> Result<crate::mail_scan::digest_split::SplitOutcome, String> {
+        use crate::mail_scan::digest_split::{
+            listings_from_split, lookup_split, parse_split, record_split, SplitOutcome,
+        };
+        let Some(splitter) = self.splitter.as_ref() else {
+            return Ok(SplitOutcome::default());
+        };
+        let version = splitter.prompt_version();
+        if let Some(cached) = lookup_split(conn, &digest.message_fingerprint, &version)? {
+            return Ok(SplitOutcome {
+                listings: listings_from_split(digest, cached.as_deref().unwrap_or_default()),
+                stop: None,
+            });
+        }
+        if let Err(stop) = self.budget.reserve() {
+            return Ok(SplitOutcome {
+                listings: Vec::new(),
+                stop: Some(Self::map_stop(stop)),
+            });
+        }
+        match splitter.split(digest) {
+            Ok(reply) => {
+                self.budget.record_success();
+                let items = match parse_split(&reply) {
+                    Ok(items) => Some(items),
+                    Err(e) => {
+                        log::warn!("mail scan {run_id}: {e}");
+                        None
+                    }
+                };
+                record_split(conn, &digest.message_fingerprint, &version, run_id, items.as_deref())?;
+                Ok(SplitOutcome {
+                    listings: listings_from_split(digest, items.as_deref().unwrap_or_default()),
+                    stop: None,
+                })
+            }
+            Err(e) => Ok(SplitOutcome {
+                listings: Vec::new(),
+                stop: self.map_error(&e),
+            }),
+        }
     }
 
     /// Enrich a listing that reached the inbox, charging the run budget.

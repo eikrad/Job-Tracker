@@ -192,6 +192,17 @@ Rules:
 - **The cursor is only committed after `source_finished`.** A crash mid-source means that source is re-read next run; listings are idempotent by fingerprint, so re-reading is safe (just wasted parse time, not wasted LLM spend — the score cache absorbs it).
 - The sidecar emits listings **streamed as parsed**, never accumulating the full corpus in memory.
 
+**Protocol 2 — `digest` (B2).** Mail no board extractor claims is no longer guessed at (the old `generic` subject-as-title extractor is gone; the fallback is named `digest` in `extractors`). The sidecar emits one event per such mail instead of listings:
+
+```jsonc
+{"t":"digest","source":"jobbank","message_id":"<…>","message_date":"…","subject":"…","sender":"…",
+ "message_fingerprint":"msg:<32 hex, content hash>",
+ "body":"[Geodata Analyst][L1] – Acme, Aarhus …",          // visible text, ≤ max_body_chars
+ "links":{"L1":{"url":"https://…(token-free)","fingerprint":{"strong":"url:…","weak":"url:…"}}}}
+```
+
+Links are admitted by the same URL hygiene as listings (public http(s), tokens stripped, ≤ 50 links, ≤ 1000 chars each); a mail with no admissible link emits nothing. Rust sends subject, sender, body and the link ids with their **host only** (never a URL) to the model with `prompts/split_*` and a strict schema (`title, company, location, link_id, snippet`; `link_id` matches `^L[0-9]{1,3}$`). Unknown ids are dropped; URL and fingerprint come from the table, so fingerprints stay Python-only — a digest listing's weak key is its link key, since the sidecar cannot know the model's company/title. Zero listings is a valid answer. Splits are budgeted like scoring calls and cached in `mail_digest_splits` by message fingerprint + split prompt version (malformed replies are cached as empty). Split listings then take the normal path: dismissal gate → scoring → enrichment → persist.
+
 ### 4.4 Cancellation
 
 Cooperative, three layers:
