@@ -1,7 +1,6 @@
 /** Typed wrappers around the mail-scan Tauri commands. */
 
 import { invoke } from "@tauri-apps/api/core";
-import type { NewJob } from "../../lib/types";
 import type { MailMatchRow } from "./mailMatchInbox";
 
 export type DismissedRow = {
@@ -151,11 +150,14 @@ export async function mailMatchAcceptUpdate(inboxId: number): Promise<AcceptOutc
   return invoke("mail_match_accept_update", { inboxId });
 }
 
-export async function mailMatchAcceptNew(
-  inboxId: number,
-  payload: NewJob,
-): Promise<AcceptOutcome> {
-  return invoke("mail_match_accept_new", { inboxId, payload });
+/** Creates the Job straight from the match's stored draft — one click, no form. */
+export async function mailMatchAcceptNew(inboxId: number): Promise<AcceptOutcome> {
+  return invoke("mail_match_accept_new", { inboxId });
+}
+
+/** Deletes the Job an accept created and returns the match to pending. */
+export async function mailMatchUndoAccept(inboxId: number): Promise<void> {
+  await invoke("mail_match_undo_accept", { inboxId });
 }
 
 export async function mailScanEstimate(params: {

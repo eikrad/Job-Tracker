@@ -83,6 +83,7 @@ pub fn run() {
             mail_scan::accept::mail_match_preview_update,
             mail_scan::accept::mail_match_accept_update,
             mail_scan::accept::mail_match_accept_new,
+            mail_scan::accept::mail_match_undo_accept,
             mail_scan::profiles::mail_scan_profile_status,
             mail_scan::profiles::mail_scan_profile_set_from_path,
             mail_scan::profiles::mail_scan_profile_clear,
