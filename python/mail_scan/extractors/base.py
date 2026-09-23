@@ -13,6 +13,7 @@ from collections.abc import Callable
 from mail_scan.extractors.generic import extract_generic
 from mail_scan.extractors.indeed import extract_indeed
 from mail_scan.extractors.jobindex import extract_jobindex
+from mail_scan.extractors.linkedin import extract_linkedin
 from mail_scan.extractors.types import ExtractedListing
 from mail_scan.sources import MailMessage
 
@@ -22,6 +23,7 @@ Extractor = Callable[[MailMessage], list[ExtractedListing] | None]
 
 _EXTRACTORS: dict[str, Extractor] = {
     "jobindex": extract_jobindex,
+    "linkedin": extract_linkedin,
     "indeed": extract_indeed,
     "generic": extract_generic,
 }

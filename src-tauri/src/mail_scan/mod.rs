@@ -45,7 +45,7 @@ use crate::secrets;
 
 /// Extractor names shipped with the sidecar, in dispatch order (pinned to Python
 /// `DEFAULT_EXTRACTORS` by `tests/test_mail_scan_sidecar.py`).
-pub const DEFAULT_EXTRACTORS: &[&str] = &["jobindex", "indeed", "generic"];
+pub const DEFAULT_EXTRACTORS: &[&str] = &["jobindex", "linkedin", "indeed", "generic"];
 
 #[derive(Clone, Default)]
 pub struct MailScanRuntime {

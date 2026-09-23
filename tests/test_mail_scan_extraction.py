@@ -152,3 +152,82 @@ def test_jobindex_listings_never_carry_the_user_token() -> None:
         line = json.dumps(listing)
         assert "FAKEUID" not in line
         assert "abtestid" not in line
+
+
+# --- LinkedIn --------------------------------------------------------------
+
+
+def test_linkedin_alert_yields_one_listing_per_job_card() -> None:
+    listings = [
+        e
+        for e in scan_listings(FIXTURES / "linkedin_alerts.mbox")
+        if e["message_id"] == "<alert-1@linkedin.com>"
+    ]
+
+    assert [_summary(e) for e in listings] == [
+        {
+            "title": "Data Scientist",
+            "company": "Acme Analytics",
+            "location": "Kopenhagen",
+            "url": "https://www.linkedin.com/jobs/view/4000000001",
+            "posted_at": None,
+            "strong": "linkedin:4000000001",
+            "extractor": "linkedin",
+        },
+        {
+            "title": "Senior Data Engineer \u2013 Plattform & Streaming",
+            "company": "Blåvand Energi A/S",
+            "location": "Metropolregion Kopenhagen",
+            "url": "https://www.linkedin.com/jobs/view/4000000002",
+            "posted_at": None,
+            "strong": "linkedin:4000000002",
+            "extractor": "linkedin",
+        },
+        {
+            "title": "Machine Learning Engineer",
+            "company": "Nordhavn Robotics",
+            "location": "Aarhus",
+            "url": "https://www.linkedin.com/jobs/view/4000000003",
+            "posted_at": None,
+            "strong": "linkedin:4000000003",
+            "extractor": "linkedin",
+        },
+    ]
+
+
+def test_linkedin_work_mode_and_salary_reach_the_snippet() -> None:
+    first, second, *_ = scan_listings(FIXTURES / "linkedin_alerts.mbox")
+
+    assert "Hybrid" in first["snippet"]
+    assert "45.000\u00a0DKK-55.000\u00a0DKK/Monat" in first["snippet"]
+    assert "Vor Ort" in second["snippet"]
+
+
+def test_linkedin_mail_without_job_cards_yields_nothing() -> None:
+    events = scan_events(FIXTURES / "linkedin_alerts.mbox")
+    by_message = {e["message_id"] for e in events if e["t"] == "listing"}
+    assert "<msg-2@linkedin.com>" not in by_message
+
+
+def test_linkedin_job_recommendations_yield_listings() -> None:
+    listings = [
+        e
+        for e in scan_listings(FIXTURES / "linkedin_alerts.mbox")
+        if e["message_id"] == "<jobs-3@linkedin.com>"
+    ]
+
+    assert [
+        (e["title"], e["company"], e["location"], e["fingerprint"]["strong"])
+        for e in listings
+    ] == [
+        ("Geodata Analyst", "Kløverhus Kommune", "Dänemark", "linkedin:4000000011"),
+        ("Data Platform Lead", "Acme Analytics", "Kopenhagen", "linkedin:4000000012"),
+    ]
+    assert "Remote" in listings[0]["snippet"]
+
+
+def test_linkedin_listings_never_carry_member_tokens() -> None:
+    for listing in scan_listings(FIXTURES / "linkedin_alerts.mbox"):
+        line = json.dumps(listing)
+        for token in ("midToken", "otpToken", "FAKE", "trackingId", "eid="):
+            assert token not in line
