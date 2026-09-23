@@ -15,7 +15,7 @@ A review queue of scored and enriched candidates from local job-alert mail folde
 _Avoid_: Capture Inbox, email inbox, draft jobs
 
 **Mail Match**:
-One candidate listing from a Mail Scan (score, reasons, draft fields), not yet a Job. Accept is one click: it creates a Job in status Interesting from the draft, and can be undone right after (the Job is deleted and the match returns to pending). A listing that is already a Job — its fingerprint was accepted before, or a Job carries its link as `url` or Board Link — is recorded as a sighting and never becomes a Mail Match again; a scan never writes onto an existing Job.
+One candidate listing from a Mail Scan (score, reasons, draft fields), not yet a Job. Accept is one click: it creates a Job in status Interesting from the draft, and can be undone right after (the Job is deleted and the match returns to pending). A listing that is already a Job — its fingerprint was accepted before, or a Job carries its link as `url` or Board Link — is recorded as a sighting and never becomes a Mail Match again; a scan never writes onto an existing Job. That check (and the dismissal check) runs before scoring, so such a listing costs no model call and no page fetch.
 _Avoid_: Job, application, capture item, update suggestion (retired: scans no longer propose changes to existing Jobs)
 
 **Job**:
@@ -39,11 +39,11 @@ Two listings that share a weak key but have different strong keys; shown togethe
 _Avoid_: Duplicate Job, same fingerprint
 
 **Dismissed Mail Match**:
-A fingerprint the user suppressed from the inbox; revocable from the Dismissed view and visible in run summaries.
+A fingerprint the user suppressed from the inbox; revocable right after dismissing (the inline Undo) and later from the Dismissed view, and visible in run summaries. A dismissed listing is never scored or fetched again, not even by "Re-score backlog".
 _Avoid_: Permanent silent suppress, soft hide without restore
 
 **Enrichment**:
-Filling a Mail Match draft toward Job fields (deadline, contacts, workplace, salary, etc.) from listing text when fetchable; may be complete, partial, or failed. Enrichment follows a board link to the employer's own ad when it can — a Jobindex link's redirect, or one extra hop out of a thin wrapper page — and then the ad becomes the draft's `url` with the board link kept as its Board Link. LinkedIn is read from its guest description block; Indeed is never fetched (it answers bots with a challenge), which is an expected `skipped`, not a failure.
+Filling a Mail Match draft toward Job fields (deadline, contacts, workplace, salary, etc.) from listing text when fetchable; may be complete, partial, or failed. Enrichment follows a board link to the employer's own ad when it can — a Jobindex link's redirect, or one extra hop out of a thin wrapper page — and then the ad becomes the draft's `url` with the board link kept as its Board Link. LinkedIn is read from its guest description block; Indeed is never fetched (it answers bots with a challenge), which is an expected `skipped`, not a failure — the inbox labels it "Mail snippet only" rather than "Incomplete details".
 _Avoid_: Scoring, Capture URL extraction (different pipeline)
 
 **Candidate Profile**:

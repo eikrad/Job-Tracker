@@ -228,6 +228,9 @@ Settings (folders, profiles, key)
 mail_scan_start ──► sidecar (Python, no network, no secrets)
         │                    │ NDJSON events on stdout
         │                    ▼
+        │            gate: dismissed or already a Job? ──► sighting only (no call, no fetch)
+        │                    │ no
+        │                    ▼
         │            listings buffered (≤10) ──► pass 1 batch score  ─┐
         │                                                             │ cache first
         │                    ┌──────────── pass 2 (per listing) ◄──────┘
@@ -258,6 +261,15 @@ Properties worth knowing before changing any of it:
   fingerprint was accepted, or a Job carries its link as `url` or `board_url`) is
   recorded as a sighting and kept out of the inbox; the run summary counts it as
   "already on your board".
+- **Known listings cost nothing.** `persist::gate_listing` runs before a listing joins
+  a pass-1 batch: dismissed and already-tracked listings never reach the model or the
+  network. `persist_listing` re-checks after enrichment only for the case the gate
+  cannot see — the employer ad a board link led to is already a Job's `url`.
+- **The inbox is read, not rendered.** The row detail shows the draft's full
+  `raw_text` as plain text, the latest pass-1 and pass-2 reasons (joined from
+  `mail_scored_sightings`), and the ad and Board Link opened through
+  `open_url_in_browser`. `snippetOnly` on a row is derived from the stored
+  enrichment reason, so Indeed rows read "Mail snippet only" without a migration.
 - **Secrets and CV content stay in Rust.** Neither crosses the IPC boundary.
 
 ---
