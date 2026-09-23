@@ -24,7 +24,7 @@ Rev. 1 was directionally right; the changes below are about failure modes, trust
 | 8 | **SSRF/fetch hardening** (§6.3). | Enrichment fetches URLs taken from untrusted email; current Rust fetch helpers have no scheme/IP/size guards. |
 | 9 | **Schema-versioned migration runner** (§7.1). | `db.rs` today migrates by `PRAGMA table_info` sniffing. Four new tables plus indices need `PRAGMA user_version` with ordered steps. |
 | 10 | **`priority` is no longer written from LLM output** (§0.1). | Rev. 1 contradicts the app's existing rule. |
-| 11 | **Cross-language fingerprint conformance fixtures** (§9.3). | Same normalization is needed in Python, Rust and TS; fixtures stop the three from drifting. |
+| 11 | **Fingerprint conformance fixtures** (§9.3). | Fingerprints are computed in the sidecar only; the fixture pins its normalization. |
 | 12 | **Provider registry is data, not code** (§8). | An unverified Scaleway model id becomes a settings edit, not a patch release. |
 
 ### 0.1 Correction carried over from rev. 1
@@ -605,7 +605,9 @@ Extends the existing `tests/` + `uv` setup already wired into `npm run verify:py
 - Redaction: a key injected into an error string never reaches `error_summary` or the log file.
 - LLM client against a local stub server: retry/backoff, circuit breaker, cache hit path, invalid-JSON repair path, out-of-range score rejection.
 
-### 9.3 Cross-language conformance
+### 9.3 Fingerprint conformance
+
+> **Superseded in part:** only the sidecar computes fingerprints — Rust stores the keys it receives and never recomputes them — so the Rust and TS copies were deleted and the fixture (now `tests/fixtures/mail_scan/fingerprints.json`) is run by pytest only.
 
 `tests/fixtures/fingerprints.json` — ~60 cases `{input, expected_strong, expected_weak, expected_cluster}`, covering Danish/German diacritics, legal suffixes, `(m/w/d)`, tracking params, redirect wrappers, and the near-duplicate pair. Executed by **pytest**, **cargo test**, and **vitest** (the TS side reuses it for `duplicateCheck.ts`, whose `url === url || company+title` rule is the same shape and should adopt the same normalization). This is the single highest-value test asset in the feature — it is what keeps three implementations honest.
 

@@ -8,7 +8,6 @@ pub mod cluster;
 #[cfg(test)]
 mod corpus;
 pub mod enrichment;
-pub mod fingerprint;
 pub mod inbox;
 pub mod injection;
 pub mod persist;
