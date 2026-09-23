@@ -462,6 +462,10 @@ impl ScoringEngine {
         let Some(enricher) = self.enricher.as_ref() else {
             return Enrichment::skipped();
         };
+        // A listing that is never fetched never reaches the model either.
+        if !crate::mail_scan::enrichment::listing_page_fetchable(listing) {
+            return enricher.enrich(listing);
+        }
         if self.budget.reserve().is_err() {
             return Enrichment::skipped();
         }
@@ -851,7 +855,7 @@ mod tests {
     use crate::mail_scan::protocol::FingerprintKeys;
     use crate::migrations;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     // ----- fixtures -------------------------------------------------------
 
@@ -1055,6 +1059,35 @@ mod tests {
 
     fn engine_with(scorer: &SharedScorer, config: ScoringConfig) -> ScoringEngine {
         ScoringEngine::new(Box::new(scorer.clone()), config)
+    }
+
+    // ----- Enrichment and the run budget ---------------------------------
+
+    struct CountingEnricher(Arc<AtomicUsize>);
+
+    impl crate::mail_scan::enrichment::ListingEnricher for CountingEnricher {
+        fn enrich(&self, listing: &ListingEvent) -> crate::mail_scan::enrichment::Enrichment {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            if crate::mail_scan::enrichment::listing_page_fetchable(listing) {
+                crate::mail_scan::enrichment::Enrichment::from_partial(Default::default())
+            } else {
+                crate::mail_scan::enrichment::Enrichment::not_fetchable()
+            }
+        }
+    }
+
+    #[test]
+    fn a_listing_that_is_never_fetched_costs_no_budget() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let scorer = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(&scorer, ScoringConfig::default())
+            .with_enricher(Box::new(CountingEnricher(calls.clone())));
+
+        // The fixture listings are Indeed links, which are never fetchable.
+        let e = engine.enrich(&listing("Rust Engineer", "great role"));
+
+        assert_eq!(e.error.as_deref(), Some(crate::mail_scan::enrichment::NOT_FETCHABLE));
+        assert_eq!(engine.budget().calls_used(), 0);
     }
 
     // ----- Step 1: cost control before cost -------------------------------

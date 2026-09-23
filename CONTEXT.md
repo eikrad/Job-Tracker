@@ -39,7 +39,7 @@ A fingerprint the user suppressed from the inbox; revocable from the Dismissed v
 _Avoid_: Permanent silent suppress, soft hide without restore
 
 **Enrichment**:
-Filling a Mail Match draft toward Job fields (deadline, contacts, workplace, salary, etc.) from listing text when fetchable; may be complete, partial, or failed.
+Filling a Mail Match draft toward Job fields (deadline, contacts, workplace, salary, etc.) from listing text when fetchable; may be complete, partial, or failed. Enrichment follows a board link to the employer's own ad when it can — a Jobindex link's redirect, or one extra hop out of a thin wrapper page — and then the ad becomes the draft's `url` with the board link kept as its Board Link. LinkedIn is read from its guest description block; Indeed is never fetched (it answers bots with a challenge), which is an expected `skipped`, not a failure.
 _Avoid_: Scoring, Capture URL extraction (different pipeline)
 
 **Candidate Profile**:

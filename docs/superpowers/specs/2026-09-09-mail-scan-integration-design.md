@@ -327,6 +327,7 @@ URLs come from email, so the fetch path is an SSRF sink. A single `safe_fetch` m
 - `Content-Type` must be HTML/text/JSON; anything else is discarded unread.
 - No cookie store, no auth headers, no client certs. Per-host concurrency 1, ≥ 750 ms between requests to the same host.
 - Extracted text only — the fetched HTML is **never** rendered in the webview, never injected via `dangerouslySetInnerHTML`, never opened in a Tauri window.
+- **Following to the employer's ad** (B2): a redirect off the board's site (Jobindex `/c?t=` → ATS) makes the final URL the draft's `url`, with the board link kept as `board_url`. On any other board, a thin wrapper page (anchor text like *Se hele annoncen* / *Apply on company site*, or a single non-social external link) earns **exactly one** extra fetch through the same guard; the hop's URL comes from page content, so it is re-validated like any other, and a failed hop keeps the board page. LinkedIn is read from `.show-more-less-html__markup` only; Indeed is never fetched (401 bot challenge) and costs no budget.
 
 ### 6.4 Sidecar process hardening
 

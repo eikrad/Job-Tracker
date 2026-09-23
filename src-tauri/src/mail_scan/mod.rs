@@ -10,6 +10,7 @@ mod corpus;
 pub mod enrichment;
 pub mod inbox;
 pub mod injection;
+pub mod listing_page;
 pub mod persist;
 pub mod profiles;
 pub mod protocol;
