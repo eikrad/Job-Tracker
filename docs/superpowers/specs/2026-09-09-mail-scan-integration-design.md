@@ -255,6 +255,8 @@ The cluster's `fingerprint_id` is the strong key if present, else `weak:<key>`. 
 | Near-duplicate | Surfaced, not merged (§5.1) |
 | Report | None in v1 |
 
+> **Superseded in part (C1 cleanup):** Update Suggestions were cut — nothing ever created one, and the accept/preview path was unreachable. The "Existing Job" rule is now: a listing whose fingerprint was accepted into a Job, or whose link a Job carries as `url` or `board_url`, is recorded as a Scored Sighting and kept out of the inbox (run stat `alreadyTracked`). "Accept update" and §5.6's re-diff no longer exist; `mail_match_inbox.kind` stays in the schema for migration safety and is always `new`.
+
 ### 5.3 Dismissal — revocable and attributable
 
 `mail_match_dismissals(fingerprint_id, scope, reason, dismissed_at, dismissed_by_run)`.
@@ -284,6 +286,8 @@ Per source, persist `{size, mtime_ns, offset, last_message_id}`.
 - `since` (default: 90 days, configurable) is a hard floor applied before any parsing work.
 
 ### 5.6 Update Suggestions and the accept-time re-diff
+
+> **Removed (C1 cleanup):** see the note under §5.2. Only the idempotency paragraph at the end of this section still describes the code (`accept_new`).
 
 A suggestion stores the field patch **and** the `job.updated_at` observed when it was computed.
 

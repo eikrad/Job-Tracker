@@ -429,10 +429,6 @@ export const en = {
     tabCount: (n: number) => `${n}`,
 
     // Filters
-    filterKind: "Kind",
-    filterKindAll: "All kinds",
-    filterKindNew: "New listings",
-    filterKindUpdate: "Update suggestions",
     filterBoard: "Board",
     filterBoardAll: "All boards",
     filterEnrichment: "Details",
@@ -457,7 +453,6 @@ export const en = {
     scoreAria: (score: string) => `Match score ${score} out of 10`,
     scoreInvalidTitle: "The model's answer could not be read, so there is no score for this one. Review it yourself.",
     seenTimes: (n: number) => `seen ${n}×`,
-    badgeUpdate: "Update suggestion",
     badgeIncompleteEnrichment: "Incomplete details",
     badgeEnrichmentFailed: "Could not fetch details",
     badgeNearDuplicate: "Near-duplicate",
@@ -483,22 +478,10 @@ export const en = {
     acceptedOpen: "Open",
     acceptedUndo: "Undo",
     undoneNotice: "Accept undone. The match is back in the inbox.",
-    acceptUpdate: "Review update…",
     dismiss: "Dismiss",
     restore: "Restore",
     restoredAt: (when: string) => `Dismissed ${when}`,
     dismissedNoReason: "No reason given",
-
-    // Update diff
-    diffTitle: "Update suggestion",
-    diffJobChanged: "This job changed since the scan. The suggestion below was recomputed against the current version.",
-    diffWillWrite: "Will be filled in",
-    diffSkipped: "Skipped — you already filled this in",
-    diffCurrent: (value: string) => `Currently: ${value}`,
-    diffNothingToDo: "Nothing left to fill in — you have already entered everything this suggested.",
-    diffApply: (n: number) => `Fill in ${n} field${n === 1 ? "" : "s"}`,
-    diffCancel: "Cancel",
-    diffFieldLabel: (field: string) => field.replace(/_/g, " "),
 
     // Scan control
     scanButton: "Scan job emails",
@@ -521,7 +504,7 @@ export const en = {
     // Run summary
     summaryTitle: "Scan finished",
     summaryNew: (n: number) => `${n} new match${n === 1 ? "" : "es"}`,
-    summaryUpdates: (n: number) => `${n} update suggestion${n === 1 ? "" : "s"}`,
+    summaryAlreadyTracked: (n: number) => `${n} already on your board`,
     summaryUnderCutoff: (n: number) => `${n} below cutoff`,
     summarySuppressed: (n: number) => `${n} suppressed by a dismissal`,
     summarySuppressedLink: "Show what was suppressed",

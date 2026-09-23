@@ -234,6 +234,10 @@ fn flush_buffer(
             Ok(PersistOutcome::SuppressedByDismissal) => {
                 state.stats.suppressed_by_dismissal += 1;
             }
+            Ok(PersistOutcome::AlreadyTracked) => {
+                state.stats.listings_committed += 1;
+                state.stats.already_tracked += 1;
+            }
             Err(e) => {
                 state.fail("E_DB", e);
                 return Ok(false);

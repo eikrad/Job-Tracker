@@ -23,7 +23,8 @@ pub struct RunStats {
     pub suppressed_by_dismissal: u32,
     pub under_cutoff: u32,
     pub inbox_new: u32,
-    pub updates: u32,
+    /// Listings that are already Jobs on the board, recorded and kept out of the inbox.
+    pub already_tracked: u32,
     pub llm_calls: u32,
     pub enrichment_failures: u32,
     pub errors: u32,
@@ -55,6 +56,9 @@ pub enum PersistOutcome {
     /// Scored and recorded as a sighting, but below the cutoff — no inbox row.
     UnderCutoff,
     SuppressedByDismissal,
+    /// Scored and recorded as a sighting, but it is a Job the user already tracks — no
+    /// inbox row. Alert mails repeat listings for weeks; each repeat is not a new match.
+    AlreadyTracked,
 }
 
 pub fn start_run(conn: &mut Connection, run_id: &str) -> Result<(), String> {
@@ -209,6 +213,54 @@ fn has_text(draft: &serde_json::Map<String, Value>, field: &str) -> bool {
         .is_some_and(|s| !s.trim().is_empty())
 }
 
+/// Whether a listing is already a Job on the board.
+///
+/// Two ways to know: this fingerprint was accepted into a Job (the link survives the
+/// user editing that Job's URL, and dies with the Job through the FK cascade), or some
+/// Job — accepted, captured, or typed in — carries the listing's link as its `url` or
+/// its Board Link. Exact matching is deliberate: the sidecar hands over canonical
+/// listing URLs, and a fuzzy company/title match would hide a second opening at the
+/// same employer.
+fn is_tracked(
+    conn: &Connection,
+    fingerprint_id: &str,
+    listing: &ListingEvent,
+    enrichment: &Enrichment,
+) -> Result<bool, String> {
+    let accepted: Option<i64> = conn
+        .query_row(
+            "SELECT 1 FROM mail_match_inbox
+             WHERE fingerprint_id = ?1 AND status = 'accepted' AND job_id IS NOT NULL
+             LIMIT 1",
+            params![fingerprint_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    if accepted.is_some() {
+        return Ok(true);
+    }
+    let links: Vec<&str> = std::iter::once(listing.url.as_str())
+        .chain(enrichment.employer_url.as_deref())
+        .map(str::trim)
+        .filter(|u| !u.is_empty())
+        .collect();
+    for link in links {
+        let found: Option<i64> = conn
+            .query_row(
+                "SELECT 1 FROM jobs WHERE url = ?1 OR board_url = ?1 LIMIT 1",
+                params![link],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if found.is_some() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// One transaction per listing.
 pub fn persist_listing(
     conn: &mut Connection,
@@ -253,11 +305,15 @@ pub fn persist_listing(
         tx.commit().map_err(|e| e.to_string())?;
         return Ok(PersistOutcome::SuppressedByDismissal);
     }
+    if is_tracked(&tx, &fp_id, listing, enrichment)? {
+        tx.commit().map_err(|e| e.to_string())?;
+        return Ok(PersistOutcome::AlreadyTracked);
+    }
 
     let existing: Option<i64> = tx
         .query_row(
             "SELECT id FROM mail_match_inbox
-             WHERE fingerprint_id = ?1 AND kind = 'new' AND status = 'pending'",
+             WHERE fingerprint_id = ?1 AND status = 'pending'",
             params![&fp_id],
             |r| r.get(0),
         )
@@ -544,6 +600,115 @@ mod tests {
             )
             .unwrap();
         assert_eq!(pending_keep, 1);
+    }
+
+    fn track_job(conn: &Connection, url: Option<&str>, board_url: Option<&str>) -> i64 {
+        conn.execute(
+            "INSERT INTO jobs (company, title, status, url, board_url, created_at, updated_at)
+             VALUES ('Acme', 'Dev', 'Application Sent', ?1, ?2, 't', 't')",
+            params![url, board_url],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    fn pending_count(conn: &Connection) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM mail_match_inbox WHERE status = 'pending'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    fn seen_count(conn: &Connection, fingerprint_id: &str) -> i64 {
+        conn.query_row(
+            "SELECT seen_count FROM mail_fingerprints WHERE fingerprint_id = ?1",
+            params![fingerprint_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_listing_the_user_already_tracks_is_seen_but_not_queued() {
+        let mut conn = db();
+        start_run(&mut conn, "r1").unwrap();
+        let l = listing("Dev", "indeed:tracked", "acme|dev|kbh");
+        track_job(&conn, Some(&l.url), None);
+        let scored = scored_for(&l, "inbox");
+
+        let outcome =
+            persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities())
+                .unwrap();
+
+        assert_eq!(outcome, PersistOutcome::AlreadyTracked);
+        assert_eq!(pending_count(&conn), 0, "a tracked job must not come back as a match");
+        assert_eq!(seen_count(&conn, "indeed:tracked"), 1, "but the sighting is recorded");
+        let sightings: i64 = conn
+            .query_row("SELECT COUNT(*) FROM mail_scored_sightings", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(sightings, 1, "and its score is cached, so a re-run is free");
+    }
+
+    #[test]
+    fn a_listing_whose_board_link_a_job_keeps_is_not_queued() {
+        // The Job's url is the employer's ad; the board page it was found through is
+        // its Board Link — and that is what the next alert mail links to.
+        let mut conn = db();
+        start_run(&mut conn, "r1").unwrap();
+        let l = listing("Dev", "jobindex:h7", "acme|dev|kbh");
+        track_job(&conn, Some("https://careers.acme.example/ad/7"), Some(&l.url));
+        let scored = scored_for(&l, "inbox");
+
+        let outcome =
+            persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities())
+                .unwrap();
+
+        assert_eq!(outcome, PersistOutcome::AlreadyTracked);
+        assert_eq!(pending_count(&conn), 0);
+    }
+
+    #[test]
+    fn an_accepted_match_seen_again_does_not_return_to_the_inbox() {
+        let mut conn = db();
+        start_run(&mut conn, "r1").unwrap();
+        let l = listing("Dev", "indeed:accepted", "acme|dev|kbh");
+        let scored = scored_for(&l, "inbox");
+        persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities())
+            .unwrap();
+        let inbox_id: i64 = conn
+            .query_row("SELECT id FROM mail_match_inbox", [], |r| r.get(0))
+            .unwrap();
+        crate::mail_scan::accept::accept_new(&mut conn, inbox_id).unwrap();
+        // The user edits the Job's link afterwards; the match still knows its Job.
+        conn.execute("UPDATE jobs SET url = 'https://careers.acme.example/x'", [])
+            .unwrap();
+
+        start_run(&mut conn, "r2").unwrap();
+        let outcome =
+            persist_listing(&mut conn, "r2", &l, &scored, &Enrichment::skipped(), &identities())
+                .unwrap();
+
+        assert_eq!(outcome, PersistOutcome::AlreadyTracked);
+        assert_eq!(pending_count(&conn), 0);
+        assert_eq!(seen_count(&conn, "indeed:accepted"), 2);
+    }
+
+    #[test]
+    fn a_different_listing_at_the_same_company_still_reaches_the_inbox() {
+        let mut conn = db();
+        start_run(&mut conn, "r1").unwrap();
+        track_job(&conn, Some("https://dk.indeed.com/viewjob?jk=indeed:other"), None);
+        let l = listing("Dev", "indeed:new-one", "acme|dev|kbh");
+        let scored = scored_for(&l, "inbox");
+
+        let outcome =
+            persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::skipped(), &identities())
+                .unwrap();
+
+        assert_eq!(outcome, PersistOutcome::Committed);
+        assert_eq!(pending_count(&conn), 1);
     }
 
     #[test]

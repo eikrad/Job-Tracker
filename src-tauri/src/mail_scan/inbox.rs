@@ -2,7 +2,7 @@
 //!
 //! Its own surface, separate from the Capture Inbox (ADR 0003). Everything here is
 //! either a query or a reversible action — the one irreversible step, creating a Job,
-//! lives in [`super::accept`] behind a form the user submits.
+//! lives in [`super::accept`], one click with an Undo right after.
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -14,7 +14,6 @@ use crate::mail_scan::cluster::{dismiss, restore};
 pub struct MailMatchRow {
     pub id: i64,
     pub fingerprint_id: String,
-    pub kind: String,
     pub status: String,
     pub job_id: Option<i64>,
     /// `None` when `scoreState` is `invalid` — the UI shows `?`, never a number.
@@ -37,7 +36,7 @@ pub struct MailMatchRow {
     pub updated_at: String,
 }
 
-const ROW_COLUMNS: &str = "i.id, i.fingerprint_id, i.kind, i.status, i.job_id, i.score,
+const ROW_COLUMNS: &str = "i.id, i.fingerprint_id, i.status, i.job_id, i.score,
      i.score_reason, i.score_state, i.suspicious, i.near_duplicate_of, i.enrichment_state,
      i.enrichment_error, i.draft_json, i.source_board, i.message_date, i.listing_url,
      i.title, i.company, f.seen_count, f.last_seen_at, i.updated_at";
@@ -46,25 +45,24 @@ fn map_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<MailMatchRow> {
     Ok(MailMatchRow {
         id: r.get(0)?,
         fingerprint_id: r.get(1)?,
-        kind: r.get(2)?,
-        status: r.get(3)?,
-        job_id: r.get(4)?,
-        score: r.get(5)?,
-        score_reason: r.get(6)?,
-        score_state: r.get(7)?,
-        suspicious: r.get::<_, i64>(8)? != 0,
-        near_duplicate_of: r.get(9)?,
-        enrichment_state: r.get(10)?,
-        enrichment_error: r.get(11)?,
-        draft_json: r.get(12)?,
-        source_board: r.get(13)?,
-        message_date: r.get(14)?,
-        listing_url: r.get(15)?,
-        title: r.get(16)?,
-        company: r.get(17)?,
-        seen_count: r.get(18)?,
-        last_seen_at: r.get(19)?,
-        updated_at: r.get(20)?,
+        status: r.get(2)?,
+        job_id: r.get(3)?,
+        score: r.get(4)?,
+        score_reason: r.get(5)?,
+        score_state: r.get(6)?,
+        suspicious: r.get::<_, i64>(7)? != 0,
+        near_duplicate_of: r.get(8)?,
+        enrichment_state: r.get(9)?,
+        enrichment_error: r.get(10)?,
+        draft_json: r.get(11)?,
+        source_board: r.get(12)?,
+        message_date: r.get(13)?,
+        listing_url: r.get(14)?,
+        title: r.get(15)?,
+        company: r.get(16)?,
+        seen_count: r.get(17)?,
+        last_seen_at: r.get(18)?,
+        updated_at: r.get(19)?,
     })
 }
 

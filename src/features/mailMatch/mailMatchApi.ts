@@ -33,21 +33,6 @@ export type SightingRow = {
   modelId: string;
 };
 
-export type FieldSuggestion = {
-  field: string;
-  suggested: string;
-  current: string | null;
-  applicable: boolean;
-};
-
-export type UpdatePreview = {
-  inboxId: number;
-  jobId: number;
-  /** True when the job was edited after the scan computed this suggestion. */
-  jobChangedSinceScan: boolean;
-  fields: FieldSuggestion[];
-};
-
 export type AcceptOutcome = {
   jobId: number;
   fieldsWritten: string[];
@@ -140,14 +125,6 @@ export async function mailMatchDismiss(inboxId: number, reason?: string): Promis
 
 export async function mailMatchRestore(fingerprintId: string): Promise<void> {
   await invoke("mail_match_restore", { fingerprintId });
-}
-
-export async function mailMatchPreviewUpdate(inboxId: number): Promise<UpdatePreview> {
-  return invoke("mail_match_preview_update", { inboxId });
-}
-
-export async function mailMatchAcceptUpdate(inboxId: number): Promise<AcceptOutcome> {
-  return invoke("mail_match_accept_update", { inboxId });
 }
 
 /** Creates the Job straight from the match's stored draft — one click, no form. */

@@ -126,7 +126,7 @@ describe("history renders through the same reducer", () => {
       status: "completed",
       startedAt: "2026-09-09T10:00:00Z",
       finishedAt: "2026-09-09T10:04:00Z",
-      statsJson: '{"inboxNew":11,"updates":3,"underCutoff":52,"suppressedByDismissal":7}',
+      statsJson: '{"inboxNew":11,"alreadyTracked":3,"underCutoff":52,"suppressedByDismissal":7}',
       errorCode: null,
       errorSummary: null,
       modelId: "deepseek-v4-flash-0731",
@@ -134,14 +134,14 @@ describe("history renders through the same reducer", () => {
 
     expect(view.status).toBe("completed");
     expect(view.stats.inboxNew).toBe(11);
-    expect(view.stats.updates).toBe(3);
+    expect(view.stats.alreadyTracked).toBe(3);
     expect(view.modelId).toBe("deepseek-v4-flash-0731");
 
     const live: RunView = {
       runId: "ms_9",
       status: "completed",
       stats: parseStats(
-        '{"inboxNew":11,"updates":3,"underCutoff":52,"suppressedByDismissal":7}',
+        '{"inboxNew":11,"alreadyTracked":3,"underCutoff":52,"suppressedByDismissal":7}',
       ),
     };
     expect(view.stats).toEqual(live.stats);

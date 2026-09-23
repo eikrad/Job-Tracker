@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { en } from "../../i18n/en";
 import { MailMatchInboxPanel } from "./MailMatchInboxPanel";
-import type { DismissedRow, RunRow, UpdatePreview } from "./mailMatchApi";
+import type { DismissedRow, RunRow } from "./mailMatchApi";
 import type { MailMatchRow } from "./mailMatchInbox";
 // `?raw` rather than node:fs — the app tsconfig ships no node types, and this keeps
 // the guard inside the same module graph as the code it guards.
@@ -21,7 +21,6 @@ function row(overrides: Partial<MailMatchRow> = {}): MailMatchRow {
   return {
     id: 1,
     fingerprintId: "fp-1",
-    kind: "new",
     status: "pending",
     jobId: null,
     score: 8,
@@ -52,7 +51,6 @@ function makeApi(overrides: {
   rows?: MailMatchRow[];
   dismissed?: DismissedRow[];
   runs?: RunRow[];
-  preview?: UpdatePreview;
 } = {}) {
   return {
     list: vi.fn(async () => overrides.rows ?? []),
@@ -60,16 +58,6 @@ function makeApi(overrides: {
     listRuns: vi.fn(async () => overrides.runs ?? []),
     dismiss: vi.fn(async () => {}),
     restore: vi.fn(async () => {}),
-    previewUpdate: vi.fn(
-      async () =>
-        overrides.preview ?? {
-          inboxId: 1,
-          jobId: 7,
-          jobChangedSinceScan: false,
-          fields: [],
-        },
-    ),
-    acceptUpdate: vi.fn(async () => ({ jobId: 7, fieldsWritten: [], created: true })),
     acceptNew: vi.fn(async () => ({ jobId: 42, fieldsWritten: ["title"], created: true })),
     undoAccept: vi.fn(async () => {}),
   };
@@ -161,68 +149,6 @@ describe("accept", () => {
     expect(onJobsChanged).toHaveBeenCalledTimes(2);
   });
 
-  it("shows the recomputed diff for an update suggestion", async () => {
-    const api = makeApi({
-      rows: [row({ kind: "update_suggestion", jobId: 7 })],
-      preview: {
-        inboxId: 1,
-        jobId: 7,
-        jobChangedSinceScan: false,
-        fields: [
-          { field: "deadline", suggested: "2026-10-01", current: null, applicable: true },
-        ],
-      },
-    });
-    renderPanel(api);
-
-    fireEvent.click(await screen.findByRole("button", { name: t.acceptUpdate }));
-
-    expect(await screen.findByText(t.diffWillWrite)).toBeTruthy();
-    expect(screen.getByText("2026-10-01")).toBeTruthy();
-  });
-
-  it("warns when the job changed since the scan", async () => {
-    // The C2 property, surfaced: accepting must not look routine when the user's
-    // own edit is at stake.
-    const api = makeApi({
-      rows: [row({ kind: "update_suggestion", jobId: 7 })],
-      preview: {
-        inboxId: 1,
-        jobId: 7,
-        jobChangedSinceScan: true,
-        fields: [
-          { field: "deadline", suggested: "2026-10-01", current: "2026-12-24", applicable: false },
-          { field: "work_mode", suggested: "Hybrid", current: null, applicable: true },
-        ],
-      },
-    });
-    renderPanel(api);
-
-    fireEvent.click(await screen.findByRole("button", { name: t.acceptUpdate }));
-
-    expect(await screen.findByText(t.diffJobChanged)).toBeTruthy();
-    expect(screen.getByText(t.diffApply(1))).toBeTruthy();
-  });
-
-  it("offers nothing to apply when the user already filled everything in", async () => {
-    const api = makeApi({
-      rows: [row({ kind: "update_suggestion", jobId: 7 })],
-      preview: {
-        inboxId: 1,
-        jobId: 7,
-        jobChangedSinceScan: true,
-        fields: [
-          { field: "deadline", suggested: "2026-10-01", current: "2026-12-24", applicable: false },
-        ],
-      },
-    });
-    renderPanel(api);
-
-    fireEvent.click(await screen.findByRole("button", { name: t.acceptUpdate }));
-
-    expect(await screen.findByText(t.diffNothingToDo)).toBeTruthy();
-    expect(screen.getByRole("button", { name: t.diffApply(0) }).hasAttribute("disabled")).toBe(true);
-  });
 });
 
 describe("dismiss and restore", () => {
@@ -276,7 +202,7 @@ describe("history", () => {
           status: "completed",
           startedAt: "2026-09-09T10:00:00Z",
           finishedAt: "2026-09-09T10:04:00Z",
-          statsJson: '{"inboxNew":11,"updates":3,"underCutoff":52,"suppressedByDismissal":7}',
+          statsJson: '{"inboxNew":11,"alreadyTracked":3,"underCutoff":52,"suppressedByDismissal":7}',
           errorCode: null,
           errorSummary: null,
           modelId: "deepseek-v4-flash-0731",
@@ -289,6 +215,7 @@ describe("history", () => {
 
     expect(await screen.findByText(t.summaryNew(11))).toBeTruthy();
     expect(screen.getByText(t.summaryUnderCutoff(52))).toBeTruthy();
+    expect(screen.getByText(t.summaryAlreadyTracked(3))).toBeTruthy();
     expect(screen.getByText(t.statusCompleted)).toBeTruthy();
   });
 

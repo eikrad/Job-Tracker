@@ -17,7 +17,6 @@ function row(overrides: Partial<MailMatchRow> = {}): MailMatchRow {
   return {
     id: 1,
     fingerprintId: "fp-1",
-    kind: "new",
     status: "pending",
     jobId: null,
     score: 8,
@@ -67,12 +66,6 @@ describe("ordering", () => {
 });
 
 describe("filters", () => {
-  it("filters by kind", () => {
-    const rows = [row({ id: 1, kind: "new" }), row({ id: 2, kind: "update_suggestion" })];
-    const out = filterRows(rows, { ...defaultFilters, kind: "update_suggestion" });
-    expect(out.map((r) => r.id)).toEqual([2]);
-  });
-
   it("filters by board", () => {
     const rows = [row({ id: 1, sourceBoard: "indeed" }), row({ id: 2, sourceBoard: "jobindex" })];
     const out = filterRows(rows, { ...defaultFilters, board: "jobindex" });
@@ -177,9 +170,6 @@ describe("badges", () => {
     expect(badge?.count).toBe(3);
   });
 
-  it("marks an update suggestion", () => {
-    expect(badgesFor(row({ kind: "update_suggestion" })).map((b) => b.kind)).toContain("update");
-  });
 });
 
 describe("near-duplicates", () => {

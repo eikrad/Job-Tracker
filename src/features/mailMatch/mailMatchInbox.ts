@@ -9,8 +9,7 @@
 export type MailMatchRow = {
   id: number;
   fingerprintId: string;
-  kind: "new" | "update_suggestion";
-  status: "pending" | "accepted" | "dismissed" | "superseded";
+  status: "pending" | "accepted" | "dismissed";
   jobId: number | null;
   /** `null` when `scoreState` is `invalid` — rendered as `?`, never as a number. */
   score: number | null;
@@ -32,7 +31,6 @@ export type MailMatchRow = {
 };
 
 export type MailMatchFilters = {
-  kind: "all" | "new" | "update_suggestion";
   minScore: number;
   board: string;
   enrichment: "all" | "complete" | "partial" | "failed" | "skipped";
@@ -40,7 +38,6 @@ export type MailMatchFilters = {
 };
 
 export const defaultFilters: MailMatchFilters = {
-  kind: "all",
   minScore: 0,
   board: "all",
   enrichment: "all",
@@ -74,7 +71,6 @@ function matchesQuery(row: MailMatchRow, query: string): boolean {
 
 export function filterRows(rows: MailMatchRow[], filters: MailMatchFilters): MailMatchRow[] {
   return rows.filter((row) => {
-    if (filters.kind !== "all" && row.kind !== filters.kind) return false;
     if (filters.board !== "all" && (row.sourceBoard ?? "") !== filters.board) return false;
     if (filters.enrichment !== "all" && row.enrichmentState !== filters.enrichment) return false;
     // An invalid score has no number, so a minimum-score filter cannot judge it.
@@ -98,7 +94,6 @@ export function boardOptions(rows: MailMatchRow[]): string[] {
 }
 
 export type BadgeKind =
-  | "update"
   | "incompleteEnrichment"
   | "enrichmentFailed"
   | "nearDuplicate"
@@ -110,7 +105,6 @@ export type Badge = { kind: BadgeKind; count?: number };
 /** Badges for one row, in the order they should read (spec §11.1). */
 export function badgesFor(row: MailMatchRow): Badge[] {
   const badges: Badge[] = [];
-  if (row.kind === "update_suggestion") badges.push({ kind: "update" });
   if (row.enrichmentState === "failed") badges.push({ kind: "enrichmentFailed" });
   else if (row.enrichmentState === "partial" || row.enrichmentState === "skipped") {
     badges.push({ kind: "incompleteEnrichment" });

@@ -214,7 +214,7 @@ All data lives in the OS app data directory — nothing is stored in the repo.
 | `job_field_provenance` | Which fields a mail scan wrote, and in which run — answers "where did this deadline come from?" |
 | `mail_scan_runs` | One row per scan, with `stats_json` counters the History view renders |
 | `mail_fingerprints` / `mail_fingerprint_aliases` | Tiered listing identity, stable across runs (spec §5.1) |
-| `mail_match_inbox` | Pending / accepted / dismissed matches awaiting review |
+| `mail_match_inbox` | Pending / accepted / dismissed matches awaiting review (`kind` and `base_job_updated_at` are leftovers of the retired update suggestions; `kind` is always `new`) |
 | `mail_match_dismissals` | Revocable suppressions, with reason and originating run |
 | `mail_scored_sightings` | Score cache and re-score policy, keyed by content + profile + prompt + model |
 | `mail_source_cursors` | Per-folder incremental read position, so a 200 MB folder is not re-read |
@@ -254,8 +254,10 @@ Properties worth knowing before changing any of it:
 - **Two cache lookups, deliberately different.** The exact 5-tuple lookup makes a re-run
   free; the model-blind lookup stops a provider switch from re-spending the backlog.
   Only a profile edit or a prompt change re-scores.
-- **The accept-time re-diff.** A suggestion is recomputed against the live Job, so an
-  edit made after the scan is never overwritten.
+- **A scan never writes onto an existing Job.** A listing that is already a Job (its
+  fingerprint was accepted, or a Job carries its link as `url` or `board_url`) is
+  recorded as a sighting and kept out of the inbox; the run summary counts it as
+  "already on your board".
 - **Secrets and CV content stay in Rust.** Neither crosses the IPC boundary.
 
 ---

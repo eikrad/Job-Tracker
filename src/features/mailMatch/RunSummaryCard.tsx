@@ -64,8 +64,8 @@ export function RunSummaryCard({
 
       <ul className="run-summary__counters">
         <li>{t.summaryNew(stats.inboxNew)}</li>
-        <li>{t.summaryUpdates(stats.updates)}</li>
         <li>{t.summaryUnderCutoff(stats.underCutoff)}</li>
+        {stats.alreadyTracked > 0 ? <li>{t.summaryAlreadyTracked(stats.alreadyTracked)}</li> : null}
         <li>
           {t.summarySuppressed(stats.suppressedByDismissal)}
           {stats.suppressedByDismissal > 0 && onShowSuppressed ? (

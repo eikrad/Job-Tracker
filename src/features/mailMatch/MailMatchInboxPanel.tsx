@@ -4,9 +4,8 @@
  *
  * Two rules run through the whole component:
  *
- * - **Accept is one click, and undoable.** A new match becomes an Interesting Job
- *   straight from its draft; the notice that follows offers Open and Undo. An update
- *   goes through a diff first, because it writes onto a Job the user already owns.
+ * - **Accept is one click, and undoable.** A match becomes an Interesting Job
+ *   straight from its draft; the notice that follows offers Open and Undo.
  * - **Listing text is text.** Bodies and pages here came out of email. Nothing in this
  *   file uses `dangerouslySetInnerHTML`, and `MailMatchInboxPanel.test.tsx` asserts it.
  */
@@ -15,17 +14,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { en } from "../../i18n/en";
 import {
   mailMatchAcceptNew,
-  mailMatchAcceptUpdate,
   mailMatchDismiss,
   mailMatchList,
   mailMatchListDismissed,
-  mailMatchPreviewUpdate,
   mailMatchRestore,
   mailMatchUndoAccept,
   mailScanListRuns,
   type DismissedRow,
   type RunRow,
-  type UpdatePreview,
 } from "./mailMatchApi";
 import {
   badgesFor,
@@ -65,8 +61,6 @@ type MailMatchApi = {
   listRuns: typeof mailScanListRuns;
   dismiss: typeof mailMatchDismiss;
   restore: typeof mailMatchRestore;
-  previewUpdate: typeof mailMatchPreviewUpdate;
-  acceptUpdate: typeof mailMatchAcceptUpdate;
   acceptNew: typeof mailMatchAcceptNew;
   undoAccept: typeof mailMatchUndoAccept;
 };
@@ -82,14 +76,11 @@ const realApi: MailMatchApi = {
   listRuns: mailScanListRuns,
   dismiss: mailMatchDismiss,
   restore: mailMatchRestore,
-  previewUpdate: mailMatchPreviewUpdate,
-  acceptUpdate: mailMatchAcceptUpdate,
   acceptNew: mailMatchAcceptNew,
   undoAccept: mailMatchUndoAccept,
 };
 
 const badgeLabels: Record<Badge["kind"], string> = {
-  update: t.badgeUpdate,
   incompleteEnrichment: t.badgeIncompleteEnrichment,
   enrichmentFailed: t.badgeEnrichmentFailed,
   nearDuplicate: t.badgeNearDuplicate,
@@ -128,56 +119,6 @@ function ScoreChip({ row }: { row: MailMatchRow }) {
   );
 }
 
-/** The recomputed diff, including the "job changed" state from C2. */
-function UpdateDiff({
-  preview,
-  onApply,
-  onCancel,
-}: {
-  preview: UpdatePreview;
-  onApply: () => void;
-  onCancel: () => void;
-}) {
-  const applicable = preview.fields.filter((f) => f.applicable);
-  return (
-    <section className="mail-match__diff" aria-label={t.diffTitle}>
-      <h4>{t.diffTitle}</h4>
-      {preview.jobChangedSinceScan ? (
-        <p className="mail-match__diff-warning" role="status">
-          {t.diffJobChanged}
-        </p>
-      ) : null}
-      {preview.fields.length === 0 || applicable.length === 0 ? (
-        <p className="mail-match__empty">{t.diffNothingToDo}</p>
-      ) : null}
-      <ul className="mail-match__diff-list">
-        {preview.fields.map((field) => (
-          <li
-            key={field.field}
-            className={field.applicable ? "is-applicable" : "is-skipped"}
-          >
-            <span className="mail-match__diff-field">{t.diffFieldLabel(field.field)}</span>
-            <span className="mail-match__diff-value">{field.suggested}</span>
-            <span className="mail-match__diff-note">
-              {field.applicable
-                ? t.diffWillWrite
-                : `${t.diffSkipped} — ${t.diffCurrent(field.current ?? "")}`}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <div className="mail-match__diff-actions">
-        <button type="button" onClick={onApply} disabled={applicable.length === 0}>
-          {t.diffApply(applicable.length)}
-        </button>
-        <button type="button" onClick={onCancel}>
-          {t.diffCancel}
-        </button>
-      </div>
-    </section>
-  );
-}
-
 export function MailMatchInboxPanel({
   onJobsChanged,
   onOpenJob,
@@ -193,7 +134,6 @@ export function MailMatchInboxPanel({
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [filters, setFilters] = useState<MailMatchFilters>(defaultFilters);
   const [expanded, setExpanded] = useState<number | null>(null);
-  const [preview, setPreview] = useState<UpdatePreview | null>(null);
   const [notice, setNotice] = useState<AcceptNotice | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -247,25 +187,6 @@ export function MailMatchInboxPanel({
       await client.undoAccept(inboxId);
       setNotice({ kind: "undone" });
       onJobsChanged?.();
-      await refresh();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  async function reviewUpdate(row: MailMatchRow) {
-    try {
-      setPreview(await client.previewUpdate(row.id));
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  async function applyUpdate() {
-    if (!preview) return;
-    try {
-      await client.acceptUpdate(preview.inboxId);
-      setPreview(null);
       await refresh();
     } catch (e) {
       setError(String(e));
@@ -358,19 +279,6 @@ export function MailMatchInboxPanel({
                 placeholder={t.searchPlaceholder}
                 onChange={(e) => setFilters({ ...filters, query: e.target.value })}
               />
-            </label>
-            <label>
-              {t.filterKind}
-              <select
-                value={filters.kind}
-                onChange={(e) =>
-                  setFilters({ ...filters, kind: e.target.value as MailMatchFilters["kind"] })
-                }
-              >
-                <option value="all">{t.filterKindAll}</option>
-                <option value="new">{t.filterKindNew}</option>
-                <option value="update_suggestion">{t.filterKindUpdate}</option>
-              </select>
             </label>
             <label>
               {t.filterBoard}
@@ -480,19 +388,13 @@ export function MailMatchInboxPanel({
                     ) : null}
 
                     <div className="mail-match__actions">
-                      {row.kind === "update_suggestion" ? (
-                        <button type="button" onClick={() => void reviewUpdate(row)}>
-                          {t.acceptUpdate}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => void acceptRow(row)}
-                          title={t.acceptHint}
-                        >
-                          {t.accept}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => void acceptRow(row)}
+                        title={t.acceptHint}
+                      >
+                        {t.accept}
+                      </button>
                       <button type="button" onClick={() => void dismissRow(row)}>
                         {t.dismiss}
                       </button>
@@ -504,13 +406,6 @@ export function MailMatchInboxPanel({
             </ul>
           )}
 
-          {preview ? (
-            <UpdateDiff
-              preview={preview}
-              onApply={() => void applyUpdate()}
-              onCancel={() => setPreview(null)}
-            />
-          ) : null}
         </>
       ) : null}
 

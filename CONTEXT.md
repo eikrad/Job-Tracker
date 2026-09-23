@@ -15,8 +15,8 @@ A review queue of scored and enriched candidates from local job-alert mail folde
 _Avoid_: Capture Inbox, email inbox, draft jobs
 
 **Mail Match**:
-One candidate listing from a Mail Scan (score, reasons, draft fields), not yet a Job. Accept is one click: it creates a Job in status Interesting from the draft, and can be undone right after (the Job is deleted and the match returns to pending).
-_Avoid_: Job, application, capture item
+One candidate listing from a Mail Scan (score, reasons, draft fields), not yet a Job. Accept is one click: it creates a Job in status Interesting from the draft, and can be undone right after (the Job is deleted and the match returns to pending). A listing that is already a Job — its fingerprint was accepted before, or a Job carries its link as `url` or Board Link — is recorded as a sighting and never becomes a Mail Match again; a scan never writes onto an existing Job.
+_Avoid_: Job, application, capture item, update suggestion (retired: scans no longer propose changes to existing Jobs)
 
 **Job**:
 A tracked application opportunity on the board, with status in the configured workflow.
@@ -53,10 +53,6 @@ _Avoid_: Resume/CV as product terms for these files, hardcoded profile in source
 **Scored Sighting**:
 A recorded score for a fingerprint at a pass against profile content hash, prompt version, and model; under-cutoff sightings re-score only when profile hash or prompt version changes (not on model switch alone).
 _Avoid_: Job, Mail Match
-
-**Mail Match Update Suggestion**:
-An inbox item proposing patches to an existing Job. Accept fills only fields that are still blank on the live Job, refreshes `mail_score*` columns, never changes status or priority; the patch is recomputed at accept time if the Job changed.
-_Avoid_: Silent sync, auto-update, writing priority from the LLM
 
 **Mail Score**:
 Advisory fit score from the mail pipeline stored on the Job (`mail_score`, `mail_score_reason`, `mail_scored_at`); never auto-written into priority.
