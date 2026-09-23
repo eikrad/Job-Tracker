@@ -1,7 +1,7 @@
 // Documentation schema mirror for frontend typing and migrations.
 export const schema = {
   jobs: [
-    "id", "company", "title", "url", "raw_text", "status",
+    "id", "company", "title", "url", "board_url", "raw_text", "status",
     "deadline", "interview_date", "start_date",
     "tags", "detected_language", "notes",
     "contact_name", "contact_email", "contact_phone",

@@ -29,6 +29,10 @@ const MIGRATIONS: &[Migration] = &[
         version: 3,
         up: m0003_mail_scan_indices,
     },
+    Migration {
+        version: 4,
+        up: m0004_jobs_board_url,
+    },
 ];
 
 /// Latest schema version applied by this module.
@@ -368,6 +372,16 @@ CREATE INDEX IF NOT EXISTS idx_runs_started ON mail_scan_runs(started_at DESC);
 fn m0003_mail_scan_indices(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(MAIL_SCAN_INDEX_DDL)
         .map_err(|e| format!("m0003 DDL failed: {e}"))?;
+    Ok(())
+}
+
+/// The job board a Job was found through, kept next to `url` once `url` points at the
+/// employer's own ad.
+fn m0004_jobs_board_url(conn: &Connection) -> Result<(), String> {
+    if !jobs_column_names(conn)?.iter().any(|c| c == "board_url") {
+        conn.execute("ALTER TABLE jobs ADD COLUMN board_url TEXT", [])
+            .map_err(|e| format!("m0004 failed: {e}"))?;
+    }
     Ok(())
 }
 

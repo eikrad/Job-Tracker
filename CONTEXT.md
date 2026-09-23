@@ -22,6 +22,10 @@ _Avoid_: Job, application, capture item
 A tracked application opportunity on the board, with status in the configured workflow.
 _Avoid_: Listing, match, vacancy (when referring to something already saved in the tracker)
 
+**Board Link**:
+The job-board page a Job was found through (`jobs.board_url`), kept as a secondary "via <board>" link when the Job's `url` is the employer's own ad.
+_Avoid_: Source (that is the board's name, not its link), listing URL
+
 **Mail Match Fingerprint**:
 Stable listing identity using tiered keys: a strong key (`board:external_id` or canonical URL) when available, else a weak key (`company|title|city` after normalization). Computed only by the Mail Scan sidecar; the app stores the keys it receives. Clustering follows strong-key identity first; weak-only collisions merge; differing strong keys with the same weak key are near-duplicates, not merges.
 _Avoid_: Job id, email message id as sole identity, OR-over-two-keys dedup

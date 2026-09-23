@@ -11,6 +11,8 @@ pub struct Job {
     pub company: String,
     pub title: Option<String>,
     pub url: Option<String>,
+    /// The job board the Job was found through, when `url` is the employer's own ad.
+    pub board_url: Option<String>,
     pub raw_text: Option<String>,
     pub status: String,
     pub deadline: Option<String>,
@@ -73,6 +75,9 @@ pub struct NewJob {
     pub priority: Option<i64>,
     pub reference_number: Option<String>,
     pub source: Option<String>,
+    /// See [`Job::board_url`]. Defaulted so payloads from before the column still parse.
+    #[serde(default)]
+    pub board_url: Option<String>,
 }
 
 fn ensure_storage_dirs(base: &Path) -> Result<(), String> {
@@ -126,8 +131,8 @@ INSERT INTO jobs (company, title, url, raw_text, status, deadline, interview_dat
   detected_language, notes, contact_name, contact_email, contact_phone,
   workplace_street, workplace_city, workplace_postal_code,
   work_mode, salary_range, contract_type, priority, reference_number, source,
-  created_at, updated_at)
-VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)
+  created_at, updated_at, board_url)
+VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26)
 "#;
 
 fn insert_new_job(
@@ -162,7 +167,8 @@ fn insert_new_job(
             &payload.reference_number,
             &payload.source,
             now,
-            now
+            now,
+            &payload.board_url
         ],
     )
 }
@@ -200,7 +206,7 @@ pub fn list_jobs(app: tauri::AppHandle) -> Result<Vec<Job>, String> {
     let conn = connection(&app)?;
     let mut stmt = conn
     .prepare(
-      "SELECT id, company, title, url, raw_text, status, deadline, interview_date, start_date, tags, detected_language, notes, contact_name, contact_email, contact_phone, workplace_street, workplace_city, workplace_postal_code, work_mode, salary_range, contract_type, priority, reference_number, source, pdf_path, listing_status, listing_checked_at, created_at, updated_at
+      "SELECT id, company, title, url, raw_text, status, deadline, interview_date, start_date, tags, detected_language, notes, contact_name, contact_email, contact_phone, workplace_street, workplace_city, workplace_postal_code, work_mode, salary_range, contract_type, priority, reference_number, source, pdf_path, listing_status, listing_checked_at, created_at, updated_at, board_url
       FROM jobs ORDER BY updated_at DESC",
     )
     .map_err(|e| e.to_string())?;
@@ -236,6 +242,7 @@ pub fn list_jobs(app: tauri::AppHandle) -> Result<Vec<Job>, String> {
                 listing_checked_at: row.get(26)?,
                 created_at: row.get(27)?,
                 updated_at: row.get(28)?,
+                board_url: row.get(29)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -340,7 +347,7 @@ pub fn update_job(app: tauri::AppHandle, job_id: i64, payload: NewJob) -> Result
         workplace_street=?15, workplace_city=?16, workplace_postal_code=?17,
         work_mode=?18, salary_range=?19, contract_type=?20, priority=?21,
         reference_number=?22, source=?23,
-        updated_at=?24
+        updated_at=?24, board_url=?26
        WHERE id=?25",
             params![
                 payload.company.trim(),
@@ -368,6 +375,7 @@ pub fn update_job(app: tauri::AppHandle, job_id: i64, payload: NewJob) -> Result
                 payload.source,
                 now,
                 job_id,
+                payload.board_url,
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -666,6 +674,7 @@ mod tests {
             priority: None,
             reference_number: None,
             source: None,
+            board_url: None,
         }
     }
 

@@ -68,6 +68,7 @@ function rowToNewJob(row: Record<string, unknown>): NewJob {
     company: company || "Unknown",
     title: str(row.title),
     url: str(row.url),
+    board_url: str(row.board_url),
     raw_text: str(row.raw_text),
     status: str(row.status) ?? "Interesting",
     deadline: str(row.deadline),

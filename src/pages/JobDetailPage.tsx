@@ -16,6 +16,15 @@ import type { DocType, JobDocument } from "../lib/types";
 
 const PRIORITY_MAX = 10;
 
+/** `https://www.jobindex.dk/c?t=…` → `jobindex.dk`; the raw string if it is not a URL. */
+function boardName(boardUrl: string): string {
+  try {
+    return new URL(boardUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return boardUrl;
+  }
+}
+
 const DOC_TYPES: { value: DocType; label: string }[] = [
   { value: "cv", label: en.detail.docTypeCv },
   { value: "cover_letter", label: en.detail.docTypeCoverLetter },
@@ -219,6 +228,25 @@ export function JobDetailPage() {
                 {job.url}
               </a>,
               !!job.url,
+            )}
+            {job.board_url?.trim() && (
+              <div className="detailRow">
+                <span className="detailRowLabel" />
+                <a
+                  href={job.board_url}
+                  className="muted"
+                  style={{ fontSize: "0.8rem" }}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const board = job.board_url?.trim();
+                    if (board) void openUrlInBrowser(board).catch(console.error);
+                  }}
+                >
+                  {en.jobDetailPage.viaBoard(boardName(job.board_url.trim()))}
+                </a>
+              </div>
             )}
             {job.url && (
               <div className="detailRow">

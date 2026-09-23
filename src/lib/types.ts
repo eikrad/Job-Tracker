@@ -5,6 +5,8 @@ export type Job = {
   company: string;
   title?: string | null;
   url?: string | null;
+  /** The job board it was found through, when `url` is the employer's own ad. */
+  board_url?: string | null;
   raw_text?: string | null;
   status: string;
   deadline?: string | null;
@@ -49,6 +51,7 @@ export type NewJob = {
   company: string;
   title?: string;
   url?: string;
+  board_url?: string;
   raw_text?: string;
   status: string;
   deadline?: string;
