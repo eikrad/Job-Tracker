@@ -233,6 +233,25 @@ def _iter_mbox_bytes(
             # else: skip preamble before the first From (e.g. after resume)
 
 
+def _last_from_line_ending_at(path: Path, offset: int) -> bytes | None:
+    """The ``From `` line of the message that ends at ``offset``.
+
+    Alert mails are routinely 50-150 KB of HTML, so the look-back grows until it
+    reaches the line instead of giving up after a fixed small window. It is not
+    capped at max_message_bytes: an oversized mail is skipped but still consumed,
+    so the cursor can end right after one.
+    """
+    window = 16384
+    with path.open("rb") as handle:
+        while True:
+            window = min(window, offset)
+            handle.seek(offset - window)
+            found = _last_from_line_before(handle.read(window))
+            if found is not None or window >= offset:
+                return found
+            window *= 4
+
+
 def _resolve_resume(
     path: Path, stored: SourceCursor | None
 ) -> tuple[int, bool, str | None]:
@@ -245,12 +264,15 @@ def _resolve_resume(
         return 0, True, "offset_past_eof"
     if stored.offset <= 0:
         return 0, False, None
-    if stored.sentinel_hash:
-        window = min(stored.offset, 16384)
+    if stored.offset < size:
+        # The cursor sits where the next message starts; anything else means the
+        # file was rewritten (compacted) under us.
         with path.open("rb") as handle:
-            handle.seek(stored.offset - window)
-            chunk = handle.read(window)
-        last_from = _last_from_line_before(chunk)
+            handle.seek(stored.offset)
+            if handle.read(5) != b"From ":
+                return 0, True, "sentinel_mismatch"
+    if stored.sentinel_hash:
+        last_from = _last_from_line_ending_at(path, stored.offset)
         if last_from is None or _from_line_hash(last_from) != stored.sentinel_hash:
             return 0, True, "sentinel_mismatch"
     return stored.offset, False, None
