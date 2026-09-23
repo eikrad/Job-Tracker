@@ -22,9 +22,9 @@ def _looks_like_indeed(message: MailMessage) -> bool:
     return "indeed" in blob
 
 
-def extract_indeed(message: MailMessage) -> list[ExtractedListing]:
+def extract_indeed(message: MailMessage) -> list[ExtractedListing] | None:
     if not _looks_like_indeed(message):
-        return []
+        return None
 
     lines = [ln.strip() for ln in message.body_text.splitlines() if ln.strip()]
     listings: list[ExtractedListing] = []
@@ -67,4 +67,5 @@ def extract_indeed(message: MailMessage) -> list[ExtractedListing]:
                 extractor_confidence=0.92,
             )
         )
-    return listings
+    # Until this parser matches real Indeed mail, an unparsed one falls through.
+    return listings or None

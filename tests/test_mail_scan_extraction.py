@@ -80,3 +80,75 @@ def test_imap_copies_of_one_message_are_scanned_once() -> None:
     [finished] = [e for e in events if e["t"] == "source_finished"]
     assert finished["messages_read"] == 2
     assert finished["skipped"] == 1
+
+
+# --- Jobindex --------------------------------------------------------------
+
+
+def _summary(listing: dict) -> dict:
+    return {
+        "title": listing["title"],
+        "company": listing["company"],
+        "location": listing["location"],
+        "url": listing["url"],
+        "posted_at": listing["posted_at"],
+        "strong": listing["fingerprint"]["strong"],
+        "extractor": listing["extractor"],
+    }
+
+
+def test_jobindex_digest_yields_one_listing_per_job_block() -> None:
+    listings = scan_listings(FIXTURES / "jobindex_alerts.mbox")
+
+    assert [_summary(e) for e in listings] == [
+        {
+            "title": "Geodatakonsulent til Klima & Miljø",
+            "company": "Fjordby Kommune",
+            "location": "Roskilde",
+            "url": "https://www.jobindex.dk/c?t=h1000001",
+            "posted_at": "2026-09-17",
+            "strong": "jobindex:h1000001",
+            "extractor": "jobindex",
+        },
+        {
+            "title": "GIS-udvikler (Python)",
+            "company": "Nordlys Analytics ApS",
+            "location": "Aarhus C",
+            "url": "https://www.jobindex.dk/c?t=r20000002",
+            "posted_at": "2026-09-18",
+            "strong": "jobindex:r20000002",
+            "extractor": "jobindex",
+        },
+        {
+            "title": "Backend-udvikler",
+            "company": "Kystnet A/S",
+            "location": "Odense",
+            "url": "https://www.it-jobbank.dk/c?t=r30000005",
+            "posted_at": "2026-09-19",
+            "strong": "jobindex:r30000005",
+            "extractor": "jobindex",
+        },
+    ]
+
+
+def test_a_paid_jobindex_ad_keeps_every_visible_paragraph_as_snippet() -> None:
+    paid = scan_listings(FIXTURES / "jobindex_alerts.mbox")[0]
+
+    assert "geodata i en kommune" in paid["snippet"]
+    assert "team på seks kolleger" in paid["snippet"]
+    assert "Ansøgningsfrist" in paid["snippet"]
+    assert "SKJULT" not in paid["snippet"], "hidden text must not reach the scorer"
+    assert "Gem job" not in paid["snippet"]
+
+
+def test_a_jobindex_mail_without_job_blocks_yields_nothing() -> None:
+    events = scan_events(FIXTURES / "jobindex_alerts.mbox")
+    by_message = {e["message_id"] for e in events if e["t"] == "listing"}
+    assert "<jobagent-2@jobindex.dk>" not in by_message
+
+
+def test_jobindex_listings_never_carry_the_user_token() -> None:
+    for listing in scan_listings(FIXTURES / "jobindex_alerts.mbox"):
+        line = json.dumps(listing)
+        assert "FAKEUID" not in line
+        assert "abtestid" not in line

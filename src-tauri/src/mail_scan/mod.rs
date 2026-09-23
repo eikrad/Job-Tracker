@@ -43,8 +43,9 @@ use crate::llm::overrides::resolved_spec;
 use crate::llm::provider::LlmProvider;
 use crate::secrets;
 
-/// Extractor names shipped with the sidecar (keep in sync with Python DEFAULT_EXTRACTORS).
-pub const DEFAULT_EXTRACTORS: &[&str] = &["indeed", "generic"];
+/// Extractor names shipped with the sidecar, in dispatch order (pinned to Python
+/// `DEFAULT_EXTRACTORS` by `tests/test_mail_scan_sidecar.py`).
+pub const DEFAULT_EXTRACTORS: &[&str] = &["jobindex", "indeed", "generic"];
 
 #[derive(Clone, Default)]
 pub struct MailScanRuntime {

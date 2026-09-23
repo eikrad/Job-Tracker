@@ -184,3 +184,17 @@ def test_mail_scan_package_bans_network_imports():
             if re.search(pattern, text):
                 offenders.append(f"{path.relative_to(ROOT)}:{name}")
     assert offenders == []
+
+
+def test_the_app_requests_every_extractor_the_sidecar_ships():
+    """Rust sends its own extractor list in the scan config, in dispatch order.
+
+    A board extractor missing from that list never runs, however well it parses.
+    """
+    from mail_scan.extractors.base import DEFAULT_EXTRACTORS
+
+    mod_rs = (ROOT / "src-tauri" / "src" / "mail_scan" / "mod.rs").read_text("utf-8")
+    m = re.search(r"pub const DEFAULT_EXTRACTORS: &\[&str\] = &\[([^\]]*)\];", mod_rs)
+    assert m, "DEFAULT_EXTRACTORS not found in mod.rs"
+    rust = re.findall(r'"([^"]+)"', m.group(1))
+    assert rust == DEFAULT_EXTRACTORS
