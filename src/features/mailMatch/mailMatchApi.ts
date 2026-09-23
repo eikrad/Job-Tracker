@@ -24,15 +24,6 @@ export type RunRow = {
   modelId: string | null;
 };
 
-export type SightingRow = {
-  pass: number;
-  score: number | null;
-  reason: string | null;
-  outcome: string;
-  scoredAt: string;
-  modelId: string;
-};
-
 export type AcceptOutcome = {
   jobId: number;
   fieldsWritten: string[];
@@ -115,10 +106,6 @@ export async function mailScanListRuns(limit = 20): Promise<RunRow[]> {
   return invoke("mail_scan_list_runs", { limit });
 }
 
-export async function mailMatchSightings(fingerprintId: string): Promise<SightingRow[]> {
-  return invoke("mail_match_sightings", { fingerprintId });
-}
-
 export async function mailMatchDismiss(inboxId: number, reason?: string): Promise<void> {
   await invoke("mail_match_dismiss", { inboxId, reason: reason ?? null });
 }
@@ -137,27 +124,18 @@ export async function mailMatchUndoAccept(inboxId: number): Promise<void> {
   await invoke("mail_match_undo_accept", { inboxId });
 }
 
-export async function mailScanEstimate(params: {
-  provider?: string;
-  expectedListings?: number;
-  maxCalls?: number;
-}): Promise<ScanEstimate> {
-  return invoke("mail_scan_estimate", {
-    provider: params.provider ?? null,
-    expectedListings: params.expectedListings ?? null,
-    maxCalls: params.maxCalls ?? null,
-  });
+/** Cost preview for a scan with the saved Settings (provider and call cap). */
+export async function mailScanEstimate(expectedListings?: number): Promise<ScanEstimate> {
+  return invoke("mail_scan_estimate", { expectedListings: expectedListings ?? null });
 }
 
-export async function mailScanStart(request: {
-  sources: MailSource[];
-  provider?: string;
-  cutoff?: number;
-  sinceDays?: number;
-  maxCalls?: number;
-  forceRescore?: boolean;
-}): Promise<string> {
-  return invoke("mail_scan_start", { request });
+/**
+ * Starts a scan with the saved Settings — folders, provider, cutoff, age floor and call
+ * cap are read by the backend, not sent from here. `forceRescore` is the explicit
+ * "Re-score backlog" action.
+ */
+export async function mailScanStart(options: { forceRescore?: boolean } = {}): Promise<string> {
+  return invoke("mail_scan_start", { forceRescore: options.forceRescore ?? null });
 }
 
 export async function mailScanCancel(): Promise<void> {

@@ -174,46 +174,6 @@ pub fn list_runs(conn: &Connection, limit: i64) -> Result<Vec<RunRow>, String> {
     Ok(rows)
 }
 
-/// Both passes and their reasons, for the detail pane.
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SightingRow {
-    pub pass: i64,
-    pub score: Option<i64>,
-    pub reason: Option<String>,
-    pub outcome: String,
-    pub scored_at: String,
-    pub model_id: String,
-}
-
-pub fn list_sightings(
-    conn: &Connection,
-    fingerprint_id: &str,
-) -> Result<Vec<SightingRow>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT pass, score, reason, outcome, scored_at, model_id
-             FROM mail_scored_sightings WHERE fingerprint_id = ?1
-             ORDER BY pass ASC, scored_at DESC",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map(params![fingerprint_id], |r| {
-            Ok(SightingRow {
-                pass: r.get(0)?,
-                score: r.get(1)?,
-                reason: r.get(2)?,
-                outcome: r.get(3)?,
-                scored_at: r.get(4)?,
-                model_id: r.get(5)?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|e| e.to_string())?;
-    Ok(rows)
-}
-
 /// Dismiss the fingerprint behind an inbox row and retire the row.
 ///
 /// Both happen together: a dismissal that suppressed future scans but left the row
@@ -279,15 +239,6 @@ pub fn mail_match_list_dismissed(app: tauri::AppHandle) -> Result<Vec<DismissedR
 pub fn mail_scan_list_runs(app: tauri::AppHandle, limit: Option<i64>) -> Result<Vec<RunRow>, String> {
     let conn = crate::db::connection(&app)?;
     list_runs(&conn, limit.unwrap_or(20))
-}
-
-#[tauri::command]
-pub fn mail_match_sightings(
-    app: tauri::AppHandle,
-    fingerprint_id: String,
-) -> Result<Vec<SightingRow>, String> {
-    let conn = crate::db::connection(&app)?;
-    list_sightings(&conn, &fingerprint_id)
 }
 
 #[tauri::command]
@@ -426,26 +377,5 @@ mod tests {
         assert_eq!(runs.len(), 1);
         assert!(runs[0].stats_json.contains("inboxNew"));
         assert_eq!(runs[0].status, "completed");
-    }
-
-    #[test]
-    fn sightings_return_both_passes_for_the_detail_pane() {
-        let conn = db();
-        seed(&conn, "fp-two", Some(9), "ok", 1, "2026-09-09T00:00:00Z");
-        for (pass, score) in [(1, 8), (2, 9)] {
-            conn.execute(
-                "INSERT INTO mail_scored_sightings (
-                    fingerprint_id, pass, score, reason, profile_hash, prompt_version,
-                    model_id, listing_content_hash, outcome, scored_at, run_id
-                 ) VALUES ('fp-two', ?1, ?2, 'why', 'p', 'v', 'm', ?3, 'inbox', 't', 'r1')",
-                params![pass, score, format!("hash{pass}")],
-            )
-            .unwrap();
-        }
-
-        let sightings = list_sightings(&conn, "fp-two").unwrap();
-        assert_eq!(sightings.len(), 2);
-        assert_eq!(sightings[0].pass, 1);
-        assert_eq!(sightings[1].score, Some(9));
     }
 }

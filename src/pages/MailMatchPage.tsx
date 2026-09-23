@@ -48,10 +48,7 @@ export function MailMatchPage() {
         {settings ? (
           <ScanControl
             sources={settings.sources}
-            provider={settings.provider}
             cutoff={settings.cutoff}
-            sinceDays={settings.sinceDays}
-            maxCalls={settings.maxCalls}
             onRunFinished={() => {
               setReloadToken((n) => n + 1);
               loadSettings();

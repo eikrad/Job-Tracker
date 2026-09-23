@@ -76,7 +76,6 @@ pub fn run() {
             mail_scan::settings::mail_scan_delete_all_data,
             mail_scan::inbox::mail_match_list,
             mail_scan::inbox::mail_match_list_dismissed,
-            mail_scan::inbox::mail_match_sightings,
             mail_scan::inbox::mail_match_dismiss,
             mail_scan::inbox::mail_match_restore,
             mail_scan::inbox::mail_scan_list_runs,

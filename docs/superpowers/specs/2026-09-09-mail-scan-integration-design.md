@@ -662,6 +662,8 @@ Stable codes, one user-facing sentence each in `en.ts`, surfaced in the run row 
 | `E_DB` | SQLite failure | Log path; DB untouched beyond committed items |
 | `W_*` | Non-fatal warnings (unparseable message, cursor reset, fetch failed, enrichment partial) | Counted in the run summary, expandable |
 
+> **As built (C1 cleanup):** the codes a run row can carry are what `mail_scan/mod.rs` writes — `E_SPAWN` (sidecar would not start), `E_PROTOCOL_MISMATCH` (the `E_SIDECAR_VERSION` case), `E_PROTOCOL` / `E_PROTOCOL_OVERSIZE`, `E_IO` / `E_CHILD` / `E_EXIT_<n>` (the sidecar's stream broke or it exited abnormally), `E_LLM_AUTH`, `E_LLM_MODEL`, `E_LLM_UNAVAILABLE`, `E_LLM` (any other provider error) and `E_DB`; `src/features/mailMatch/runErrors.ts` maps exactly those. The budget cap is not a failure (the run `completed` with `budgetExhausted`), so there is no `E_BUDGET_EXHAUSTED`. `E_CONFIG_INCOMPLETE`, `E_PROFILE_UNREADABLE`, `E_SOURCE_UNREADABLE` and `E_SIDECAR_MISSING` are prefixes of messages returned before a run starts (or from Settings' folder test), shown as-is.
+
 Partial failure is the normal case, not an exception: a run that hits warnings still `completed`, with counters. Only the `E_*` codes above end a run `failed`, and **no failure path ever marks a fingerprint dismissed.**
 
 ---

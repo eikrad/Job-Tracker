@@ -8,8 +8,6 @@ import {
   pairNearDuplicates,
   parseDraft,
   scoreLabel,
-  sortRows,
-  visibleRows,
   type MailMatchRow,
 } from "./mailMatchInbox";
 
@@ -38,32 +36,6 @@ function row(overrides: Partial<MailMatchRow> = {}): MailMatchRow {
     ...overrides,
   };
 }
-
-describe("ordering", () => {
-  it("sorts by score, then by most recently seen", () => {
-    const rows = [
-      row({ id: 1, score: 4, lastSeenAt: "2026-09-09T00:00:00Z" }),
-      row({ id: 2, score: 9, lastSeenAt: "2026-09-01T00:00:00Z" }),
-      row({ id: 3, score: 9, lastSeenAt: "2026-09-09T00:00:00Z" }),
-    ];
-    expect(sortRows(rows).map((r) => r.id)).toEqual([3, 2, 1]);
-  });
-
-  it("puts an invalid score below every real score", () => {
-    // A `?` outranking a 9 would push the rows we trust least to the top.
-    const rows = [
-      row({ id: 1, score: null, scoreState: "invalid", lastSeenAt: "2026-09-09T00:00:00Z" }),
-      row({ id: 2, score: 2, lastSeenAt: "2026-09-01T00:00:00Z" }),
-    ];
-    expect(sortRows(rows).map((r) => r.id)).toEqual([2, 1]);
-  });
-
-  it("does not mutate the input", () => {
-    const rows = [row({ id: 1, score: 1 }), row({ id: 2, score: 9 })];
-    sortRows(rows);
-    expect(rows.map((r) => r.id)).toEqual([1, 2]);
-  });
-});
 
 describe("filters", () => {
   it("filters by board", () => {
@@ -105,13 +77,13 @@ describe("filters", () => {
     expect(filterRows(rows, { ...defaultFilters, query: "  " }).map((r) => r.id)).toEqual([1, 2]);
   });
 
-  it("combines filters and ordering in one pass", () => {
+  it("keeps the backend's ranking while filtering", () => {
     const rows = [
+      row({ id: 3, score: 10, sourceBoard: "indeed" }),
       row({ id: 1, score: 9, sourceBoard: "jobindex" }),
       row({ id: 2, score: 8, sourceBoard: "indeed" }),
-      row({ id: 3, score: 10, sourceBoard: "indeed" }),
     ];
-    const out = visibleRows(rows, { ...defaultFilters, board: "indeed" });
+    const out = filterRows(rows, { ...defaultFilters, board: "indeed" });
     expect(out.map((r) => r.id)).toEqual([3, 2]);
   });
 
@@ -182,7 +154,7 @@ describe("near-duplicates", () => {
     ];
     const pairs = pairNearDuplicates(rows);
 
-    expect(visibleRows(rows, defaultFilters)).toHaveLength(2);
+    expect(filterRows(rows, defaultFilters)).toHaveLength(2);
     expect(pairs.get(1)?.map((r) => r.fingerprintId)).toEqual(["fp-kbh", "fp-aarhus"]);
   });
 

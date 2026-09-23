@@ -27,10 +27,10 @@ import {
   badgesFor,
   boardOptions,
   defaultFilters,
+  filterRows,
   listingText,
   pairNearDuplicates,
   scoreLabel,
-  visibleRows,
   type Badge,
   type MailMatchFilters,
   type MailMatchRow,
@@ -154,7 +154,7 @@ export function MailMatchInboxPanel({
     void refresh();
   }, [refresh, reloadToken]);
 
-  const shown = useMemo(() => visibleRows(rows, filters), [rows, filters]);
+  const shown = useMemo(() => filterRows(rows, filters), [rows, filters]);
   const pairs = useMemo(() => pairNearDuplicates(rows), [rows]);
   const boards = useMemo(() => boardOptions(rows), [rows]);
   const filtersActive = useMemo(

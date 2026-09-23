@@ -518,16 +518,14 @@ export const en = {
     statusFailed: "Failed",
 
     // Errors (spec §10)
-    errorConfigIncomplete: "Add your mail folders and both candidate profiles in Settings first.",
-    errorProfileUnreadable: "A candidate profile could not be read. Re-select it in Settings.",
-    errorSourceUnreadable: "A mail folder could not be read. Check the path in Settings.",
     errorSidecarMissing: "The mail scanner could not be started. Try reinstalling the app.",
     errorSidecarVersion: "The mail scanner is out of date with the app. Try reinstalling.",
+    errorSidecarStopped: "The mail scanner stopped unexpectedly. Results so far are kept — try again.",
     errorProtocol: "The mail scanner sent something unexpected. Nothing was lost — please report this.",
     errorLlmAuth: "The provider rejected the API key. Check it in Settings.",
     errorLlmModel: "The provider did not recognise the model. Check the model id in Settings.",
     errorLlmUnavailable: "The provider was unreachable, so the scan stopped early. Results so far are kept — try again later.",
-    errorBudgetExhausted: "The scan reached its call budget and stopped. Results so far are kept.",
+    errorLlmOther: "The provider answered with an unexpected error, so the scan stopped. Results so far are kept.",
     errorDb: "The database could not be written. Nothing beyond the saved items was changed.",
     errorUnknown: "The scan failed.",
   },

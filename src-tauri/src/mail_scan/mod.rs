@@ -1,6 +1,4 @@
 //! Mail-scan orchestration: sidecar spawn, NDJSON protocol, scoring, persistence.
-//!
-//! Behind `mailScanEnabled` (default off) until the flag comes off in C4.
 
 pub mod accept;
 pub mod budget;
@@ -414,68 +412,13 @@ fn consume_reader<R: std::io::Read>(
     Ok(())
 }
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StartScanRequest {
-    pub sources: Vec<SourceConfig>,
-    /// Scoring provider id; defaults to Scaleway when the caller does not say.
-    #[serde(default)]
-    pub provider: Option<String>,
-    /// Minimum pass-2 score to reach the inbox (spec §11.3 default 7).
-    #[serde(default)]
-    pub cutoff: Option<i32>,
-    /// Hard floor on message age, in days (spec §5.5 default 90).
-    #[serde(default)]
-    pub since_days: Option<u32>,
-    /// Per-run call cap.
-    #[serde(default)]
-    pub max_calls: Option<u32>,
-    /// Explicit "Re-score backlog" — bypasses score reuse, not the budget.
-    #[serde(default)]
-    pub force_rescore: Option<bool>,
-}
-
-/// Days of mail history considered when the caller does not override it.
-pub const DEFAULT_SINCE_DAYS: u32 = 90;
-
-impl StartScanRequest {
-    fn scoring_config(&self) -> ScoringConfig {
-        let mut config = ScoringConfig {
-            force_rescore: self.force_rescore.unwrap_or(false),
-            ..Default::default()
-        };
-        if let Some(cutoff) = self.cutoff {
-            config.pass2_cutoff = cutoff.clamp(0, 10);
-        }
-        if let Some(max_calls) = self.max_calls {
-            config.budget.max_calls = max_calls;
-        }
-        config
-    }
-
-    fn provider(&self) -> Result<LlmProvider, String> {
-        LlmProvider::parse(self.provider.as_deref().unwrap_or("scaleway_deepseek"))
-    }
-
-    fn since_iso(&self) -> String {
-        let days = i64::from(self.since_days.unwrap_or(DEFAULT_SINCE_DAYS));
-        (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339()
-    }
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SourceConfig {
-    pub id: String,
-    pub kind: String,
-    pub path: String,
-}
-
+/// Start a scan with the saved Settings. The only thing a caller chooses is
+/// `force_rescore`, the explicit "Re-score backlog" action.
 #[tauri::command]
 pub fn mail_scan_start(
     app: AppHandle,
     runtime: State<'_, MailScanRuntime>,
-    request: StartScanRequest,
+    force_rescore: Option<bool>,
 ) -> Result<String, String> {
     {
         let guard = runtime.inner.lock().map_err(|e| e.to_string())?;
@@ -487,8 +430,12 @@ pub fn mail_scan_start(
     // Fail before doing any work if the profiles or the key are missing — a scan that
     // reads a whole mail folder and only then discovers it cannot score is worse than
     // one that never starts.
-    let provider = request.provider()?;
-    let (engine, engine_identity) = build_engine(&app, provider, request.scoring_config())?;
+    let settings = settings::load_settings(&app)?;
+    let (engine, engine_identity) = build_engine(
+        &app,
+        settings.provider()?,
+        settings.scoring_config(force_rescore.unwrap_or(false)),
+    )?;
 
     let run_id = new_run_id();
     let cancel_dir = std::env::temp_dir().join("jobtracker-mail-scan");
@@ -508,7 +455,7 @@ pub fn mail_scan_start(
 
     let mut source_meta = HashMap::new();
     let mut sources_json = Vec::new();
-    for s in &request.sources {
+    for s in &settings.sources {
         source_meta.insert(s.id.clone(), (s.path.clone(), s.kind.clone()));
         let cursor = load_cursor_json(&conn, &s.id)?;
         sources_json.push(serde_json::json!({
@@ -530,7 +477,7 @@ pub fn mail_scan_start(
             "max_listings_per_run": 2000,
             "max_body_chars": 20_000,
         },
-        "since": request.since_iso(),
+        "since": settings.since_iso(),
         "cancel_file": cancel_file.to_string_lossy(),
     });
 
@@ -592,14 +539,11 @@ pub struct ScanEstimate {
 #[tauri::command]
 pub fn mail_scan_estimate(
     app: AppHandle,
-    provider: Option<String>,
     expected_listings: Option<u32>,
-    max_calls: Option<u32>,
 ) -> Result<ScanEstimate, String> {
-    let provider = LlmProvider::parse(provider.as_deref().unwrap_or("scaleway_deepseek"))?;
+    let settings = settings::load_settings(&app)?;
     let dir = app_data_dir(&app)?;
     let conn = db::connection(&app)?;
-    let cap = max_calls.unwrap_or(budget::DEFAULT_MAX_CALLS);
 
     Ok(ScanEstimate {
         estimate: budget::estimate_calls(
@@ -608,10 +552,10 @@ pub fn mail_scan_estimate(
             // Coarse prior for the share clearing the pass-1 gate; shown as an
             // estimate, never billed against.
             0.34,
-            cap,
+            settings.max_calls,
         ),
         backlog_under_cutoff: score_cache::count_under_cutoff(&conn)?,
-        model_id: resolved_spec(&app, provider)?.model_id,
+        model_id: resolved_spec(&app, settings.provider()?)?.model_id,
         profile_short: profiles::profile_status(&dir, ProfileKind::Short),
         profile_full: profiles::profile_status(&dir, ProfileKind::Full),
     })

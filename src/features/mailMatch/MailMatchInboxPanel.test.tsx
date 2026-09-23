@@ -71,11 +71,11 @@ function renderPanel(api: ReturnType<typeof makeApi>) {
 }
 
 describe("rendering", () => {
-  it("lists pending matches highest score first", async () => {
+  it("lists pending matches in the backend's ranking", async () => {
     const api = makeApi({
       rows: [
-        row({ id: 1, score: 4, title: "Barista" }),
         row({ id: 2, fingerprintId: "fp-2", score: 9, title: "Senior Rust Engineer" }),
+        row({ id: 1, score: 4, title: "Barista" }),
       ],
     });
     renderPanel(api);

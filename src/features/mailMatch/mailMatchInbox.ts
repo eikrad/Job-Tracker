@@ -1,7 +1,7 @@
 /**
  * Pure view logic for the Mail Match Inbox (spec §11.1).
  *
- * Kept separate from the component so ordering, filtering, and badge rules are
+ * Kept separate from the component so filtering and badge rules are
  * asserted directly rather than through the DOM. Distinct from the Capture Inbox
  * (ADR 0003), which stays untouched.
  */
@@ -44,23 +44,6 @@ export const defaultFilters: MailMatchFilters = {
   query: "",
 };
 
-/**
- * Score desc, then most recently seen (spec §11.1).
- *
- * An `invalid` score has no number to rank by, so it sorts below every real score
- * rather than above them — the backend orders the same way, and this keeps a
- * client-side re-sort from contradicting it.
- */
-export function sortRows(rows: MailMatchRow[]): MailMatchRow[] {
-  return [...rows].sort((a, b) => {
-    const sa = a.score ?? -1;
-    const sb = b.score ?? -1;
-    if (sa !== sb) return sb - sa;
-    if (a.lastSeenAt !== b.lastSeenAt) return a.lastSeenAt < b.lastSeenAt ? 1 : -1;
-    return b.id - a.id;
-  });
-}
-
 function matchesQuery(row: MailMatchRow, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
@@ -69,6 +52,12 @@ function matchesQuery(row: MailMatchRow, query: string): boolean {
     .some((v) => v.toLowerCase().includes(q));
 }
 
+/**
+ * The rows the current filters let through, in the order they came.
+ *
+ * Ranking (score desc, invalid scores last, then most recently seen) is the backend's
+ * job (`inbox.rs`), and every mutation here reloads from it, so nothing re-sorts.
+ */
 export function filterRows(rows: MailMatchRow[], filters: MailMatchFilters): MailMatchRow[] {
   return rows.filter((row) => {
     if (filters.board !== "all" && (row.sourceBoard ?? "") !== filters.board) return false;
@@ -78,10 +67,6 @@ export function filterRows(rows: MailMatchRow[], filters: MailMatchFilters): Mai
     if (filters.minScore > 0 && row.score !== null && row.score < filters.minScore) return false;
     return matchesQuery(row, filters.query);
   });
-}
-
-export function visibleRows(rows: MailMatchRow[], filters: MailMatchFilters): MailMatchRow[] {
-  return sortRows(filterRows(rows, filters));
 }
 
 /** Boards present in the data, for the filter dropdown. */

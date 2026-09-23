@@ -1,7 +1,5 @@
 //! §5.1 clustering: near-duplicates, weak→strong promotion, alias resolution.
 
-#![allow(dead_code)] // dismiss/restore are exercised in tests; UI commands land in PR C.
-
 use rusqlite::{Connection, OptionalExtension, params};
 
 /// Resolve a fingerprint id through aliases (weak id → canonical).

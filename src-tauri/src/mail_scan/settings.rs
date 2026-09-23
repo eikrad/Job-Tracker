@@ -4,9 +4,12 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::llm::provider::LlmProvider;
 use crate::mail_scan::budget::DEFAULT_MAX_CALLS;
-use crate::mail_scan::scoring::DEFAULT_PASS2_CUTOFF;
-use crate::mail_scan::DEFAULT_SINCE_DAYS;
+use crate::mail_scan::scoring::{ScoringConfig, DEFAULT_PASS2_CUTOFF};
+
+/// Days of mail history a scan reads unless Settings says otherwise (spec §5.5).
+pub const DEFAULT_SINCE_DAYS: u32 = 90;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -56,6 +59,31 @@ impl Default for MailScanSettings {
             max_calls: default_max_calls(),
             provider: default_provider(),
         }
+    }
+}
+
+impl MailScanSettings {
+    /// How the saved settings score a run. `force_rescore` is the explicit "Re-score
+    /// backlog" action: it bypasses score reuse, never the budget.
+    pub fn scoring_config(&self, force_rescore: bool) -> ScoringConfig {
+        let mut config = ScoringConfig {
+            force_rescore,
+            // Clamped: a hand-edited settings file must not put the cutoff off the scale.
+            pass2_cutoff: self.cutoff.clamp(0, 10),
+            ..ScoringConfig::default()
+        };
+        config.budget.max_calls = self.max_calls;
+        config
+    }
+
+    pub fn provider(&self) -> Result<LlmProvider, String> {
+        LlmProvider::parse(&self.provider)
+    }
+
+    /// The hard floor on message age, as the sidecar's `since`.
+    pub fn since_iso(&self) -> String {
+        let days = i64::from(self.since_days);
+        (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339()
     }
 }
 
@@ -664,6 +692,31 @@ mod tests {
         assert_eq!(defaults.since_days, 90);
         assert_eq!(defaults.max_calls, 600);
         assert!(defaults.sources.is_empty());
+    }
+
+    #[test]
+    fn a_scan_runs_with_the_saved_cutoff_and_call_cap() {
+        let saved = MailScanSettings {
+            cutoff: 8,
+            max_calls: 50,
+            ..MailScanSettings::default()
+        };
+
+        let config = saved.scoring_config(false);
+
+        assert_eq!(config.pass2_cutoff, 8);
+        assert_eq!(config.budget.max_calls, 50);
+        assert!(!config.force_rescore);
+        assert!(saved.scoring_config(true).force_rescore);
+    }
+
+    #[test]
+    fn a_hand_edited_cutoff_is_kept_on_the_score_scale() {
+        let saved = MailScanSettings {
+            cutoff: 42,
+            ..MailScanSettings::default()
+        };
+        assert_eq!(saved.scoring_config(false).pass2_cutoff, 10);
     }
 
     #[test]
