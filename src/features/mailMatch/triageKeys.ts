@@ -20,9 +20,13 @@ const COMMANDS: Record<string, TriageCommand> = {
 /** Marks the row title buttons, where Enter toggles the detail like `o` does. */
 export const TRIAGE_ROW_ATTR = "data-triage-row";
 
+/** Inputs that take no text: a key press on one of them is still a shortcut. */
+const NON_TEXT_INPUTS = new Set(["checkbox", "radio", "button", "submit", "reset"]);
+
 function isTyping(el: Element): boolean {
   if (el instanceof HTMLElement && el.isContentEditable) return true;
-  return ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
+  if (el instanceof HTMLInputElement) return !NON_TEXT_INPUTS.has(el.type);
+  return ["TEXTAREA", "SELECT"].includes(el.tagName);
 }
 
 /**

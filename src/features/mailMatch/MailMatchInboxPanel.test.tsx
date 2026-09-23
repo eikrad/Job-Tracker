@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { en } from "../../i18n/en";
 import { MailMatchInboxPanel } from "./MailMatchInboxPanel";
-import type { DismissedRow, RunRow } from "./mailMatchApi";
+import type { AcceptOutcome, DismissedRow, RunRow } from "./mailMatchApi";
 import type { MailMatchRow } from "./mailMatchInbox";
 // `?raw` rather than node:fs — the app tsconfig ships no node types, and this keeps
 // the guard inside the same module graph as the code it guards.
@@ -61,9 +61,13 @@ function makeApi(overrides: {
     list: vi.fn(async () => overrides.rows ?? []),
     listDismissed: vi.fn(async () => overrides.dismissed ?? []),
     listRuns: vi.fn(async () => overrides.runs ?? []),
-    dismiss: vi.fn(async () => {}),
+    dismiss: vi.fn<(inboxId: number) => Promise<void>>(async () => {}),
     restore: vi.fn(async () => {}),
-    acceptNew: vi.fn(async () => ({ jobId: 42, fieldsWritten: ["title"], created: true })),
+    acceptNew: vi.fn<(inboxId: number) => Promise<AcceptOutcome>>(async () => ({
+      jobId: 42,
+      fieldsWritten: ["title"],
+      created: true,
+    })),
     undoAccept: vi.fn(async () => {}),
     openUrl: vi.fn(async () => {}),
   };
@@ -395,6 +399,18 @@ describe("dismiss and restore", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
+  it("offers Undo right after a dismiss, which restores the match", async () => {
+    const api = makeApi({ rows: [row()] });
+    renderPanel(api);
+
+    fireEvent.click(await screen.findByRole("button", { name: t.dismiss }));
+    expect(await screen.findByText(t.dismissedNotice("Rust Engineer"))).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: t.acceptedUndo }));
+
+    await waitFor(() => expect(api.restore).toHaveBeenCalledWith("fp-1"));
+    expect(await screen.findByText(t.dismissUndoneNotice)).toBeTruthy();
+  });
+
   it("lists dismissals and restores them", async () => {
     // A dismissal the user cannot see or undo is the failure this tab prevents.
     const api = makeApi({
@@ -423,6 +439,112 @@ describe("dismiss and restore", () => {
     renderPanel(makeApi({ dismissed: [] }));
     fireEvent.click(await screen.findByRole("tab", { name: /Dismissed/ }));
     expect(await screen.findByText(t.emptyDismissed)).toBeTruthy();
+  });
+});
+
+describe("bulk actions", () => {
+  const threeRows = () => [
+    row({ id: 1, fingerprintId: "fp-1", title: "Rust Engineer" }),
+    row({ id: 2, fingerprintId: "fp-2", title: "Platform Engineer" }),
+    row({ id: 3, fingerprintId: "fp-3", title: "Barista" }),
+  ];
+  // happy-dom has no window.confirm, so the confirmation is stubbed in.
+  const confirm = vi.fn<(message?: string) => boolean>(() => true);
+
+  beforeEach(() => {
+    confirm.mockReset().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirm);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function select(...titles: string[]) {
+    for (const title of titles) {
+      fireEvent.click(await screen.findByRole("checkbox", { name: t.selectRow(title) }));
+    }
+  }
+
+  it("accepts the selected matches after confirming the count", async () => {
+    const api = makeApi({ rows: threeRows() });
+    const { onJobsChanged } = renderPanel(api);
+    await select("Rust Engineer", "Platform Engineer");
+
+    fireEvent.click(screen.getByRole("button", { name: t.bulkAccept(2) }));
+
+    expect(confirm).toHaveBeenCalledWith(t.bulkAcceptConfirm(2));
+    await screen.findByText(t.bulkAcceptedNotice(2, 2));
+    expect(api.acceptNew.mock.calls).toEqual([[1], [2]]);
+    // One reload for the whole batch, not one per match.
+    expect(onJobsChanged).toHaveBeenCalledTimes(1);
+    expect(api.list).toHaveBeenCalledTimes(2);
+  });
+
+  it("dismisses the selected matches after confirming the count", async () => {
+    const api = makeApi({ rows: threeRows() });
+    renderPanel(api);
+    await select("Rust Engineer", "Barista");
+
+    fireEvent.click(screen.getByRole("button", { name: t.bulkDismiss(2) }));
+
+    expect(confirm).toHaveBeenCalledWith(t.bulkDismissConfirm(2));
+    await screen.findByText(t.bulkDismissedNotice(2, 2));
+    expect(api.dismiss.mock.calls).toEqual([[1], [3]]);
+  });
+
+  it("does nothing when the confirmation is declined", async () => {
+    confirm.mockReturnValue(false);
+    const api = makeApi({ rows: threeRows() });
+    renderPanel(api);
+    await select("Rust Engineer");
+
+    fireEvent.click(screen.getByRole("button", { name: t.bulkAccept(1) }));
+
+    expect(api.acceptNew).not.toHaveBeenCalled();
+  });
+
+  it("runs one match at a time", async () => {
+    const api = makeApi({ rows: threeRows() });
+    let inFlight = 0;
+    let most = 0;
+    api.dismiss.mockImplementation(async () => {
+      inFlight += 1;
+      most = Math.max(most, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+    });
+    renderPanel(api);
+    fireEvent.click(await screen.findByRole("checkbox", { name: t.selectAllShown }));
+
+    fireEvent.click(screen.getByRole("button", { name: t.bulkDismiss(3) }));
+
+    await screen.findByText(t.bulkDismissedNotice(3, 3));
+    expect(most).toBe(1);
+  });
+
+  it("reports which matches failed and keeps going", async () => {
+    const api = makeApi({ rows: threeRows() });
+    api.acceptNew.mockImplementation(async (id: number) => {
+      if (id === 2) throw new Error("database is locked");
+      return { jobId: 40 + id, fieldsWritten: [], created: true };
+    });
+    const { onJobsChanged } = renderPanel(api);
+    fireEvent.click(await screen.findByRole("checkbox", { name: t.selectAllShown }));
+
+    fireEvent.click(screen.getByRole("button", { name: t.bulkAccept(3) }));
+
+    expect(await screen.findByText(t.bulkAcceptedNotice(2, 3))).toBeTruthy();
+    expect(screen.getByText(t.bulkFailure("Platform Engineer", "Error: database is locked"))).toBeTruthy();
+    expect(api.acceptNew.mock.calls).toEqual([[1], [2], [3]]);
+    expect(onJobsChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("only acts on selected rows the filters still show", async () => {
+    const api = makeApi({ rows: threeRows() });
+    renderPanel(api);
+    await select("Rust Engineer", "Barista");
+
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Rust" } });
+
+    expect(screen.getByRole("button", { name: t.bulkDismiss(1) })).toBeTruthy();
   });
 });
 

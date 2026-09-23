@@ -2321,6 +2321,33 @@ pre {
   outline: none;
 }
 
+.mail-match__bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.mail-match__bulk label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.mail-match__bulk .mail-match__shortcuts {
+  margin: 0 0 0 auto;
+}
+
+.mail-match__failures {
+  flex-basis: 100%;
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--status-danger-fg);
+  font-size: 0.85rem;
+}
+
 .mail-match__shortcuts {
   margin: 0 0 var(--space-sm);
   color: var(--color-text-muted);

@@ -485,6 +485,26 @@ export const en = {
     acceptedUndo: "Undo",
     undoneNotice: "Accept undone. The match is back in the inbox.",
     dismiss: "Dismiss",
+    dismissedNotice: (title: string) => `Dismissed “${title}”.`,
+    dismissUndoneNotice: "Dismiss undone. The match is back in the inbox.",
+    selectRow: (title: string) => `Select ${title}`,
+    selectAllShown: "Select all shown",
+    bulkAccept: (n: number) => `Accept ${n}`,
+    bulkDismiss: (n: number) => `Dismiss ${n}`,
+    bulkClear: "Clear selection",
+    bulkAcceptConfirm: (n: number) =>
+      `Add ${n} match${n === 1 ? "" : "es"} to your jobs as Interesting?`,
+    bulkDismissConfirm: (n: number) =>
+      `Dismiss ${n} match${n === 1 ? "" : "es"}? You can restore them from the Dismissed tab.`,
+    bulkAcceptedNotice: (done: number, total: number) =>
+      done === total
+        ? `Added ${done} match${done === 1 ? "" : "es"} to your jobs as Interesting.`
+        : `Added ${done} of ${total} matches to your jobs as Interesting. The rest stay selected.`,
+    bulkDismissedNotice: (done: number, total: number) =>
+      done === total
+        ? `Dismissed ${done} match${done === 1 ? "" : "es"}.`
+        : `Dismissed ${done} of ${total} matches. The rest stay selected.`,
+    bulkFailure: (title: string, error: string) => `“${title}”: ${error}`,
     shortcutsHint: "Keys: j/k move · Enter or o opens · a accept · d dismiss · u undo",
     restore: "Restore",
     restoredAt: (when: string) => `Dismissed ${when}`,

@@ -71,15 +71,20 @@ type MailMatchApi = {
   openUrl: typeof openUrlInBrowser;
 };
 
-/** What the last accept did, kept outside the row: the row leaves the list on accept. */
-type AcceptNotice =
-  | { kind: "accepted"; inboxId: number; jobId: number; title: string }
-  | { kind: "undone" };
+type Action = "accept" | "dismiss";
 
-/** The last accept or dismiss, which `u` reverses. */
-type Undoable =
-  | { kind: "accept"; inboxId: number }
-  | { kind: "dismiss"; fingerprintId: string };
+/**
+ * What the last action did, kept outside the row: the row leaves the list. A single
+ * accept or dismiss is undoable from here (and with `u`); a bulk run reports its
+ * count and any failures.
+ */
+type Notice =
+  | { kind: "accepted"; inboxId: number; jobId: number; title: string }
+  | { kind: "dismissed"; fingerprintId: string; title: string }
+  | { kind: "undone"; action: Action }
+  | { kind: "bulk"; action: Action; done: number; total: number; failures: BulkFailure[] };
+
+type BulkFailure = { title: string; error: string };
 
 const realApi: MailMatchApi = {
   list: mailMatchList,
@@ -135,6 +140,62 @@ function ScoreChip({ row }: { row: MailMatchRow }) {
       {label}
     </span>
   );
+}
+
+function NoticeBody({
+  notice,
+  onOpenJob,
+  onUndo,
+}: {
+  notice: Notice;
+  onOpenJob?: (jobId: number) => void;
+  onUndo: () => void;
+}) {
+  const undo = (
+    <button type="button" onClick={onUndo}>
+      {t.acceptedUndo}
+    </button>
+  );
+  switch (notice.kind) {
+    case "accepted":
+      return (
+        <>
+          <span>{t.acceptedNotice(notice.title)}</span>
+          {onOpenJob ? (
+            <button type="button" onClick={() => onOpenJob(notice.jobId)}>
+              {t.acceptedOpen}
+            </button>
+          ) : null}
+          {undo}
+        </>
+      );
+    case "dismissed":
+      return (
+        <>
+          <span>{t.dismissedNotice(notice.title)}</span>
+          {undo}
+        </>
+      );
+    case "undone":
+      return <span>{notice.action === "accept" ? t.undoneNotice : t.dismissUndoneNotice}</span>;
+    case "bulk":
+      return (
+        <>
+          <span>
+            {notice.action === "accept"
+              ? t.bulkAcceptedNotice(notice.done, notice.total)
+              : t.bulkDismissedNotice(notice.done, notice.total)}
+          </span>
+          {notice.failures.length > 0 ? (
+            <ul className="mail-match__failures">
+              {notice.failures.map((f, i) => (
+                <li key={i}>{t.bulkFailure(f.title, f.error)}</li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      );
+  }
 }
 
 function PassLine({
@@ -244,8 +305,10 @@ export function MailMatchInboxPanel({
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [filters, setFilters] = useState<MailMatchFilters>(defaultFilters);
   const [expanded, setExpanded] = useState<number | null>(null);
-  const [notice, setNotice] = useState<AcceptNotice | null>(null);
-  const [lastAction, setLastAction] = useState<Undoable | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  /** Inbox ids ticked for a bulk action. Only the ones still shown are acted on. */
+  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
+  const [bulkRunning, setBulkRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** The row keyboard triage is on. Real DOM focus follows it (see the effect below). */
   const [focusedId, setFocusedId] = useState<number | null>(null);
@@ -275,6 +338,10 @@ export function MailMatchInboxPanel({
     () => JSON.stringify(filters) !== JSON.stringify(defaultFilters),
     [filters],
   );
+  // A row hidden by a filter is never acted on: the count the confirmation names has
+  // to be the rows the user can see.
+  const selectedShown = useMemo(() => shown.filter((r) => selected.has(r.id)), [shown, selected]);
+  const allShownSelected = shown.length > 0 && selectedShown.length === shown.length;
 
   /** Where focus goes once `row` leaves the list: the next row, else the previous. */
   function moveFocusPast(row: MailMatchRow) {
@@ -295,7 +362,6 @@ export function MailMatchInboxPanel({
           jobId: outcome.jobId,
           title: row.title ?? en.common.untitled,
         });
-        setLastAction({ kind: "accept", inboxId: row.id });
       }
       moveFocusPast(row);
       onJobsChanged?.();
@@ -308,8 +374,7 @@ export function MailMatchInboxPanel({
   async function undoAccept(inboxId: number) {
     try {
       await client.undoAccept(inboxId);
-      setNotice({ kind: "undone" });
-      setLastAction(null);
+      setNotice({ kind: "undone", action: "accept" });
       onJobsChanged?.();
       await refresh();
     } catch (e) {
@@ -318,10 +383,14 @@ export function MailMatchInboxPanel({
   }
 
   async function dismissRow(row: MailMatchRow) {
-    // One click: the Dismissed tab is the undo, so there is nothing to confirm.
+    // One click: the notice's Undo (and the Dismissed tab) take it back.
     try {
       await client.dismiss(row.id);
-      setLastAction({ kind: "dismiss", fingerprintId: row.fingerprintId });
+      setNotice({
+        kind: "dismissed",
+        fingerprintId: row.fingerprintId,
+        title: row.title ?? en.common.untitled,
+      });
       moveFocusPast(row);
       await refresh();
     } catch (e) {
@@ -329,13 +398,65 @@ export function MailMatchInboxPanel({
     }
   }
 
-  function undoLast() {
-    if (!lastAction) return;
-    if (lastAction.kind === "accept") void undoAccept(lastAction.inboxId);
-    else {
-      setLastAction(null);
-      void restoreOne(lastAction.fingerprintId);
+  async function undoDismiss(fingerprintId: string) {
+    try {
+      await client.restore(fingerprintId);
+      setNotice({ kind: "undone", action: "dismiss" });
+      await refresh();
+    } catch (e) {
+      setError(String(e));
     }
+  }
+
+  /** Reverse whatever the notice offers to undo — the `u` key and the Undo button. */
+  function undoNotice() {
+    if (notice?.kind === "accepted") void undoAccept(notice.inboxId);
+    else if (notice?.kind === "dismissed") void undoDismiss(notice.fingerprintId);
+  }
+
+  function toggleSelected(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllShown() {
+    setSelected(allShownSelected ? new Set() : new Set(shown.map((r) => r.id)));
+  }
+
+  /**
+   * Accept or dismiss every selected, shown row — one at a time, so a failure is
+   * attributable to its row and the rest still run. The job list reloads once.
+   */
+  async function runBulk(action: Action) {
+    const targets = selectedShown;
+    if (targets.length === 0 || bulkRunning) return;
+    const question =
+      action === "accept" ? t.bulkAcceptConfirm(targets.length) : t.bulkDismissConfirm(targets.length);
+    if (!window.confirm(question)) return;
+
+    setBulkRunning(true);
+    const failures: BulkFailure[] = [];
+    const failedIds = new Set<number>();
+    for (const row of targets) {
+      try {
+        if (action === "accept") await client.acceptNew(row.id);
+        else await client.dismiss(row.id);
+      } catch (e) {
+        failures.push({ title: row.title ?? en.common.untitled, error: String(e) });
+        failedIds.add(row.id);
+      }
+    }
+    const done = targets.length - failures.length;
+    // Failed rows stay selected, ready for a retry.
+    setSelected(failedIds);
+    setNotice({ kind: "bulk", action, done, total: targets.length, failures });
+    if (action === "accept" && done > 0) onJobsChanged?.();
+    await refresh();
+    setBulkRunning(false);
   }
 
   function moveFocus(step: 1 | -1) {
@@ -354,7 +475,7 @@ export function MailMatchInboxPanel({
       if (!command) return;
       const focused = shown.find((r) => r.id === focusedId) ?? null;
       if (command === "next" || command === "prev") moveFocus(command === "next" ? 1 : -1);
-      else if (command === "undo") undoLast();
+      else if (command === "undo") undoNotice();
       else if (!focused) return;
       else if (command === "toggle") setExpanded(expanded === focused.id ? null : focused.id);
       else if (command === "accept") void acceptRow(focused);
@@ -395,21 +516,7 @@ export function MailMatchInboxPanel({
 
       {notice ? (
         <div className="mail-match__notice" role="status">
-          {notice.kind === "accepted" ? (
-            <>
-              <span>{t.acceptedNotice(notice.title)}</span>
-              {onOpenJob ? (
-                <button type="button" onClick={() => onOpenJob(notice.jobId)}>
-                  {t.acceptedOpen}
-                </button>
-              ) : null}
-              <button type="button" onClick={() => void undoAccept(notice.inboxId)}>
-                {t.acceptedUndo}
-              </button>
-            </>
-          ) : (
-            <span>{t.undoneNotice}</span>
-          )}
+          <NoticeBody notice={notice} onOpenJob={onOpenJob} onUndo={undoNotice} />
         </div>
       ) : null}
 
@@ -499,7 +606,36 @@ export function MailMatchInboxPanel({
             ) : null}
           </div>
 
-          {shown.length > 0 ? <p className="mail-match__shortcuts">{t.shortcutsHint}</p> : null}
+          {shown.length > 0 ? (
+            <div className="mail-match__bulk">
+              <label>
+                <input type="checkbox" checked={allShownSelected} onChange={toggleAllShown} />
+                {t.selectAllShown}
+              </label>
+              {selectedShown.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={bulkRunning}
+                    onClick={() => void runBulk("accept")}
+                  >
+                    {t.bulkAccept(selectedShown.length)}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bulkRunning}
+                    onClick={() => void runBulk("dismiss")}
+                  >
+                    {t.bulkDismiss(selectedShown.length)}
+                  </button>
+                  <button type="button" onClick={() => setSelected(new Set())}>
+                    {t.bulkClear}
+                  </button>
+                </>
+              ) : null}
+              <p className="mail-match__shortcuts">{t.shortcutsHint}</p>
+            </div>
+          ) : null}
 
           {shown.length === 0 ? (
             <p className="mail-match__empty">
@@ -518,6 +654,13 @@ export function MailMatchInboxPanel({
                     aria-current={isFocused ? "true" : undefined}
                   >
                     <div className="mail-match__row-main">
+                      <input
+                        type="checkbox"
+                        className="mail-match__select"
+                        aria-label={t.selectRow(row.title ?? en.common.untitled)}
+                        checked={selected.has(row.id)}
+                        onChange={() => toggleSelected(row.id)}
+                      />
                       <ScoreChip row={row} />
                       <button
                         type="button"
