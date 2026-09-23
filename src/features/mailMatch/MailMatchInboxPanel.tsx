@@ -12,6 +12,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { en } from "../../i18n/en";
+import { boardName } from "../../lib/jobs/boardName";
+import { openUrlInBrowser } from "../../lib/tauriApi";
 import {
   mailMatchAcceptNew,
   mailMatchDismiss,
@@ -27,6 +29,7 @@ import {
   badgesFor,
   boardOptions,
   defaultFilters,
+  draftLinks,
   filterRows,
   listingText,
   pairNearDuplicates,
@@ -63,6 +66,8 @@ type MailMatchApi = {
   restore: typeof mailMatchRestore;
   acceptNew: typeof mailMatchAcceptNew;
   undoAccept: typeof mailMatchUndoAccept;
+  /** The app's external-link path: the system browser, never the webview. */
+  openUrl: typeof openUrlInBrowser;
 };
 
 /** What the last accept did, kept outside the row: the row leaves the list on accept. */
@@ -78,6 +83,7 @@ const realApi: MailMatchApi = {
   restore: mailMatchRestore,
   acceptNew: mailMatchAcceptNew,
   undoAccept: mailMatchUndoAccept,
+  openUrl: openUrlInBrowser,
 };
 
 const badgeLabels: Record<Badge["kind"], string> = {
@@ -122,6 +128,98 @@ function ScoreChip({ row }: { row: MailMatchRow }) {
     >
       {label}
     </span>
+  );
+}
+
+function PassLine({
+  pass,
+  score,
+  reason,
+}: {
+  pass: 1 | 2;
+  score: number | null;
+  reason: string | null;
+}) {
+  if (score === null && reason === null) {
+    return <p className="mail-match__pass mail-match__hint">{t.passNotRun(pass)}</p>;
+  }
+  return (
+    <div className="mail-match__pass">
+      <strong>{t.passScore(pass, score === null ? "?" : String(score))}</strong>
+      <p>{reason?.trim() || t.passReasonMissing}</p>
+    </div>
+  );
+}
+
+function ExternalLink({
+  url,
+  label,
+  className,
+  openUrl,
+}: {
+  url: string;
+  label: string;
+  className?: string;
+  openUrl: (url: string) => Promise<void>;
+}) {
+  return (
+    <a
+      href={url}
+      className={className}
+      target="_blank"
+      rel="noreferrer noopener"
+      onClick={(e) => {
+        e.preventDefault();
+        void openUrl(url).catch(console.error);
+      }}
+    >
+      {label}
+    </a>
+  );
+}
+
+/** The whole ad, both verdicts, and the links — enough to decide without leaving. */
+function MatchDetail({
+  row,
+  openUrl,
+}: {
+  row: MailMatchRow;
+  openUrl: (url: string) => Promise<void>;
+}) {
+  const { url, boardUrl } = draftLinks(row);
+  return (
+    <section
+      className="mail-match__detail"
+      aria-label={t.detailRegion(row.title ?? en.common.untitled)}
+    >
+      <div className="mail-match__links">
+        {url ? <ExternalLink url={url} label={t.openListing} openUrl={openUrl} /> : null}
+        {boardUrl ? (
+          <ExternalLink
+            url={boardUrl}
+            label={t.viaBoard(boardName(boardUrl))}
+            className="mail-match__hint"
+            openUrl={openUrl}
+          />
+        ) : null}
+      </div>
+      <section>
+        <h4>{t.detailScores}</h4>
+        <PassLine pass={1} score={row.pass1Score} reason={row.pass1Reason} />
+        <PassLine pass={2} score={row.pass2Score} reason={row.pass2Reason} />
+      </section>
+      {row.enrichmentError ? (
+        <p className="mail-match__reason">{t.enrichmentReason(row.enrichmentError)}</p>
+      ) : null}
+      <section>
+        <h4>{t.detailListingText}</h4>
+        <p className="mail-match__hint">{t.detailListingTextHint}</p>
+        {/* Rendered as a text child — never as HTML. */}
+        <pre className="mail-match__listing-text" tabIndex={0}>
+          {listingText(row)}
+        </pre>
+      </section>
+    </section>
   );
 }
 
@@ -369,29 +467,7 @@ export function MailMatchInboxPanel({
 
                     {pair ? <p className="mail-match__pair-hint">{t.nearDuplicateHint}</p> : null}
 
-                    {isOpen ? (
-                      <div className="mail-match__detail">
-                        <section>
-                          <h4>{t.detailListingText}</h4>
-                          <p className="mail-match__hint">{t.detailListingTextHint}</p>
-                          {/* Rendered as a text child — never as HTML. */}
-                          <pre className="mail-match__listing-text">{listingText(row)}</pre>
-                        </section>
-                        {row.scoreReason ? (
-                          <p className="mail-match__reason">{row.scoreReason}</p>
-                        ) : null}
-                        {row.enrichmentError ? (
-                          <p className="mail-match__reason">
-                            {t.enrichmentReason(row.enrichmentError)}
-                          </p>
-                        ) : null}
-                        {row.listingUrl ? (
-                          <a href={row.listingUrl} target="_blank" rel="noreferrer noopener">
-                            {t.openListing}
-                          </a>
-                        ) : null}
-                      </div>
-                    ) : null}
+                    {isOpen ? <MatchDetail row={row} openUrl={client.openUrl} /> : null}
 
                     <div className="mail-match__actions">
                       <button

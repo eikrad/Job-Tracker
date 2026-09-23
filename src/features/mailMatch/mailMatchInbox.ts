@@ -15,6 +15,11 @@ export type MailMatchRow = {
   score: number | null;
   scoreReason: string | null;
   scoreState: "ok" | "invalid" | "skipped";
+  /** Latest screening (pass 1) and full-profile (pass 2) verdicts; null if not run. */
+  pass1Score: number | null;
+  pass1Reason: string | null;
+  pass2Score: number | null;
+  pass2Reason: string | null;
   suspicious: boolean;
   nearDuplicateOf: string | null;
   enrichmentState: "complete" | "partial" | "failed" | "skipped";
@@ -152,4 +157,21 @@ export function listingText(row: MailMatchRow): string {
   const draft = parseDraft(row);
   const raw = draft.raw_text;
   return typeof raw === "string" ? raw : "";
+}
+
+function draftString(draft: Record<string, unknown>, field: string): string | null {
+  const value = draft[field];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Where the match links to: the draft's `url` (the employer's ad when enrichment
+ * followed the board link) and its Board Link. Falls back to the listing URL the
+ * mail carried when the draft has none.
+ */
+export function draftLinks(row: MailMatchRow): { url: string | null; boardUrl: string | null } {
+  const draft = parseDraft(row);
+  const url = draftString(draft, "url") ?? (row.listingUrl?.trim() || null);
+  const boardUrl = draftString(draft, "board_url");
+  return { url, boardUrl: boardUrl === url ? null : boardUrl };
 }

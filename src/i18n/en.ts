@@ -467,10 +467,14 @@ export const en = {
     // Detail
     detailListingText: "Listing text",
     detailListingTextHint: "Extracted text only. Pages from your mail are never rendered.",
-    detailDraft: "Prefilled job",
-    detailScores: "Scores",
-    passLabel: (pass: number) => `Pass ${pass}`,
+    detailRegion: (title: string) => `Details for ${title}`,
+    detailScores: "Why it scored this way",
+    passScore: (pass: number, score: string) =>
+      `${pass === 1 ? "Screening" : "Full profile"} · ${score}/10`,
+    passNotRun: (pass: number) =>
+      `${pass === 1 ? "Screening" : "Full profile"} · not scored`,
     passReasonMissing: "No reason given.",
+    viaBoard: (board: string) => `via ${board}`,
     enrichmentReason: (reason: string) => `Details: ${reason}`,
 
     // Actions

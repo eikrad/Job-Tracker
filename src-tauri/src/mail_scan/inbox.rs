@@ -22,6 +22,12 @@ pub struct MailMatchRow {
     pub score: Option<i64>,
     pub score_reason: Option<String>,
     pub score_state: ScoreState,
+    /// The latest screening (pass 1) and full-profile (pass 2) verdicts for this
+    /// listing, so the detail can show why it got through each gate.
+    pub pass1_score: Option<i64>,
+    pub pass1_reason: Option<String>,
+    pub pass2_score: Option<i64>,
+    pub pass2_reason: Option<String>,
     pub suspicious: bool,
     pub near_duplicate_of: Option<String>,
     pub enrichment_state: EnrichmentState,
@@ -44,7 +50,20 @@ pub struct MailMatchRow {
 const ROW_COLUMNS: &str = "i.id, i.fingerprint_id, i.status, i.job_id, i.score,
      i.score_reason, i.score_state, i.suspicious, i.near_duplicate_of, i.enrichment_state,
      i.enrichment_error, i.draft_json, i.source_board, i.message_date, i.listing_url,
-     i.title, i.company, f.seen_count, f.last_seen_at, i.updated_at";
+     i.title, i.company, f.seen_count, f.last_seen_at, i.updated_at,
+     p1.score, p1.reason, p2.score, p2.reason";
+
+/// The newest sighting per pass. Older ones belong to earlier listing text or an
+/// earlier profile and would explain a verdict the row no longer shows.
+const LATEST_PASSES: &str = "
+     LEFT JOIN mail_scored_sightings p1 ON p1.id = (
+         SELECT s.id FROM mail_scored_sightings s
+         WHERE s.fingerprint_id = i.fingerprint_id AND s.pass = 1
+         ORDER BY s.scored_at DESC, s.id DESC LIMIT 1)
+     LEFT JOIN mail_scored_sightings p2 ON p2.id = (
+         SELECT s.id FROM mail_scored_sightings s
+         WHERE s.fingerprint_id = i.fingerprint_id AND s.pass = 2
+         ORDER BY s.scored_at DESC, s.id DESC LIMIT 1)";
 
 fn map_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<MailMatchRow> {
     let enrichment_state: EnrichmentState = r.get(9)?;
@@ -71,6 +90,10 @@ fn map_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<MailMatchRow> {
         seen_count: r.get(17)?,
         last_seen_at: r.get(18)?,
         updated_at: r.get(19)?,
+        pass1_score: r.get(20)?,
+        pass1_reason: r.get(21)?,
+        pass2_score: r.get(22)?,
+        pass2_reason: r.get(23)?,
     })
 }
 
@@ -83,6 +106,7 @@ pub fn list_rows(conn: &Connection, status: InboxStatus) -> Result<Vec<MailMatch
         "SELECT {ROW_COLUMNS}
          FROM mail_match_inbox i
          JOIN mail_fingerprints f ON f.fingerprint_id = i.fingerprint_id
+         {LATEST_PASSES}
          WHERE i.status = ?1
          ORDER BY i.score DESC NULLS LAST, f.last_seen_at DESC, i.id DESC"
     );
@@ -375,6 +399,54 @@ mod tests {
         let rows = list_rows(&conn, InboxStatus::Pending).unwrap();
 
         assert!(rows.iter().all(|r| !r.snippet_only), "{rows:?}");
+    }
+
+    fn sighting(conn: &Connection, fp: &str, pass: u8, score: i32, reason: &str, at: &str) {
+        let id = crate::mail_scan::score_cache::ScoreIdentity {
+            profile_hash: format!("profile-{pass}"),
+            prompt_version: "p".into(),
+            model_id: "m".into(),
+        };
+        crate::mail_scan::score_cache::record_sighting(
+            conn,
+            "r1",
+            fp,
+            &format!("hash-{at}"),
+            pass,
+            &id,
+            Some(score),
+            reason,
+            crate::mail_scan::status::Verdict::Inbox,
+            at,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_row_carries_both_passes_latest_reasons() {
+        let conn = db();
+        seed(&conn, "fp-both", Some(9), "ok", 1, "2026-09-09T00:00:00Z");
+        sighting(&conn, "fp-both", 1, 5, "old screening", "2026-09-01T00:00:00Z");
+        sighting(&conn, "fp-both", 1, 7, "Rust and Danish", "2026-09-09T00:00:00Z");
+        sighting(&conn, "fp-both", 2, 9, "fits the full CV", "2026-09-09T00:00:00Z");
+
+        let row = &list_rows(&conn, InboxStatus::Pending).unwrap()[0];
+
+        assert_eq!(row.pass1_score, Some(7));
+        assert_eq!(row.pass1_reason.as_deref(), Some("Rust and Danish"));
+        assert_eq!(row.pass2_score, Some(9));
+        assert_eq!(row.pass2_reason.as_deref(), Some("fits the full CV"));
+    }
+
+    #[test]
+    fn a_row_without_sightings_has_no_pass_reasons() {
+        let conn = db();
+        seed(&conn, "fp-bare", Some(8), "ok", 1, "2026-09-09T00:00:00Z");
+
+        let row = &list_rows(&conn, InboxStatus::Pending).unwrap()[0];
+
+        assert_eq!(row.pass1_reason, None);
+        assert_eq!(row.pass2_reason, None);
     }
 
     #[test]

@@ -31,6 +31,10 @@ function row(overrides: Partial<MailMatchRow> = {}): MailMatchRow {
     enrichmentState: "complete",
     enrichmentError: null,
     snippetOnly: false,
+    pass1Score: null,
+    pass1Reason: null,
+    pass2Score: null,
+    pass2Reason: null,
     draftJson: JSON.stringify({
       title: "Rust Engineer",
       company: "Acme",
@@ -61,6 +65,7 @@ function makeApi(overrides: {
     restore: vi.fn(async () => {}),
     acceptNew: vi.fn(async () => ({ jobId: 42, fieldsWritten: ["title"], created: true })),
     undoAccept: vi.fn(async () => {}),
+    openUrl: vi.fn(async () => {}),
   };
 }
 
@@ -141,6 +146,73 @@ describe("rendering", () => {
     const items = await screen.findAllByRole("listitem");
     expect(items.length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText(t.nearDuplicateHint)).toBeTruthy();
+  });
+});
+
+describe("reading a match", () => {
+  const fullAd = "Acme builds trains.\n\nYou will write Rust for signalling systems.";
+
+  function adRow(overrides: Partial<MailMatchRow> = {}) {
+    return row({
+      pass1Score: 7,
+      pass1Reason: "Rust, Copenhagen",
+      pass2Score: 9,
+      pass2Reason: "fits the full profile",
+      draftJson: JSON.stringify({
+        title: "Rust Engineer",
+        raw_text: fullAd,
+        url: "https://careers.acme.example/ad/7",
+        board_url: "https://www.jobindex.dk/c?t=h7",
+      }),
+      ...overrides,
+    });
+  }
+
+  it("shows the full ad and both score reasons when a row is opened", async () => {
+    renderPanel(makeApi({ rows: [adRow()] }));
+
+    fireEvent.click(await screen.findByRole("button", { expanded: false }));
+
+    const detail = await screen.findByRole("region", { name: t.detailRegion("Rust Engineer") });
+    // The whole ad, line breaks intact — not the one-line teaser from the mail.
+    expect(within(detail).getByText(/You will write Rust/).textContent).toBe(fullAd);
+    expect(within(detail).getByText(t.passScore(1, "7"))).toBeTruthy();
+    expect(within(detail).getByText("Rust, Copenhagen")).toBeTruthy();
+    expect(within(detail).getByText(t.passScore(2, "9"))).toBeTruthy();
+    expect(within(detail).getByText("fits the full profile")).toBeTruthy();
+  });
+
+  it("says when a pass gave no reason", async () => {
+    renderPanel(makeApi({ rows: [adRow({ pass2Score: null, pass2Reason: null })] }));
+
+    fireEvent.click(await screen.findByRole("button", { expanded: false }));
+
+    expect(await screen.findByText(t.passNotRun(2))).toBeTruthy();
+  });
+
+  it("opens the ad and its board link in the browser", async () => {
+    const api = makeApi({ rows: [adRow()] });
+    renderPanel(api);
+
+    fireEvent.click(await screen.findByRole("button", { expanded: false }));
+    fireEvent.click(await screen.findByRole("link", { name: t.openListing }));
+    fireEvent.click(screen.getByRole("link", { name: t.viaBoard("jobindex.dk") }));
+
+    expect(api.openUrl).toHaveBeenNthCalledWith(1, "https://careers.acme.example/ad/7");
+    expect(api.openUrl).toHaveBeenNthCalledWith(2, "https://www.jobindex.dk/c?t=h7");
+  });
+
+  it("falls back to the listing link when the draft has none", async () => {
+    const api = makeApi({
+      rows: [row({ draftJson: JSON.stringify({ raw_text: "x" }), listingUrl: "https://example.com/job" })],
+    });
+    renderPanel(api);
+
+    fireEvent.click(await screen.findByRole("button", { expanded: false }));
+    fireEvent.click(await screen.findByRole("link", { name: t.openListing }));
+
+    expect(api.openUrl).toHaveBeenCalledWith("https://example.com/job");
+    expect(screen.queryByText(/^via /)).toBeNull();
   });
 });
 
