@@ -67,6 +67,10 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
     listings_total = 0
     messages_total = 0
     cancelled = False
+    # IMAP folders hold copies of one message under the same Message-ID (a label
+    # applied twice, a move that left the original behind). One message is one set
+    # of listings, however many copies the scan walks past.
+    seen_message_ids: set[str] = set()
 
     for source in sources:
         if _cancel_requested(cancel_file):
@@ -131,6 +135,12 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
             if since and mail.message_date and mail.message_date < since:
                 skipped += 1
                 continue
+
+            if mail.message_id:
+                if mail.message_id in seen_message_ids:
+                    skipped += 1
+                    continue
+                seen_message_ids.add(mail.message_id)
 
             if listings_total >= int(limits["max_listings_per_run"]):
                 skipped += 1

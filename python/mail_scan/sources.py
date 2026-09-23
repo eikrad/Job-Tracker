@@ -8,6 +8,7 @@ import mailbox
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC
+from email.header import decode_header, make_header
 from email.message import Message
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -17,12 +18,22 @@ from mail_scan.html_text import html_to_visible_text, looks_like_html
 
 @dataclass(frozen=True)
 class MailMessage:
+    """One parsed message, as extractors see it.
+
+    ``body_text`` is the visible prose (what the scorer may read). ``html`` and
+    ``plain`` are the decoded ``text/html`` and ``text/plain`` parts, so a board
+    extractor can read the structure and links that visible text throws away. They
+    are for parsing only: markup never goes to the model (spec §6.2).
+    """
+
     message_id: str
     message_date: str
     subject: str
     from_addr: str
     body_text: str
     raw_size: int
+    html: str = ""
+    plain: str = ""
 
 
 @dataclass(frozen=True)
@@ -88,13 +99,18 @@ def _decode_part(part: Message) -> str:
     return ""
 
 
-def _body_text(msg: Message, max_chars: int) -> str:
-    """Best available plain text for a message.
+def _decode_header(raw: str | None) -> str:
+    """RFC 2047 encoded-words (``=?utf-8?q?...?=``) to text; raw on failure."""
+    if not raw:
+        return ""
+    try:
+        return str(make_header(decode_header(raw))).strip()
+    except (LookupError, UnicodeError, ValueError):
+        return raw.strip()
 
-    Prefers `text/plain`. Falls back to the *visible* text of `text/html` — never the
-    markup, and never the parts of it a human reader cannot see (spec §6.2): a hidden
-    block contradicting the visible ad is a prompt-injection vector, not content.
-    """
+
+def _text_parts(msg: Message) -> tuple[list[str], list[str]]:
+    """Decoded ``(plain, html)`` body parts, attachments excluded."""
     plain: list[str] = []
     html: list[str] = []
 
@@ -116,7 +132,20 @@ def _body_text(msg: Message, max_chars: int) -> str:
             html.append(decoded)
         else:
             plain.append(decoded)
+    return plain, html
 
+
+def _body_text(msg: Message, max_chars: int) -> str:
+    """Best available plain text for a message.
+
+    Prefers `text/plain`. Falls back to the *visible* text of `text/html` — never the
+    markup, and never the parts of it a human reader cannot see (spec §6.2): a hidden
+    block contradicting the visible ad is a prompt-injection vector, not content.
+    """
+    return _visible_body(*_text_parts(msg), max_chars)
+
+
+def _visible_body(plain: list[str], html: list[str], max_chars: int) -> str:
     text = "\n".join(p for p in plain if p.strip()).strip()
     if not text and html:
         text = html_to_visible_text("\n".join(html)).strip()
@@ -131,13 +160,16 @@ def _body_text(msg: Message, max_chars: int) -> str:
 
 def _to_mail_message(msg: Message, raw_size: int, max_body_chars: int) -> MailMessage:
     mid = (msg.get("Message-ID") or msg.get("Message-Id") or "").strip()
+    plain, html = _text_parts(msg)
     return MailMessage(
         message_id=mid,
         message_date=_message_date(msg),
-        subject=(msg.get("Subject") or "").strip(),
-        from_addr=(msg.get("From") or "").strip(),
-        body_text=_body_text(msg, max_body_chars),
+        subject=_decode_header(msg.get("Subject")),
+        from_addr=_decode_header(msg.get("From")),
+        body_text=_visible_body(plain, html, max_body_chars),
         raw_size=raw_size,
+        html="\n".join(html),
+        plain="\n".join(plain),
     )
 
 
