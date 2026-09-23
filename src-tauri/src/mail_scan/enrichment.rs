@@ -62,6 +62,13 @@ pub struct Enrichment {
 pub const NOT_FETCHABLE: &str =
     "listing page not fetchable (the board blocks automated readers); the mail snippet is used";
 
+/// Whether a stored enrichment outcome is the expected "board never serves its page"
+/// case rather than a real gap. Read back from the stored reason, so rows written
+/// before this distinction existed are recognised without a migration.
+pub fn is_snippet_only(state: EnrichmentState, error: Option<&str>) -> bool {
+    state == EnrichmentState::Skipped && error == Some(NOT_FETCHABLE)
+}
+
 impl Enrichment {
     pub fn skipped() -> Self {
         Self {

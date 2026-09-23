@@ -24,6 +24,7 @@ function row(overrides: Partial<MailMatchRow> = {}): MailMatchRow {
     nearDuplicateOf: null,
     enrichmentState: "complete",
     enrichmentError: null,
+    snippetOnly: false,
     draftJson: JSON.stringify({ title: "Rust Engineer", company: "Acme" }),
     sourceBoard: "indeed",
     messageDate: "2026-09-08T06:12:00Z",

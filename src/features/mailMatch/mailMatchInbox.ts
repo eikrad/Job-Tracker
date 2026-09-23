@@ -19,6 +19,11 @@ export type MailMatchRow = {
   nearDuplicateOf: string | null;
   enrichmentState: "complete" | "partial" | "failed" | "skipped";
   enrichmentError: string | null;
+  /**
+   * The board never serves its listing page (Indeed), so the mail snippet is all
+   * there is — expected, unlike a skipped or failed fetch.
+   */
+  snippetOnly: boolean;
   draftJson: string;
   sourceBoard: string | null;
   messageDate: string | null;
@@ -79,6 +84,7 @@ export function boardOptions(rows: MailMatchRow[]): string[] {
 }
 
 export type BadgeKind =
+  | "snippetOnly"
   | "incompleteEnrichment"
   | "enrichmentFailed"
   | "nearDuplicate"
@@ -91,6 +97,7 @@ export type Badge = { kind: BadgeKind; count?: number };
 export function badgesFor(row: MailMatchRow): Badge[] {
   const badges: Badge[] = [];
   if (row.enrichmentState === "failed") badges.push({ kind: "enrichmentFailed" });
+  else if (row.snippetOnly) badges.push({ kind: "snippetOnly" });
   else if (row.enrichmentState === "partial" || row.enrichmentState === "skipped") {
     badges.push({ kind: "incompleteEnrichment" });
   }

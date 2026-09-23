@@ -2267,6 +2267,11 @@ pre {
   color: var(--color-text-muted);
 }
 
+/* Expected, not a problem: quieter than the incomplete/failed badges. */
+.mail-match__badge--snippetOnly {
+  border-style: dashed;
+}
+
 .run-summary {
   width: 100%;
   max-width: 28rem;

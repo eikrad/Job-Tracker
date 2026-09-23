@@ -81,11 +81,17 @@ const realApi: MailMatchApi = {
 };
 
 const badgeLabels: Record<Badge["kind"], string> = {
+  snippetOnly: t.badgeSnippetOnly,
   incompleteEnrichment: t.badgeIncompleteEnrichment,
   enrichmentFailed: t.badgeEnrichmentFailed,
   nearDuplicate: t.badgeNearDuplicate,
   suspicious: t.badgeSuspicious,
   seenAgain: "",
+};
+
+const badgeTitles: Partial<Record<Badge["kind"], string>> = {
+  snippetOnly: t.badgeSnippetOnlyTitle,
+  suspicious: t.badgeSuspiciousTitle,
 };
 
 function BadgeList({ badges }: { badges: Badge[] }) {
@@ -96,7 +102,7 @@ function BadgeList({ badges }: { badges: Badge[] }) {
         <li
           key={badge.kind}
           className={`mail-match__badge mail-match__badge--${badge.kind}`}
-          title={badge.kind === "suspicious" ? t.badgeSuspiciousTitle : undefined}
+          title={badgeTitles[badge.kind]}
         >
           {badge.kind === "seenAgain" ? t.seenTimes(badge.count ?? 2) : badgeLabels[badge.kind]}
         </li>

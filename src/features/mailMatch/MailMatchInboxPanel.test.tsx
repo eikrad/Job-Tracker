@@ -30,6 +30,7 @@ function row(overrides: Partial<MailMatchRow> = {}): MailMatchRow {
     nearDuplicateOf: null,
     enrichmentState: "complete",
     enrichmentError: null,
+    snippetOnly: false,
     draftJson: JSON.stringify({
       title: "Rust Engineer",
       company: "Acme",
@@ -104,6 +105,28 @@ describe("rendering", () => {
     expect(await screen.findByText(t.badgeIncompleteEnrichment)).toBeTruthy();
     expect(screen.getByText(t.badgeSuspicious)).toBeTruthy();
     expect(screen.getByText(t.seenTimes(3))).toBeTruthy();
+  });
+
+  it("says a listing is mail-snippet-only rather than incomplete when its board blocks fetching", async () => {
+    renderPanel(
+      makeApi({
+        rows: [
+          row({
+            enrichmentState: "skipped",
+            enrichmentError: "listing page not fetchable",
+            snippetOnly: true,
+          }),
+        ],
+      }),
+    );
+    expect(await screen.findByText(t.badgeSnippetOnly)).toBeTruthy();
+    expect(screen.queryByText(t.badgeIncompleteEnrichment)).toBeNull();
+  });
+
+  it("still calls a skipped fetch incomplete when it was not the board's doing", async () => {
+    renderPanel(makeApi({ rows: [row({ enrichmentState: "skipped", snippetOnly: false })] }));
+    expect(await screen.findByText(t.badgeIncompleteEnrichment)).toBeTruthy();
+    expect(screen.queryByText(t.badgeSnippetOnly)).toBeNull();
   });
 
   it("shows near-duplicates as a pair rather than merging them", async () => {

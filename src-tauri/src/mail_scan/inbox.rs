@@ -7,6 +7,7 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::mail_scan::cluster::{dismiss, restore};
+use crate::mail_scan::enrichment::is_snippet_only;
 use crate::mail_scan::status::{EnrichmentState, InboxStatus, RunStatus, ScoreState};
 
 /// One row as the inbox list renders it.
@@ -25,6 +26,9 @@ pub struct MailMatchRow {
     pub near_duplicate_of: Option<String>,
     pub enrichment_state: EnrichmentState,
     pub enrichment_error: Option<String>,
+    /// The board never serves its listing page (Indeed), so the mail snippet is all
+    /// there is. Expected, and shown calmer than an incomplete enrichment.
+    pub snippet_only: bool,
     pub draft_json: String,
     pub source_board: Option<String>,
     pub message_date: Option<String>,
@@ -43,6 +47,8 @@ const ROW_COLUMNS: &str = "i.id, i.fingerprint_id, i.status, i.job_id, i.score,
      i.title, i.company, f.seen_count, f.last_seen_at, i.updated_at";
 
 fn map_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<MailMatchRow> {
+    let enrichment_state: EnrichmentState = r.get(9)?;
+    let enrichment_error: Option<String> = r.get(10)?;
     Ok(MailMatchRow {
         id: r.get(0)?,
         fingerprint_id: r.get(1)?,
@@ -53,8 +59,9 @@ fn map_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<MailMatchRow> {
         score_state: r.get(6)?,
         suspicious: r.get::<_, i64>(7)? != 0,
         near_duplicate_of: r.get(8)?,
-        enrichment_state: r.get(9)?,
-        enrichment_error: r.get(10)?,
+        snippet_only: is_snippet_only(enrichment_state, enrichment_error.as_deref()),
+        enrichment_state,
+        enrichment_error,
         draft_json: r.get(11)?,
         source_board: r.get(12)?,
         message_date: r.get(13)?,
@@ -329,6 +336,45 @@ mod tests {
         seed(&conn, "fp-seen", Some(8), "ok", 3, "2026-09-09T00:00:00Z");
         let rows = list_rows(&conn, InboxStatus::Pending).unwrap();
         assert_eq!(rows[0].seen_count, 3);
+    }
+
+    fn set_enrichment(conn: &Connection, id: i64, state: &str, error: Option<&str>) {
+        conn.execute(
+            "UPDATE mail_match_inbox SET enrichment_state = ?2, enrichment_error = ?3 WHERE id = ?1",
+            params![id, state, error],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_listing_whose_board_blocks_fetching_is_marked_snippet_only() {
+        // Indeed never serves its page to the app: expected, not a failure to flag.
+        let conn = db();
+        let id = seed(&conn, "fp-indeed", Some(8), "ok", 1, "2026-09-09T00:00:00Z");
+        set_enrichment(
+            &conn,
+            id,
+            "skipped",
+            Some(crate::mail_scan::enrichment::NOT_FETCHABLE),
+        );
+
+        let rows = list_rows(&conn, InboxStatus::Pending).unwrap();
+
+        assert!(rows[0].snippet_only);
+    }
+
+    #[test]
+    fn a_skipped_or_failed_fetch_is_not_snippet_only() {
+        // Budget ran out, or the fetch broke: those really are incomplete.
+        let conn = db();
+        let skipped = seed(&conn, "fp-budget", Some(8), "ok", 1, "2026-09-09T00:00:00Z");
+        set_enrichment(&conn, skipped, "skipped", None);
+        let failed = seed(&conn, "fp-broken", Some(7), "ok", 1, "2026-09-09T00:00:00Z");
+        set_enrichment(&conn, failed, "failed", Some("HTTP 500"));
+
+        let rows = list_rows(&conn, InboxStatus::Pending).unwrap();
+
+        assert!(rows.iter().all(|r| !r.snippet_only), "{rows:?}");
     }
 
     #[test]

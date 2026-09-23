@@ -455,6 +455,8 @@ export const en = {
     seenTimes: (n: number) => `seen ${n}×`,
     badgeIncompleteEnrichment: "Incomplete details",
     badgeEnrichmentFailed: "Could not fetch details",
+    badgeSnippetOnly: "Mail snippet only",
+    badgeSnippetOnlyTitle: "This board does not let the app read its listing pages, so only the text from the alert mail is available. Open the listing to read the full ad.",
     badgeNearDuplicate: "Near-duplicate",
     badgeSuspicious: "Suspicious content",
     badgeSuspiciousTitle: "This listing contains text that tries to instruct the scoring model. The score is shown but should be treated with caution.",
