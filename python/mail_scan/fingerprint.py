@@ -1,24 +1,17 @@
-"""Tiered fingerprint helpers (spec §5.1) — Python side for listing events."""
+"""Tiered fingerprint helpers (spec §5.1).
+
+The sidecar is the only place fingerprints are computed; Rust stores the keys it
+receives. URL canonicalization lives in ``urls`` with the rest of URL hygiene.
+"""
 
 from __future__ import annotations
 
 import re
 import unicodedata
 
-_TRACKING_PARAMS = {
-    "utm_source",
-    "utm_medium",
-    "utm_campaign",
-    "utm_term",
-    "utm_content",
-    "gclid",
-    "fbclid",
-    "from",
-    "vjk",
-    "trk",
-    "refid",
-    "refId",
-}
+from mail_scan.urls import canonical_url
+
+__all__ = ["canonical_url", "fingerprint", "normalize_text", "weak_key"]
 
 _LEGAL_SUFFIX = re.compile(
     r"(?:^|\s)(?:a/s|aps|gmbh|ivs|ab|as|ltd|inc)\.?$",
@@ -32,14 +25,6 @@ _GENDER_MARK = re.compile(
 _REMOTE_SUFFIX = re.compile(r"[\u2013\-]\s*remote\b.*$", re.IGNORECASE)
 _PUNCT = re.compile(r"[^\w\s|]+", re.UNICODE)
 _WS = re.compile(r"\s+")
-_URL_PARTS = re.compile(
-    r"^(?:(?P<scheme>[a-zA-Z][a-zA-Z0-9+.-]*)://)?"
-    r"(?P<host>[^/?#]+)"
-    r"(?P<path>/[^?#]*)?"
-    r"(?:\?(?P<query>[^#]*))?"
-    r"(?:#.*)?$"
-)
-
 _DIACRITICS = str.maketrans(
     {
         "ø": "o",
@@ -85,64 +70,6 @@ def weak_key(company: str, title: str, location: str) -> str:
             normalize_text(location),
         )
     )
-
-
-def _parse_query(query: str) -> list[tuple[str, str]]:
-    if not query:
-        return []
-    pairs: list[tuple[str, str]] = []
-    for part in query.split("&"):
-        if not part:
-            continue
-        if "=" in part:
-            key, value = part.split("=", 1)
-        else:
-            key, value = part, ""
-        pairs.append((key, value))
-    return pairs
-
-
-def canonical_url(url: str) -> str:
-    raw = url.strip()
-    match = _URL_PARTS.match(raw)
-    if not match:
-        return raw.lower()
-
-    scheme = (match.group("scheme") or "https").lower()
-    host_raw = match.group("host") or ""
-    # Drop userinfo if present.
-    if "@" in host_raw:
-        host_raw = host_raw.rsplit("@", 1)[-1]
-    host = host_raw.lower()
-    port = None
-    if not (host.startswith("[") and "]" in host) and ":" in host:
-        host, port_s = host.rsplit(":", 1)
-        if port_s.isdigit():
-            port = port_s
-    if host.startswith("www."):
-        host = host[4:]
-
-    path = match.group("path") or ""
-    if path.endswith("/") and len(path) > 1:
-        path = path[:-1]
-
-    pairs = _parse_query(match.group("query") or "")
-
-    # Unwrap Indeed click-through.
-    if "indeed." in host and path.rstrip("/").endswith("/rc/clk"):
-        jk = next((v for k, v in pairs if k.lower() == "jk" and v), None)
-        if jk:
-            return f"https://{host}/viewjob?jk={jk}"
-
-    tracking = {p.lower() for p in _TRACKING_PARAMS}
-    kept = [(k, v) for k, v in pairs if k.lower() not in tracking]
-    query_out = "&".join(f"{k}={v}" for k, v in kept)
-
-    netloc = host if port is None else f"{host}:{port}"
-    base = f"{scheme}://{netloc}{path}"
-    if query_out:
-        return f"{base}?{query_out}"
-    return base
 
 
 def strong_key_from_external(board: str, external_id: str) -> str:

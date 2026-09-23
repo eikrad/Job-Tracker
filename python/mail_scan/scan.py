@@ -12,6 +12,7 @@ from mail_scan.exit_codes import EXIT_CANCELLED, EXIT_OK
 from mail_scan.extractors.base import DEFAULT_EXTRACTORS, extract_listings
 from mail_scan.fingerprint import fingerprint
 from mail_scan.sources import SourceCursor, open_source
+from mail_scan.urls import clean_url
 
 
 def _cancel_requested(cancel_file: str | None) -> bool:
@@ -155,10 +156,12 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
                 if listings_total >= int(limits["max_listings_per_run"]):
                     skipped += 1
                     break
+                # Whatever an extractor found, no per-user token is emitted.
+                url = clean_url(item.url)
                 fp = fingerprint(
                     board=item.board,
                     external_id=item.external_id,
-                    url=item.url if item.url_is_identity else "",
+                    url=url if item.url_is_identity else "",
                     company=item.company,
                     title=item.title,
                     location=item.location,
@@ -172,7 +175,7 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
                     "title": item.title,
                     "company": item.company,
                     "location": item.location,
-                    "url": item.url,
+                    "url": url,
                     "snippet": item.snippet[: int(limits["max_body_chars"])],
                     "posted_at": item.posted_at,
                     "fingerprint": fp,

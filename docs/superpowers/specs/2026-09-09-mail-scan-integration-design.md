@@ -215,6 +215,8 @@ Rev. 1's rule (`normalized title+company` **or** canonical URL) is an OR over tw
 1. `board:external_id` — Indeed `jk`, LinkedIn `currentJobId`, Jobindex ad id (parsed by the extractor, never by the LLM).
 2. `url:<canonical>` — canonicalized: lowercase scheme+host, strip `www.`, drop `utm_*`/`gclid`/`fbclid`/`from`/`vjk`/`trk`/`refId`/session params, unwrap known redirect wrappers (`indeed.com/rc/clk?jk=`, `lnkd.in`, Jobindex click-through), drop fragment, drop trailing `/`.
 
+> **As built (B1 link rework):** the job ids are Indeed `jk`, the LinkedIn `/jobs/view/<id>` id and the Jobindex `c?t=<id>` id. Per-user tokens (Jobindex `uid`, LinkedIn `midToken`/`otpToken`/`eid`, Indeed `tk`/`alid`, …) are stripped from the emitted listing `url` as well as from the key (`python/mail_scan/urls.py`); board job links are reduced to the one parameter that names the job. A sponsored Indeed `/pagead/clk` link has no job id and changes per mail, so it gets a weak key only.
+
 **Weak key** — `normalize(company) | normalize(title) | normalize(city)`, where `normalize` = NFKD → lowercase → strip diacritics (`ø→o`, `å→a`, `ä→a`) → strip legal suffixes (`a/s`, `aps`, `gmbh`, `ivs`, `ab`, `as`, `ltd`, `inc`) → collapse whitespace/punctuation → drop m/w/d-style gender markers and `(m/w/d)`, `(m/f/d)`, `– remote` suffixes.
 
 **Clustering rule (deterministic):**

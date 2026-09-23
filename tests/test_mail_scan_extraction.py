@@ -330,3 +330,33 @@ def test_indeed_listings_never_carry_the_user_token() -> None:
             line = json.dumps(listing)
             for token in ("FAKETK", "FAKEALID", "FAKEBB", "FAKEFROM", "cts.indeed"):
                 assert token not in line
+
+
+# --- URL hygiene -------------------------------------------------------------
+
+
+def test_a_generic_listing_url_is_emitted_without_tracking_tokens(
+    tmp_path: Path,
+) -> None:
+    mbox = tmp_path / "careers.mbox"
+    mbox.write_text(
+        "From jobs@careers.example.org Sat Sep 19 06:00:00 2026\n"
+        "From: Example Careers <jobs@careers.example.org>\n"
+        "Subject: New role: Platform Engineer\n"
+        "Date: Sat, 19 Sep 2026 06:00:00 +0000\n"
+        "Message-ID: <role-77@careers.example.org>\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Read the ad: https://careers.example.org/jobs/77?utm_source=alert"
+        "&uid=FAKEUID&ref=newsletter&mc_eid=FAKEMC\n"
+        "\n"
+        "From mail-scan-sentinel@localhost Wed Sep 30 12:00:00 2026\n",
+        encoding="utf-8",
+    )
+
+    [listing] = scan_listings(mbox)
+
+    assert listing["url"] == "https://careers.example.org/jobs/77?ref=newsletter"
+    assert listing["fingerprint"]["strong"] == (
+        "url:https://careers.example.org/jobs/77?ref=newsletter"
+    )

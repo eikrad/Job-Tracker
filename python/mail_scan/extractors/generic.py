@@ -6,7 +6,7 @@ import re
 
 from mail_scan.extractors.types import ExtractedListing
 from mail_scan.sources import MailMessage
-from mail_scan.urls import is_public_http_url
+from mail_scan.urls import clean_url, is_public_http_url
 
 _URL = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
 
@@ -16,7 +16,8 @@ def extract_generic(message: MailMessage) -> list[ExtractedListing]:
     # destination. Internal addresses are dropped before they can become a listing
     # the user might click or the enricher might be asked to fetch (spec §6.3).
     candidates = (u.rstrip(").,;") for u in _URL.findall(message.body_text))
-    urls = [u for u in candidates if is_public_http_url(u)]
+    # Two links to one page that differ only in tracking are one listing.
+    urls = [clean_url(u) for u in candidates if is_public_http_url(u)]
     if not urls:
         return []
 
@@ -33,7 +34,7 @@ def extract_generic(message: MailMessage) -> list[ExtractedListing]:
                 title=title,
                 company="",
                 location="",
-                url=url.rstrip(").,;"),
+                url=url,
                 snippet=message.body_text[:500],
                 posted_at=None,
                 board=None,
