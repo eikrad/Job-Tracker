@@ -148,3 +148,44 @@ def test_sentinel_mismatch_forces_reset(tmp_path: Path):
     opened = open_source("mbox", path, stored_cursor=bad, **_limits())
     assert opened.cursor_reset is True
     assert opened.reset_reason == "sentinel_mismatch"
+
+
+def _maildir_with(tmp_path: Path, count: int) -> Path:
+    import mailbox
+
+    path = tmp_path / "Jobs"
+    box = mailbox.Maildir(path, create=True)
+    for i in range(count):
+        box.add(
+            f"From: alerts@example.com\nSubject: alert {i}\n"
+            f"Message-ID: <m{i}@example.com>\n"
+            f"Date: Mon, 09 Sep 2026 08:00:0{i} +0000\n\nbody {i}\n"
+        )
+    box.close()
+    return path
+
+
+def test_a_maildir_folder_with_several_mails_is_read_in_full(tmp_path: Path):
+    path = _maildir_with(tmp_path, 3)
+    opened = open_source("maildir", path, stored_cursor=None, **_limits())
+    assert sorted(m.subject for m in opened.messages) == [
+        "alert 0",
+        "alert 1",
+        "alert 2",
+    ]
+
+
+def test_a_maildir_rescan_reads_nothing_twice(tmp_path: Path):
+    path = _maildir_with(tmp_path, 3)
+    first = open_source("maildir", path, stored_cursor=None, **_limits())
+    list(first.messages)
+    cursor = first.finalize()
+
+    again = open_source("maildir", path, stored_cursor=cursor.as_dict(), **_limits())
+    assert list(again.messages) == []
+
+    # A scan that found nothing new must not forget where it was.
+    third = open_source(
+        "maildir", path, stored_cursor=again.finalize().as_dict(), **_limits()
+    )
+    assert list(third.messages) == []

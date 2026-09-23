@@ -357,7 +357,7 @@ def iter_maildir(
     if skip_after_id and not cursor_reset:
         try:
             present = False
-            for key in box:
+            for key in box.iterkeys():  # a Mailbox iterates messages, not keys
                 msg = box.get_message(key)
                 mid = (msg.get("Message-ID") or msg.get("Message-Id") or "").strip()
                 if mid == skip_after_id:
@@ -372,14 +372,16 @@ def iter_maildir(
             reset_reason = "maildir_unreadable"
             skip_after_id = None
 
-    last_id: list[str | None] = [None]
     resume_id = None if cursor_reset else skip_after_id
+    # A scan that finds nothing new keeps the anchor it resumed from.
+    last_id: list[str | None] = [resume_id]
 
     def generator() -> Iterator[MailMessage]:
         count = 0
         past_cursor = resume_id is None
         try:
-            for key in sorted(box):
+            # Iterating a Mailbox yields messages, not keys; sort the keys.
+            for key in sorted(box.keys()):
                 if count >= max_messages:
                     break
                 msg = box.get_message(key)
