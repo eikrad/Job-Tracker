@@ -158,7 +158,7 @@ def run_scan(config: dict[str, Any], *, emit: TextIO) -> int:
                 fp = fingerprint(
                     board=item.board,
                     external_id=item.external_id,
-                    url=item.url,
+                    url=item.url if item.url_is_identity else "",
                     company=item.company,
                     title=item.title,
                     location=item.location,

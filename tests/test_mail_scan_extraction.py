@@ -231,3 +231,102 @@ def test_linkedin_listings_never_carry_member_tokens() -> None:
         line = json.dumps(listing)
         for token in ("midToken", "otpToken", "FAKE", "trackingId", "eid="):
             assert token not in line
+
+
+# --- Indeed ----------------------------------------------------------------
+
+
+def test_indeed_alert_yields_each_listing_block() -> None:
+    listings = [
+        e
+        for e in scan_listings(FIXTURES / "indeed_alerts.mbox")
+        if e["message_id"] == "<alert-1@jobalert.indeed.com>"
+    ]
+
+    assert [_summary(e) for e in listings] == [
+        {
+            "title": "Dataanalytiker",
+            "company": "Kløverhus ApS",
+            "location": "København",
+            "url": "https://dk.indeed.com/viewjob?jk=0123456789abcdef",
+            "posted_at": "2026-09-17",
+            "strong": "indeed:0123456789abcdef",
+            "extractor": "indeed",
+        },
+        {
+            "title": "GIS-specialist - Byplan",
+            "company": "Havnefront Rådgivning A/S",
+            "location": "2800 Kongens Lyngby",
+            "url": "https://dk.indeed.com/viewjob?jk=fedcba9876543210",
+            "posted_at": "2026-09-19",
+            "strong": "indeed:fedcba9876543210",
+            "extractor": "indeed",
+        },
+        {
+            "title": "Landinspektør - Kort og Matrikel",
+            "company": "Matrikelhuset",
+            "location": "Odense",
+            "url": "https://dk.indeed.com/pagead/clk/dl?ad=SPONSOREDAD1",
+            "posted_at": "2026-09-14",
+            "strong": None,
+            "extractor": "indeed",
+        },
+    ]
+
+
+def test_indeed_snippet_keeps_salary_and_teaser() -> None:
+    _, second, _ = scan_listings(FIXTURES / "indeed_alerts.mbox")[:3]
+    assert "24.000-42.000 kr. pr. måned" in second["snippet"]
+    assert "byplanlægning" in second["snippet"]
+
+
+def test_a_sponsored_indeed_listing_is_keyed_by_what_it_says() -> None:
+    sponsored = scan_listings(FIXTURES / "indeed_alerts.mbox")[2]
+    assert sponsored["fingerprint"] == {
+        "strong": None,
+        "weak": "matrikelhuset|landinspektor kort og matrikel|odense",
+    }
+    assert "external_ref" not in sponsored
+
+
+def test_indeed_match_mail_follows_only_the_view_job_click_link() -> None:
+    listings = [
+        e
+        for e in scan_listings(FIXTURES / "indeed_alerts.mbox")
+        if e["message_id"] == "<match-2@match.indeed.com>"
+    ]
+
+    assert [_summary(e) for e in listings] == [
+        {
+            "title": "Geotekniker",
+            "company": "Fjordby Kommune",
+            "location": "Ishøj",
+            "url": "https://dk.indeed.com/viewjob?jk=00aa11bb22cc33dd",
+            "posted_at": None,
+            "strong": "indeed:00aa11bb22cc33dd",
+            "extractor": "indeed",
+        }
+    ]
+
+
+def test_an_indeed_mail_without_jobs_yields_nothing() -> None:
+    events = scan_events(FIXTURES / "indeed_alerts.mbox")
+    by_message = {e["message_id"] for e in events if e["t"] == "listing"}
+    assert "<nag-3@jobalert.indeed.com>" not in by_message
+
+
+def test_indeed_listings_keep_the_country_site() -> None:
+    urls = [e["url"] for e in scan_listings(FIXTURES / "indeed_sample.mbox")]
+    assert urls == [
+        "https://dk.indeed.com/viewjob?jk=9f2c1abdeadbeef0",
+        "https://dk.indeed.com/viewjob?jk=feedface00112233",
+        "https://de.indeed.com/viewjob?jk=cafebabe99887766",
+    ]
+
+
+def test_indeed_listings_never_carry_the_user_token() -> None:
+    for mbox in ("indeed_alerts.mbox", "indeed_sample.mbox"):
+        for listing in scan_listings(FIXTURES / mbox):
+            line = json.dumps(listing)
+            for token in ("FAKETK", "FAKEALID", "FAKEBB", "FAKEFROM", "cts.indeed"):
+                assert token not in line

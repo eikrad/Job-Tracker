@@ -75,6 +75,16 @@ class Element:
     def hidden(self) -> bool:
         return self.tag in DROPPED_ELEMENTS or is_hidden(dict(self.attrs))
 
+    @property
+    def visible(self) -> bool:
+        """Neither this element nor any ancestor hides it from a reader."""
+        node: Element | None = self
+        while node is not None:
+            if node.hidden:
+                return False
+            node = node.parent
+        return True
+
     def iter(self) -> Iterator[Element]:
         """This element and every descendant element, in document order."""
         stack: list[Element] = [self]
