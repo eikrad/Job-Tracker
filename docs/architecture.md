@@ -240,7 +240,7 @@ mail_scan_start ──► sidecar (Python, no network, no secrets)
                                                           ▼
                                             Mail Match Inbox (review)
                                                           │
-                                              Accept ──► prefilled job form
+                                              Accept ──► one click, Undo offered
                                                           │
                                                           ▼
                                             jobs + job_field_provenance

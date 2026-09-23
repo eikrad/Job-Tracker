@@ -1,13 +1,13 @@
 /**
  * Route wrapper for the Mail Match Inbox (spec §11.1, ADR 0003) and Scan control (§11.2).
  *
- * Accepting a match navigates to the job form with the draft prefilled, so the last
- * step before a Job exists is always a form the user submits.
+ * Accepting a match creates the Job in place; this wrapper reloads the board's job
+ * list afterwards and routes the notice's Open button to the Job's detail page.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { NewJob } from "../lib/types";
+import { useJobTracker } from "../context/JobTrackerContext";
 import { MailMatchInboxPanel } from "../features/mailMatch/MailMatchInboxPanel";
 import { ScanControl } from "../features/mailMatch/ScanControl";
 import {
@@ -20,6 +20,7 @@ const t = en.mailMatch;
 
 export function MailMatchPage() {
   const navigate = useNavigate();
+  const { syncJobList } = useJobTracker();
   const [settings, setSettings] = useState<MailScanSettingsPayload | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -66,9 +67,8 @@ export function MailMatchPage() {
       <MailMatchInboxPanel
         reloadToken={reloadToken}
         hidePageHeading
-        onAcceptDraft={(inboxId, draft: Partial<NewJob>) => {
-          navigate("/jobs/new", { state: { draft, mailMatchInboxId: inboxId } });
-        }}
+        onJobsChanged={() => void syncJobList()}
+        onOpenJob={(jobId) => navigate(`/job/${jobId}`)}
       />
     </div>
   );

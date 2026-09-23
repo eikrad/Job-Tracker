@@ -15,7 +15,7 @@ A review queue of scored and enriched candidates from local job-alert mail folde
 _Avoid_: Capture Inbox, email inbox, draft jobs
 
 **Mail Match**:
-One candidate listing from a Mail Scan (score, reasons, draft fields), not yet a Job. Accept opens a prefilled job form that creates a Job in status Interesting when the user confirms.
+One candidate listing from a Mail Scan (score, reasons, draft fields), not yet a Job. Accept is one click: it creates a Job in status Interesting from the draft, and can be undone right after (the Job is deleted and the match returns to pending).
 _Avoid_: Job, application, capture item
 
 **Job**:

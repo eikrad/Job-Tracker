@@ -4,22 +4,24 @@
  *
  * Two rules run through the whole component:
  *
- * - **Accept never writes silently.** It hands a prefilled draft to the job form and
- *   the user submits it. An update goes through a diff first.
+ * - **Accept is one click, and undoable.** A new match becomes an Interesting Job
+ *   straight from its draft; the notice that follows offers Open and Undo. An update
+ *   goes through a diff first, because it writes onto a Job the user already owns.
  * - **Listing text is text.** Bodies and pages here came out of email. Nothing in this
  *   file uses `dangerouslySetInnerHTML`, and `MailMatchInboxPanel.test.tsx` asserts it.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { en } from "../../i18n/en";
-import type { NewJob } from "../../lib/types";
 import {
+  mailMatchAcceptNew,
   mailMatchAcceptUpdate,
   mailMatchDismiss,
   mailMatchList,
   mailMatchListDismissed,
   mailMatchPreviewUpdate,
   mailMatchRestore,
+  mailMatchUndoAccept,
   mailScanListRuns,
   type DismissedRow,
   type RunRow,
@@ -31,7 +33,6 @@ import {
   defaultFilters,
   listingText,
   pairNearDuplicates,
-  parseDraft,
   scoreLabel,
   visibleRows,
   type Badge,
@@ -46,8 +47,10 @@ const t = en.mailMatch;
 type Tab = "pending" | "dismissed" | "history";
 
 export type MailMatchInboxPanelProps = {
-  /** Opens the job form prefilled — the only way a match becomes a Job. */
-  onAcceptDraft: (inboxId: number, draft: Partial<NewJob>) => void;
+  /** Called after an accept or undo, so the job board can reload. */
+  onJobsChanged?: () => void;
+  /** Opens a Job's detail page — the notice's Open button. */
+  onOpenJob?: (jobId: number) => void;
   /** Bump after a scan finishes so pending/history reload. */
   reloadToken?: number;
   /** When the page already shows the title (e.g. next to Scan control). */
@@ -64,7 +67,14 @@ type MailMatchApi = {
   restore: typeof mailMatchRestore;
   previewUpdate: typeof mailMatchPreviewUpdate;
   acceptUpdate: typeof mailMatchAcceptUpdate;
+  acceptNew: typeof mailMatchAcceptNew;
+  undoAccept: typeof mailMatchUndoAccept;
 };
+
+/** What the last accept did, kept outside the row: the row leaves the list on accept. */
+type AcceptNotice =
+  | { kind: "accepted"; inboxId: number; jobId: number; title: string }
+  | { kind: "undone" };
 
 const realApi: MailMatchApi = {
   list: mailMatchList,
@@ -74,6 +84,8 @@ const realApi: MailMatchApi = {
   restore: mailMatchRestore,
   previewUpdate: mailMatchPreviewUpdate,
   acceptUpdate: mailMatchAcceptUpdate,
+  acceptNew: mailMatchAcceptNew,
+  undoAccept: mailMatchUndoAccept,
 };
 
 const badgeLabels: Record<Badge["kind"], string> = {
@@ -167,7 +179,8 @@ function UpdateDiff({
 }
 
 export function MailMatchInboxPanel({
-  onAcceptDraft,
+  onJobsChanged,
+  onOpenJob,
   reloadToken = 0,
   hidePageHeading = false,
   api,
@@ -181,8 +194,7 @@ export function MailMatchInboxPanel({
   const [filters, setFilters] = useState<MailMatchFilters>(defaultFilters);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [preview, setPreview] = useState<UpdatePreview | null>(null);
-  const [dismissing, setDismissing] = useState<number | null>(null);
-  const [dismissReason, setDismissReason] = useState("");
+  const [notice, setNotice] = useState<AcceptNotice | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(
@@ -210,9 +222,35 @@ export function MailMatchInboxPanel({
     [filters],
   );
 
-  function acceptRow(row: MailMatchRow) {
-    // Never a silent write: hand the draft to the form and let the user submit.
-    onAcceptDraft(row.id, parseDraft(row) as Partial<NewJob>);
+  async function acceptRow(row: MailMatchRow) {
+    try {
+      const outcome = await client.acceptNew(row.id);
+      // `created: false` means a double click lost the race: the first one already
+      // showed its notice.
+      if (outcome.created) {
+        setNotice({
+          kind: "accepted",
+          inboxId: row.id,
+          jobId: outcome.jobId,
+          title: row.title ?? en.common.untitled,
+        });
+      }
+      onJobsChanged?.();
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function undoAccept(inboxId: number) {
+    try {
+      await client.undoAccept(inboxId);
+      setNotice({ kind: "undone" });
+      onJobsChanged?.();
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
   }
 
   async function reviewUpdate(row: MailMatchRow) {
@@ -234,11 +272,10 @@ export function MailMatchInboxPanel({
     }
   }
 
-  async function confirmDismiss(row: MailMatchRow) {
+  async function dismissRow(row: MailMatchRow) {
+    // One click: the Dismissed tab is the undo, so there is nothing to confirm.
     try {
-      await client.dismiss(row.id, dismissReason.trim() || undefined);
-      setDismissing(null);
-      setDismissReason("");
+      await client.dismiss(row.id);
       await refresh();
     } catch (e) {
       setError(String(e));
@@ -267,6 +304,26 @@ export function MailMatchInboxPanel({
         <p className="mail-match__error" role="alert">
           {error}
         </p>
+      ) : null}
+
+      {notice ? (
+        <div className="mail-match__notice" role="status">
+          {notice.kind === "accepted" ? (
+            <>
+              <span>{t.acceptedNotice(notice.title)}</span>
+              {onOpenJob ? (
+                <button type="button" onClick={() => onOpenJob(notice.jobId)}>
+                  {t.acceptedOpen}
+                </button>
+              ) : null}
+              <button type="button" onClick={() => void undoAccept(notice.inboxId)}>
+                {t.acceptedUndo}
+              </button>
+            </>
+          ) : (
+            <span>{t.undoneNotice}</span>
+          )}
+        </div>
       ) : null}
 
       <div className="mail-match__tabs" role="tablist">
@@ -428,34 +485,19 @@ export function MailMatchInboxPanel({
                           {t.acceptUpdate}
                         </button>
                       ) : (
-                        <button type="button" onClick={() => acceptRow(row)} title={t.acceptHint}>
+                        <button
+                          type="button"
+                          onClick={() => void acceptRow(row)}
+                          title={t.acceptHint}
+                        >
                           {t.accept}
                         </button>
                       )}
-                      <button type="button" onClick={() => setDismissing(row.id)}>
+                      <button type="button" onClick={() => void dismissRow(row)}>
                         {t.dismiss}
                       </button>
                     </div>
 
-                    {dismissing === row.id ? (
-                      <div className="mail-match__dismiss">
-                        <label>
-                          {t.dismissReasonLabel}
-                          <input
-                            type="text"
-                            value={dismissReason}
-                            placeholder={t.dismissReasonPlaceholder}
-                            onChange={(e) => setDismissReason(e.target.value)}
-                          />
-                        </label>
-                        <button type="button" onClick={() => void confirmDismiss(row)}>
-                          {t.dismissConfirm}
-                        </button>
-                        <button type="button" onClick={() => setDismissing(null)}>
-                          {t.dismissCancel}
-                        </button>
-                      </div>
-                    ) : null}
                   </li>
                 );
               })}
