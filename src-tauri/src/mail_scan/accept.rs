@@ -312,40 +312,77 @@ fn apply_mail_score(
     Ok(())
 }
 
-/// Create a Job from a `new` match, using the payload the user approved in the form.
+/// Stand-in when neither the digest nor the listing page named a company. `jobs.company`
+/// is required, and refusing the accept would strand the match; the user fixes the
+/// name on the Job, which is easier than retyping the whole Draft into a form.
+pub const UNKNOWN_COMPANY: &str = "Unknown company";
+
+/// Map a stored Draft onto the Job it becomes.
+///
+/// Blank values stay `None` so provenance is only claimed for fields that carry
+/// something. `status` and `priority` are never read from the Draft: a scan-created Job
+/// always starts in `Interesting` (spec §5.2), and priority is the user's (spec §0.1).
+fn job_from_draft(draft: &HashMap<String, Value>, board: Option<&str>) -> crate::db::NewJob {
+    let text = |field: &str| {
+        draft
+            .get(field)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    crate::db::NewJob {
+        company: text("company").unwrap_or_else(|| UNKNOWN_COMPANY.to_string()),
+        title: text("title"),
+        url: text("url"),
+        raw_text: text("raw_text"),
+        status: "Interesting".to_string(),
+        deadline: text("deadline"),
+        interview_date: text("interview_date"),
+        start_date: text("start_date"),
+        tags: text("tags"),
+        detected_language: text("detected_language"),
+        notes: text("notes"),
+        contact_name: text("contact_name"),
+        contact_email: text("contact_email"),
+        contact_phone: text("contact_phone"),
+        workplace_street: text("workplace_street"),
+        workplace_city: text("workplace_city"),
+        workplace_postal_code: text("workplace_postal_code"),
+        work_mode: text("work_mode"),
+        salary_range: text("salary_range"),
+        contract_type: text("contract_type"),
+        priority: None,
+        reference_number: text("reference_number"),
+        source: text("source").or_else(|| board.map(str::to_string)),
+    }
+}
+
+/// Create a Job from a `new` match in one step, straight from its stored Draft.
 ///
 /// The inbox row is claimed in the same transaction as the insert, so two rapid
-/// accepts produce one Job and one `accepted` row.
-pub fn accept_new(
-    conn: &mut Connection,
-    inbox_id: i64,
-    payload: &crate::db::NewJob,
-) -> Result<AcceptOutcome, String> {
+/// accepts produce one Job and one `accepted` row. [`undo_accept`] is the way back.
+pub fn accept_new(conn: &mut Connection, inbox_id: i64) -> Result<AcceptOutcome, String> {
     let now = chrono::Utc::now().to_rfc3339();
-    let run_id: Option<String> = conn
-        .query_row(
-            "SELECT last_run_id FROM mail_match_inbox WHERE id = ?1",
-            params![inbox_id],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(|e| e.to_string())?
-        .flatten();
-
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     // Claim first: if this loses the race, no Job is created at all.
-    let already: Option<(String, Option<i64>)> = tx
+    type Row = (String, String, Option<i64>, String, Option<String>, Option<String>);
+    let row: Option<Row> = tx
         .query_row(
-            "SELECT status, job_id FROM mail_match_inbox WHERE id = ?1",
+            "SELECT kind, status, job_id, draft_json, source_board, last_run_id
+             FROM mail_match_inbox WHERE id = ?1",
             params![inbox_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
         )
         .optional()
         .map_err(|e| e.to_string())?;
-    let Some((status, existing_job)) = already else {
+    let Some((kind, status, existing_job, draft_json, board, run_id)) = row else {
         return Err("That inbox row no longer exists.".into());
     };
+    if kind != "new" {
+        return Err("That match updates an existing job; review its changes instead.".into());
+    }
     if status != "pending" {
         tx.rollback().map_err(|e| e.to_string())?;
         return Ok(AcceptOutcome {
@@ -355,11 +392,9 @@ pub fn accept_new(
         });
     }
 
-    // A scan-created Job always starts in `Interesting` (spec §5.2); the score is
-    // advisory and does not move it further.
-    let mut to_insert = payload.clone();
-    to_insert.status = "Interesting".to_string();
-    to_insert.priority = None;
+    let draft: HashMap<String, Value> = serde_json::from_str(&draft_json)
+        .map_err(|e| format!("Could not read the stored draft: {e}"))?;
+    let to_insert = job_from_draft(&draft, board.as_deref());
 
     let job_id = crate::db::insert_job_returning_id(&tx, &to_insert, &now)?;
 
@@ -387,6 +422,67 @@ pub fn accept_new(
         fields_written: written,
         created: true,
     })
+}
+
+/// Take back a one-click accept: delete the Job it created (and its provenance) and
+/// return the match to `pending`.
+///
+/// Allowed for as long as the Job exists — edits made in the meantime go with it, which
+/// is what "undo" means right after an accept. The one refusal is a Job with documents
+/// attached: those are files on disk, and deleting them belongs to the job page, which
+/// knows how to clean them up.
+pub fn undo_accept(conn: &mut Connection, inbox_id: i64) -> Result<(), String> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let row: Option<(String, String, Option<i64>)> = tx
+        .query_row(
+            "SELECT kind, status, job_id FROM mail_match_inbox WHERE id = ?1",
+            params![inbox_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    // `mail_match_inbox.job_id` cascades, so a Job deleted since the accept has
+    // already taken the row with it.
+    let Some((kind, status, job_id)) = row else {
+        return Err("That match is gone; its job was probably deleted already.".into());
+    };
+    if kind != "new" {
+        return Err("Only a match that created a job can be undone.".into());
+    }
+    let (true, Some(job_id)) = (status == "accepted", job_id) else {
+        return Err(format!("That match is {status}, not accepted."));
+    };
+
+    let documents: i64 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM job_documents WHERE job_id = ?1",
+            params![job_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if documents > 0 {
+        return Err("That job has documents attached; delete it from its job page.".into());
+    }
+
+    // Unlink first: deleting the Job while the row still points at it would cascade
+    // the row away too.
+    tx.execute(
+        "UPDATE mail_match_inbox SET status = 'pending', job_id = NULL, updated_at = ?1
+         WHERE id = ?2",
+        params![&now, inbox_id],
+    )
+    .map_err(|e| e.to_string())?;
+    for sql in [
+        "DELETE FROM job_field_provenance WHERE job_id = ?1",
+        "DELETE FROM status_history WHERE job_id = ?1",
+        "DELETE FROM jobs WHERE id = ?1",
+    ] {
+        tx.execute(sql, params![job_id]).map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())
 }
 
 fn payload_field_is_set(payload: &crate::db::NewJob, field: &str) -> bool {
@@ -418,7 +514,6 @@ fn payload_field_is_set(payload: &crate::db::NewJob, field: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::NewJob;
     use crate::migrations;
     use serde_json::json;
 
@@ -438,34 +533,6 @@ mod tests {
         )
         .unwrap();
         conn
-    }
-
-    fn new_job(company: &str) -> NewJob {
-        NewJob {
-            company: company.into(),
-            title: Some("Rust Engineer".into()),
-            url: Some("https://example.com/job".into()),
-            raw_text: None,
-            status: "Interesting".into(),
-            deadline: Some("2026-10-01".into()),
-            interview_date: None,
-            start_date: None,
-            tags: None,
-            detected_language: None,
-            notes: None,
-            contact_name: Some("Ada".into()),
-            contact_email: None,
-            contact_phone: None,
-            workplace_street: None,
-            workplace_city: Some("København".into()),
-            workplace_postal_code: None,
-            work_mode: Some("Hybrid".into()),
-            salary_range: None,
-            contract_type: None,
-            priority: None,
-            reference_number: None,
-            source: Some("indeed".into()),
-        }
     }
 
     /// Insert a Job and return its id and `updated_at`.
@@ -629,15 +696,132 @@ mod tests {
         assert_eq!(priority, 3, "priority is the user's, never a score's");
     }
 
+    // ----- One-click accept: the Draft becomes the Job ----------------------
+
+    fn full_draft() -> serde_json::Value {
+        json!({
+            "title": "Rust Engineer",
+            "company": "Acme",
+            "url": "https://example.com/job",
+            "raw_text": "We are hiring a Rust engineer to build the ingestion pipeline.",
+            "deadline": "2026-10-01",
+            "contact_name": "Ada",
+            "workplace_city": "København",
+            "work_mode": "Hybrid",
+            "source": "indeed",
+        })
+    }
+
+    #[test]
+    fn accepting_a_pending_match_creates_an_interesting_job_from_its_draft() {
+        let mut conn = db();
+        let inbox = seed_inbox(&conn, "new", None, full_draft(), None);
+
+        let outcome = accept_new(&mut conn, inbox).unwrap();
+
+        assert!(outcome.created);
+        let job: (String, String, String, String, String, String, String, String, Option<i64>) =
+            conn.query_row(
+                "SELECT company, title, url, raw_text, deadline, work_mode, source, status,
+                        mail_score
+                 FROM jobs WHERE id = ?1",
+                params![outcome.job_id],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                        r.get(8)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            job,
+            (
+                "Acme".to_string(),
+                "Rust Engineer".to_string(),
+                "https://example.com/job".to_string(),
+                "We are hiring a Rust engineer to build the ingestion pipeline.".to_string(),
+                "2026-10-01".to_string(),
+                "Hybrid".to_string(),
+                "indeed".to_string(),
+                "Interesting".to_string(),
+                Some(8),
+            )
+        );
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM mail_match_inbox WHERE id = ?1",
+                params![inbox],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "accepted");
+    }
+
+    #[test]
+    fn undoing_an_accept_removes_the_job_and_returns_the_match_to_pending() {
+        let mut conn = db();
+        let inbox = seed_inbox(&conn, "new", None, full_draft(), None);
+        let outcome = accept_new(&mut conn, inbox).unwrap();
+
+        undo_accept(&mut conn, inbox).unwrap();
+
+        let count = |sql: &str| -> i64 {
+            conn.query_row(sql, params![outcome.job_id], |r| r.get(0)).unwrap()
+        };
+        assert_eq!(count("SELECT COUNT(*) FROM jobs WHERE id = ?1"), 0);
+        assert_eq!(
+            count("SELECT COUNT(*) FROM job_field_provenance WHERE job_id = ?1"),
+            0,
+            "a removed job must not leave provenance behind"
+        );
+        let (status, job_id): (String, Option<i64>) = conn
+            .query_row(
+                "SELECT status, job_id FROM mail_match_inbox WHERE id = ?1",
+                params![inbox],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(status, "pending");
+        assert_eq!(job_id, None);
+
+        // And it can be accepted again.
+        assert!(accept_new(&mut conn, inbox).unwrap().created);
+    }
+
+    #[test]
+    fn a_draft_without_a_company_still_becomes_a_job_the_user_can_fix() {
+        let mut conn = db();
+        let mut draft = full_draft();
+        draft["company"] = json!("  ");
+        let inbox = seed_inbox(&conn, "new", None, draft, None);
+
+        let outcome = accept_new(&mut conn, inbox).unwrap();
+
+        let company: String = conn
+            .query_row("SELECT company FROM jobs WHERE id = ?1", params![outcome.job_id], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(company, UNKNOWN_COMPANY);
+    }
+
     // ----- Step 4: idempotency --------------------------------------------
 
     #[test]
     fn two_rapid_accepts_create_one_job() {
         let mut conn = db();
-        let inbox = seed_inbox(&conn, "new", None, json!({ "company": "Acme" }), None);
+        let inbox = seed_inbox(&conn, "new", None, full_draft(), None);
 
-        let first = accept_new(&mut conn, inbox, &new_job("Acme")).unwrap();
-        let second = accept_new(&mut conn, inbox, &new_job("Acme")).unwrap();
+        let first = accept_new(&mut conn, inbox).unwrap();
+        let second = accept_new(&mut conn, inbox).unwrap();
 
         assert!(first.created);
         assert!(!second.created, "the second accept must be a no-op");
@@ -678,8 +862,8 @@ mod tests {
     #[test]
     fn the_inbox_row_moves_to_accepted_and_links_the_job() {
         let mut conn = db();
-        let inbox = seed_inbox(&conn, "new", None, json!({ "company": "Acme" }), None);
-        let outcome = accept_new(&mut conn, inbox, &new_job("Acme")).unwrap();
+        let inbox = seed_inbox(&conn, "new", None, full_draft(), None);
+        let outcome = accept_new(&mut conn, inbox).unwrap();
 
         let (status, job_id): (String, i64) = conn
             .query_row(
@@ -697,8 +881,8 @@ mod tests {
     #[test]
     fn accept_records_provenance_per_written_field() {
         let mut conn = db();
-        let inbox = seed_inbox(&conn, "new", None, json!({ "company": "Acme" }), None);
-        let outcome = accept_new(&mut conn, inbox, &new_job("Acme")).unwrap();
+        let inbox = seed_inbox(&conn, "new", None, full_draft(), None);
+        let outcome = accept_new(&mut conn, inbox).unwrap();
 
         let mut stmt = conn
             .prepare("SELECT field, source, run_id FROM job_field_provenance WHERE job_id = ?1")
@@ -749,8 +933,8 @@ mod tests {
     #[test]
     fn accept_sets_mail_score_and_leaves_priority_alone() {
         let mut conn = db();
-        let inbox = seed_inbox(&conn, "new", None, json!({ "company": "Acme" }), None);
-        let outcome = accept_new(&mut conn, inbox, &new_job("Acme")).unwrap();
+        let inbox = seed_inbox(&conn, "new", None, full_draft(), None);
+        let outcome = accept_new(&mut conn, inbox).unwrap();
 
         let (score, reason, scored_at, priority, status): (
             Option<i64>,
@@ -777,13 +961,13 @@ mod tests {
     #[test]
     fn a_scan_created_job_always_starts_as_interesting() {
         let mut conn = db();
-        let inbox = seed_inbox(&conn, "new", None, json!({ "company": "Acme" }), None);
-        // Even if the caller asks for something else.
-        let mut payload = new_job("Acme");
-        payload.status = "Offer".into();
-        payload.priority = Some(1);
+        // Even if the draft claims something else.
+        let mut draft = full_draft();
+        draft["status"] = json!("Offer");
+        draft["priority"] = json!(1);
+        let inbox = seed_inbox(&conn, "new", None, draft, None);
 
-        let outcome = accept_new(&mut conn, inbox, &payload).unwrap();
+        let outcome = accept_new(&mut conn, inbox).unwrap();
 
         let (status, priority): (String, Option<i64>) = conn
             .query_row(
@@ -868,16 +1052,20 @@ pub fn mail_match_accept_update(
     accept_update(&mut conn, inbox_id)
 }
 
-/// Create a Job from a `new` match.
-///
-/// `payload` is what the user approved in the prefilled form — the draft is a prefill,
-/// never a silent write (spec non-goal 4).
+/// Create a Job from a `new` match's stored Draft in one click. The inbox offers Undo
+/// right after, which is the human check the old prefilled form used to be.
 #[tauri::command]
 pub fn mail_match_accept_new(
     app: tauri::AppHandle,
     inbox_id: i64,
-    payload: crate::db::NewJob,
 ) -> Result<AcceptOutcome, String> {
     let mut conn = crate::db::connection(&app)?;
-    accept_new(&mut conn, inbox_id, &payload)
+    accept_new(&mut conn, inbox_id)
+}
+
+/// Undo a one-click accept: the Job goes, the match returns to the inbox.
+#[tauri::command]
+pub fn mail_match_undo_accept(app: tauri::AppHandle, inbox_id: i64) -> Result<(), String> {
+    let mut conn = crate::db::connection(&app)?;
+    undo_accept(&mut conn, inbox_id)
 }

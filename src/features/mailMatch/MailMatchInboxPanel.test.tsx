@@ -70,15 +70,16 @@ function makeApi(overrides: {
         },
     ),
     acceptUpdate: vi.fn(async () => ({ jobId: 7, fieldsWritten: [], created: true })),
+    acceptNew: vi.fn(async () => ({ jobId: 42, fieldsWritten: ["title"], created: true })),
+    undoAccept: vi.fn(async () => {}),
   };
 }
 
-function renderPanel(
-  api: ReturnType<typeof makeApi>,
-  onAcceptDraft = vi.fn(),
-) {
-  render(<MailMatchInboxPanel api={api} onAcceptDraft={onAcceptDraft} />);
-  return { onAcceptDraft };
+function renderPanel(api: ReturnType<typeof makeApi>) {
+  const onJobsChanged = vi.fn();
+  const onOpenJob = vi.fn();
+  render(<MailMatchInboxPanel api={api} onJobsChanged={onJobsChanged} onOpenJob={onOpenJob} />);
+  return { onJobsChanged, onOpenJob };
 }
 
 describe("rendering", () => {
@@ -133,18 +134,31 @@ describe("rendering", () => {
 });
 
 describe("accept", () => {
-  it("opens the prefilled form instead of writing silently", async () => {
-    // Spec non-goal 4: no path from a scan to a written Job without a human.
+  it("creates the job in one click and offers to open it", async () => {
     const api = makeApi({ rows: [row()] });
-    const onAcceptDraft = vi.fn();
-    renderPanel(api, onAcceptDraft);
+    const { onJobsChanged, onOpenJob } = renderPanel(api);
 
     fireEvent.click(await screen.findByRole("button", { name: t.accept }));
 
-    expect(onAcceptDraft).toHaveBeenCalledTimes(1);
-    const [inboxId, draft] = onAcceptDraft.mock.calls[0];
-    expect(inboxId).toBe(1);
-    expect(draft).toMatchObject({ company: "Acme", title: "Rust Engineer" });
+    await waitFor(() => expect(api.acceptNew).toHaveBeenCalledWith(1));
+    expect(await screen.findByText(t.acceptedNotice("Rust Engineer"))).toBeTruthy();
+    expect(onJobsChanged).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: t.acceptedOpen }));
+    expect(onOpenJob).toHaveBeenCalledWith(42);
+  });
+
+  it("undoes an accept from the notice", async () => {
+    // Undo replaces the old prefilled form as the human check on a one-click accept.
+    const api = makeApi({ rows: [row()] });
+    const { onJobsChanged } = renderPanel(api);
+
+    fireEvent.click(await screen.findByRole("button", { name: t.accept }));
+    fireEvent.click(await screen.findByRole("button", { name: t.acceptedUndo }));
+
+    await waitFor(() => expect(api.undoAccept).toHaveBeenCalledWith(1));
+    expect(await screen.findByText(t.undoneNotice)).toBeTruthy();
+    expect(onJobsChanged).toHaveBeenCalledTimes(2);
   });
 
   it("shows the recomputed diff for an update suggestion", async () => {
@@ -212,17 +226,14 @@ describe("accept", () => {
 });
 
 describe("dismiss and restore", () => {
-  it("dismisses with an optional reason", async () => {
+  it("dismisses in one click without asking for a reason", async () => {
     const api = makeApi({ rows: [row()] });
     renderPanel(api);
 
     fireEvent.click(await screen.findByRole("button", { name: t.dismiss }));
-    fireEvent.change(screen.getByLabelText(t.dismissReasonLabel), {
-      target: { value: "recruiter spam" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: t.dismissConfirm }));
 
-    await waitFor(() => expect(api.dismiss).toHaveBeenCalledWith(1, "recruiter spam"));
+    await waitFor(() => expect(api.dismiss).toHaveBeenCalledWith(1));
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 
   it("lists dismissals and restores them", async () => {
@@ -333,9 +344,7 @@ describe("untrusted content", () => {
     const api = makeApi({
       rows: [row({ draftJson: JSON.stringify({ raw_text: hostile }) })],
     });
-    const { container } = render(
-      <MailMatchInboxPanel api={api} onAcceptDraft={vi.fn()} />,
-    );
+    const { container } = render(<MailMatchInboxPanel api={api} />);
 
     fireEvent.click(await screen.findByRole("button", { expanded: false }));
 
