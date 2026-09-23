@@ -48,6 +48,10 @@ pub struct Enrichment {
     pub state: &'static str,
     /// Why it is not `complete`, in a sentence the inbox row can show.
     pub error: Option<String>,
+    /// The listing page as text (already bounded by [`MAX_PAGE_CHARS`]), kept so the
+    /// draft carries the full ad rather than the digest's one-line teaser. Present
+    /// whenever the page was fetched, even if the model then failed to read it.
+    pub page_text: Option<String>,
 }
 
 impl Enrichment {
@@ -56,6 +60,7 @@ impl Enrichment {
             partial: HashMap::new(),
             state: "skipped",
             error: None,
+            page_text: None,
         }
     }
 
@@ -64,6 +69,7 @@ impl Enrichment {
             partial: HashMap::new(),
             state: "failed",
             error: Some(redact(&reason.into())),
+            page_text: None,
         }
     }
 
@@ -84,6 +90,7 @@ impl Enrichment {
                 partial,
                 state: "complete",
                 error: None,
+                page_text: None,
             };
         }
         let missing: Vec<&str> = ENRICHMENT_FIELDS
@@ -100,7 +107,17 @@ impl Enrichment {
             partial,
             state: "partial",
             error: Some(format!("not found on the listing page: {}", missing.join(", "))),
+            page_text: None,
         }
+    }
+
+    /// Attach the fetched page text. Blank text is dropped, so the draft falls back to
+    /// the digest snippet instead of storing nothing.
+    pub fn with_page_text(mut self, text: impl Into<String>) -> Self {
+        let text = text.into();
+        let trimmed = text.trim();
+        self.page_text = (!trimmed.is_empty()).then(|| trimmed.to_string());
+        self
     }
 
     pub fn is_usable(&self) -> bool {
@@ -157,10 +174,13 @@ impl ListingEnricher for LlmEnricher {
             return Enrichment::failed("the listing page had no readable text");
         }
 
-        match crate::llm::client::extract_with_spec(&self.spec, &self.api_key, &text) {
+        let extracted = crate::llm::client::extract_with_spec(&self.spec, &self.api_key, &text);
+        let enrichment = match extracted {
             Ok(partial) => Enrichment::from_partial(strip_unenrichable(partial)),
             Err(e) => Enrichment::failed(format!("could not read the listing page: {e}")),
-        }
+        };
+        // The page is worth keeping even when the model could not read it.
+        enrichment.with_page_text(text)
     }
 }
 

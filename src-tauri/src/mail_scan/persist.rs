@@ -160,27 +160,43 @@ pub fn upsert_source_cursor(
     Ok(())
 }
 
-/// The prefill for the job form: what the digest said, overlaid with whatever the
-/// listing page added.
+/// The Draft a Mail Match becomes a Job from: what the digest said, overlaid on
+/// whatever the listing page added, plus the page text itself.
 ///
-/// Enrichment fills gaps, it does not overrule the extractor: title and company come
-/// from the board's own markup, which is more reliable than a model reading a page.
+/// Where both sources name a title or company, the extractor wins: the board's own
+/// markup is more reliable than a model reading a page. A blank extractor value is not
+/// a claim, though — the generic extractor has no company at all — so it only fills a
+/// field enrichment left empty, and never erases one it found.
 fn draft_json(listing: &ListingEvent, enrichment: &Enrichment) -> String {
     let mut draft = serde_json::Map::new();
     for (k, v) in &enrichment.partial {
         draft.insert(k.clone(), v.clone());
     }
-    draft.insert("title".into(), json!(listing.title));
-    draft.insert("company".into(), json!(listing.company));
-    draft.insert("url".into(), json!(listing.url));
-    draft.insert("raw_text".into(), json!(listing.snippet));
+    let mut prefer_extractor = |field: &str, value: &str| {
+        if !value.trim().is_empty() || !has_text(&draft, field) {
+            draft.insert(field.into(), json!(value));
+        }
+    };
+    prefer_extractor("title", &listing.title);
+    prefer_extractor("company", &listing.company);
+    prefer_extractor("url", &listing.url);
+    // The page text when it was fetched; the digest's teaser only as a fallback.
+    let raw_text = enrichment.page_text.as_deref().unwrap_or(&listing.snippet);
+    draft.insert("raw_text".into(), json!(raw_text));
     if let Some(board) = listing.external_ref.as_ref().map(|r| r.board.clone()) {
         draft.insert("source".into(), json!(board));
     }
-    if !listing.location.trim().is_empty() && !draft.contains_key("workplace_city") {
+    if !listing.location.trim().is_empty() && !has_text(&draft, "workplace_city") {
         draft.insert("workplace_city".into(), json!(listing.location));
     }
     Value::Object(draft).to_string()
+}
+
+fn has_text(draft: &serde_json::Map<String, Value>, field: &str) -> bool {
+    draft
+        .get(field)
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.trim().is_empty())
 }
 
 /// One transaction per listing.
@@ -665,6 +681,66 @@ mod tests {
         assert_eq!(v["salary_range"], json!("60-70k DKK"));
         assert_eq!(v["title"], json!("Dev"), "the extractor's title must win");
         assert_eq!(v["company"], json!("Acme"));
+    }
+
+    fn stored_draft(conn: &Connection) -> Value {
+        let draft: String = conn
+            .query_row("SELECT draft_json FROM mail_match_inbox", [], |r| r.get(0))
+            .unwrap();
+        serde_json::from_str(&draft).unwrap()
+    }
+
+    #[test]
+    fn the_draft_keeps_the_fetched_listing_text_rather_than_the_digest_teaser() {
+        let mut conn = db();
+        start_run(&mut conn, "r1").unwrap();
+        let l = listing("Dev", "indeed:page", "acme|dev|kbh");
+        let scored = scored_for(&l, "inbox");
+        let page = "Rust Developer at Acme. You will build the ingestion pipeline. \
+                    Apply by 1 October.";
+        let enrichment = Enrichment::from_partial(std::collections::HashMap::new())
+            .with_page_text(page);
+
+        persist_listing(&mut conn, "r1", &l, &scored, &enrichment, &identities()).unwrap();
+
+        assert_eq!(stored_draft(&conn)["raw_text"], json!(page));
+    }
+
+    #[test]
+    fn without_a_fetched_page_the_draft_falls_back_to_the_digest_snippet() {
+        let mut conn = db();
+        start_run(&mut conn, "r1").unwrap();
+        let l = listing("Dev", "indeed:nopage", "acme|dev|kbh");
+        let scored = scored_for(&l, "inbox");
+
+        persist_listing(&mut conn, "r1", &l, &scored, &Enrichment::failed("timeout"), &identities())
+            .unwrap();
+
+        assert_eq!(stored_draft(&conn)["raw_text"], json!("snippet"));
+    }
+
+    #[test]
+    fn a_blank_extractor_value_never_erases_what_enrichment_found() {
+        // The generic extractor knows only the subject line: it has no company, and
+        // sometimes no location. The page does.
+        let mut conn = db();
+        start_run(&mut conn, "r1").unwrap();
+        let mut l = listing("Dev", "indeed:generic", "acme|dev|kbh");
+        l.company = String::new();
+        l.location = "  ".into();
+        let scored = scored_for(&l, "inbox");
+
+        let mut partial = std::collections::HashMap::new();
+        partial.insert("company".to_string(), json!("Acme A/S"));
+        partial.insert("workplace_city".to_string(), json!("Aarhus"));
+        let enrichment = Enrichment::from_partial(partial);
+
+        persist_listing(&mut conn, "r1", &l, &scored, &enrichment, &identities()).unwrap();
+
+        let draft = stored_draft(&conn);
+        assert_eq!(draft["company"], json!("Acme A/S"));
+        assert_eq!(draft["workplace_city"], json!("Aarhus"));
+        assert_eq!(draft["title"], json!("Dev"), "a non-blank extractor title still wins");
     }
 
     #[test]
