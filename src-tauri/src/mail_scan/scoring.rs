@@ -1155,6 +1155,89 @@ mod tests {
         assert_eq!(engine.budget().calls_used(), 0);
     }
 
+    // ----- Known listings are skipped before they cost anything -----------
+
+    /// One scan over `listings`, through the same driver production uses.
+    fn scan(
+        conn: &mut rusqlite::Connection,
+        run_id: &str,
+        engine: &mut ScoringEngine,
+        listings: &[ListingEvent],
+    ) -> crate::mail_scan::persist::RunStats {
+        let mut stream = String::from(
+            r#"{"t":"started","protocol":2,"run_id":"r","sidecar_version":"1.0.0","sources":1}"#,
+        );
+        for (seq, l) in listings.iter().enumerate() {
+            let line = serde_json::json!({
+                "t": "listing", "source": l.source, "message_id": l.message_id,
+                "message_date": l.message_date, "seq": seq, "title": l.title,
+                "company": l.company, "location": l.location, "url": l.url,
+                "snippet": l.snippet,
+                "fingerprint": {"strong": l.fingerprint.strong, "weak": l.fingerprint.weak},
+                "extractor": l.extractor, "extractor_confidence": l.extractor_confidence,
+            });
+            stream.push('\n');
+            stream.push_str(&line.to_string());
+        }
+        stream.push('\n');
+        crate::mail_scan::consume_event_stream(conn, run_id, stream.as_bytes(), engine).unwrap()
+    }
+
+    #[test]
+    fn a_listing_already_on_the_board_costs_no_scoring_and_no_fetch() {
+        let mut conn = db();
+        let known = listing("Rust Engineer", "great role");
+        conn.execute(
+            "INSERT INTO jobs (company, title, status, url, created_at, updated_at)
+             VALUES ('Acme', 'Rust Engineer', 'Application Sent', ?1, 't', 't')",
+            [&known.url],
+        )
+        .unwrap();
+        let fetches = Arc::new(AtomicUsize::new(0));
+        let scorer = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(&scorer, ScoringConfig::default())
+            .with_enricher(Box::new(CountingEnricher(fetches.clone())));
+
+        let stats = scan(&mut conn, "r1", &mut engine, &[known]);
+
+        assert_eq!(scorer.total_calls(), 0, "a tracked listing is not worth a model call");
+        assert_eq!(fetches.load(Ordering::SeqCst), 0, "nor a page fetch");
+        assert_eq!(stats.already_tracked, 1, "{stats:?}");
+        assert_eq!(stats.listings_committed, 1, "{stats:?}");
+        assert_eq!(stats.inbox_new, 0, "{stats:?}");
+        assert_eq!(stats.llm_calls, 0, "{stats:?}");
+    }
+
+    #[test]
+    fn a_dismissed_listing_costs_no_scoring_and_no_fetch_even_on_a_rescore() {
+        let mut conn = db();
+        let dismissed = listing("Barista", "coffee");
+        let fresh = listing("Rust Engineer", "great role");
+        let first = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(&first, ScoringConfig::default());
+        scan(&mut conn, "r1", &mut engine, std::slice::from_ref(&dismissed));
+        let fp = dismissed.fingerprint.strong.clone().unwrap();
+        crate::mail_scan::cluster::dismiss(&mut conn, &fp, Some("r1"), None).unwrap();
+
+        // "Re-score backlog" bypasses every cache; a dismissal still has to hold.
+        let fetches = Arc::new(AtomicUsize::new(0));
+        let second = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(
+            &second,
+            ScoringConfig {
+                force_rescore: true,
+                ..ScoringConfig::default()
+            },
+        )
+        .with_enricher(Box::new(CountingEnricher(fetches.clone())));
+        let stats = scan(&mut conn, "r2", &mut engine, &[dismissed, fresh]);
+
+        assert_eq!(second.batch_sizes(), vec![1], "only the fresh listing is scored");
+        assert_eq!(fetches.load(Ordering::SeqCst), 1, "and only it is fetched");
+        assert_eq!(stats.suppressed_by_dismissal, 1, "{stats:?}");
+        assert_eq!(stats.inbox_new, 1, "{stats:?}");
+    }
+
     // ----- Step 1: cost control before cost -------------------------------
 
     #[test]

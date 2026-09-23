@@ -33,6 +33,28 @@ pub struct RunStats {
     pub budget_exhausted: bool,
 }
 
+impl RunStats {
+    /// Count one listing's outcome. A dismissed listing is suppressed, not committed:
+    /// the summary reports it separately so the user can find it in the Dismissed tab.
+    pub fn count(&mut self, outcome: PersistOutcome) {
+        match outcome {
+            PersistOutcome::Committed => {
+                self.listings_committed += 1;
+                self.inbox_new += 1;
+            }
+            PersistOutcome::UnderCutoff => {
+                self.listings_committed += 1;
+                self.under_cutoff += 1;
+            }
+            PersistOutcome::SuppressedByDismissal => self.suppressed_by_dismissal += 1,
+            PersistOutcome::AlreadyTracked => {
+                self.listings_committed += 1;
+                self.already_tracked += 1;
+            }
+        }
+    }
+}
+
 /// Scoring identity per pass. Pass 1 hashes the short profile, pass 2 the full one.
 #[derive(Debug, Clone)]
 pub struct ScoringIdentities {
@@ -226,7 +248,7 @@ fn is_tracked(
     conn: &Connection,
     fingerprint_id: &str,
     listing: &ListingEvent,
-    enrichment: &Enrichment,
+    employer_url: Option<&str>,
 ) -> Result<bool, String> {
     let accepted: Option<i64> = conn
         .query_row(
@@ -242,7 +264,7 @@ fn is_tracked(
         return Ok(true);
     }
     let links: Vec<&str> = std::iter::once(listing.url.as_str())
-        .chain(enrichment.employer_url.as_deref())
+        .chain(employer_url)
         .map(str::trim)
         .filter(|u| !u.is_empty())
         .collect();
@@ -260,6 +282,35 @@ fn is_tracked(
         }
     }
     Ok(false)
+}
+
+/// The gate every listing passes before it is scored or fetched (spec: "no LLM spend
+/// if suppressed"). A dismissed listing, or one that is already a Job, is recorded as a
+/// sighting here and never reaches the model or the network.
+///
+/// Returns `None` for a listing that should go on to scoring. Its cluster lookup is
+/// rolled back in that case, so `persist_listing` counts the sighting exactly once.
+pub fn gate_listing(
+    conn: &mut Connection,
+    listing: &ListingEvent,
+) -> Result<Option<PersistOutcome>, String> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let (fp_id, _) = upsert_cluster(
+        &tx,
+        listing.fingerprint.strong.as_deref(),
+        &listing.fingerprint.weak,
+        &now,
+    )?;
+    let outcome = if is_dismissed(&tx, &fp_id)? {
+        PersistOutcome::SuppressedByDismissal
+    } else if is_tracked(&tx, &fp_id, listing, None)? {
+        PersistOutcome::AlreadyTracked
+    } else {
+        return Ok(None); // dropping `tx` rolls the cluster upsert back
+    };
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(Some(outcome))
 }
 
 /// One transaction per listing.
@@ -306,7 +357,9 @@ pub fn persist_listing(
         tx.commit().map_err(|e| e.to_string())?;
         return Ok(PersistOutcome::SuppressedByDismissal);
     }
-    if is_tracked(&tx, &fp_id, listing, enrichment)? {
+    // Checked again here: enrichment may have followed the board link to an employer
+    // ad that a Job already carries, which the gate could not know before the fetch.
+    if is_tracked(&tx, &fp_id, listing, enrichment.employer_url.as_deref())? {
         tx.commit().map_err(|e| e.to_string())?;
         return Ok(PersistOutcome::AlreadyTracked);
     }

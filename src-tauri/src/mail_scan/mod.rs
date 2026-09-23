@@ -32,8 +32,8 @@ use crate::db;
 use crate::secrets::redact;
 
 use self::persist::{
-    finish_run, persist_listing, record_run_identity, start_run, update_run_stats,
-    upsert_source_cursor, PersistOutcome, RunStats, ScoringIdentities,
+    finish_run, gate_listing, persist_listing, record_run_identity, start_run, update_run_stats,
+    upsert_source_cursor, RunStats, ScoringIdentities,
 };
 use self::enrichment::{Enrichment, LlmEnricher};
 use self::profiles::{load_profile, ProfileKind};
@@ -224,21 +224,7 @@ fn flush_buffer(
             state.stats.enrichment_failures += 1;
         }
         match persist_listing(conn, run_id, listing, scored, &enrichment, &identities) {
-            Ok(PersistOutcome::Committed) => {
-                state.stats.listings_committed += 1;
-                state.stats.inbox_new += 1;
-            }
-            Ok(PersistOutcome::UnderCutoff) => {
-                state.stats.listings_committed += 1;
-                state.stats.under_cutoff += 1;
-            }
-            Ok(PersistOutcome::SuppressedByDismissal) => {
-                state.stats.suppressed_by_dismissal += 1;
-            }
-            Ok(PersistOutcome::AlreadyTracked) => {
-                state.stats.listings_committed += 1;
-                state.stats.already_tracked += 1;
-            }
+            Ok(outcome) => state.stats.count(outcome),
             Err(e) => {
                 state.fail("E_DB", e);
                 return Ok(false);
@@ -247,6 +233,36 @@ fn flush_buffer(
     }
     state.stats.llm_calls = engine.budget().calls_used();
     Ok(continue_after(batch.stop, run_id, state))
+}
+
+/// Queue a listing for scoring, unless the gate already settled it. Returns false when
+/// the run must stop.
+///
+/// The gate runs here, before the listing takes a place in a pass-1 batch: a listing
+/// that is dismissed or already a Job costs no model call and no page fetch.
+fn admit_listing(
+    conn: &mut rusqlite::Connection,
+    run_id: &str,
+    listing: ListingEvent,
+    engine: &mut ScoringEngine,
+    state: &mut DriveState,
+) -> Result<bool, String> {
+    match gate_listing(conn, &listing) {
+        Ok(Some(outcome)) => {
+            state.stats.count(outcome);
+            return Ok(true);
+        }
+        Ok(None) => {}
+        Err(e) => {
+            state.fail("E_DB", e);
+            return Ok(false);
+        }
+    }
+    state.buffer.push(listing);
+    if state.buffer.len() >= engine.batch_size() {
+        return flush_buffer(conn, run_id, engine, state);
+    }
+    Ok(true)
 }
 
 /// Apply a stop signal from scoring or splitting. Returns false when the run must stop.
@@ -297,23 +313,14 @@ fn apply_event(
             }
             Ok(true)
         }
-        Event::Listing(listing) => {
-            state.buffer.push(*listing);
-            if state.buffer.len() >= engine.batch_size() {
-                return flush_buffer(conn, run_id, engine, state);
-            }
-            Ok(true)
-        }
+        Event::Listing(listing) => admit_listing(conn, run_id, *listing, engine, state),
         Event::Digest(digest) => {
             // Split listings join the same buffer as extracted ones, so they pass the
             // same dismissal gate, scoring, enrichment, and per-item commit.
             let split = engine.split_digest(conn, run_id, &digest)?;
             state.stats.llm_calls = engine.budget().calls_used();
             for listing in split.listings {
-                state.buffer.push(listing);
-                if state.buffer.len() >= engine.batch_size()
-                    && !flush_buffer(conn, run_id, engine, state)?
-                {
+                if !admit_listing(conn, run_id, listing, engine, state)? {
                     return Ok(false);
                 }
             }
