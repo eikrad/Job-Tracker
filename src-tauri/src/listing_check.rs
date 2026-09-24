@@ -48,7 +48,25 @@ fn detect_status(url: &str, serp_api_key: &str) -> ListingStatus {
         .collect::<String>()
         .to_lowercase();
 
-    classify_http_result(url, &fetched.final_url, fetched.status, &body)
+    classify_fetched(url, &fetched.final_url, fetched.status, &fetched.body, &body)
+}
+
+/// The older head-of-page rules first, so Archived and Unreachable keep their meaning;
+/// a page they call Active is then held against the stricter closed check, which reads
+/// the whole page and catches banners the head never reaches.
+fn classify_fetched(
+    original_url: &str,
+    final_url: &str,
+    status: u16,
+    full_body: &str,
+    body_head: &str,
+) -> ListingStatus {
+    match classify_http_result(original_url, final_url, status, body_head) {
+        ListingStatus::Active if is_confidently_closed(original_url, final_url, status, full_body) => {
+            ListingStatus::Closed
+        }
+        other => other,
+    }
 }
 
 /// Classify a fetched listing page. Separated from network I/O so HTTP status
@@ -84,6 +102,91 @@ fn classify_http_result(
     }
 
     ListingStatus::Unreachable
+}
+
+/// Whether a fetched listing page says the posting is gone.
+///
+/// Deliberately stricter than [`classify_http_result`]: the mail scan drops a listing on
+/// a `true`, so a page that merely mentions "404" or "page not found" somewhere in its
+/// markup must not count. Only a gone/not-found status, a redirect away from the ad, or
+/// an explicit closed phrase does.
+pub fn is_confidently_closed(
+    original_url: &str,
+    final_url: &str,
+    status: u16,
+    body: &str,
+) -> bool {
+    if status == 404 || status == 410 {
+        return true;
+    }
+    if !(200..400).contains(&status) {
+        return false;
+    }
+    let domain = extract_domain(original_url).unwrap_or_default();
+    if domain.contains("linkedin.com") && final_url.contains("/expired") {
+        return true;
+    }
+    if final_url.contains("jobindex.dk/arkiv") || final_url.contains("not_found=true") {
+        return true;
+    }
+    if redirected_up_the_path(original_url, final_url) {
+        return true;
+    }
+
+    // Phrases are matched against the visible text, not the markup: a live single-page
+    // app carries its "job not found" strings in scripts. Only the top of the page, so a
+    // listing that mentions closed applications in its own body text is left alone.
+    let top: String = crate::job_search::extract_job_page_text(body, 20_000)
+        .chars()
+        .take(3_000)
+        .collect::<String>()
+        .to_lowercase();
+    const PHRASES: &[&str] = &[
+        "no longer accepting",
+        "job is no longer available",
+        "job no longer available",
+        "this job has expired",
+        "this position is no longer",
+        "position has been filled",
+        "vacancy has been filled",
+        "position has been closed",
+        "job posting has expired",
+        "stillingen er besat",
+        "stillingen er ikke online",
+        "jobbet er ikke længere aktivt",
+        "opslaget er udløbet",
+        "annoncen er udløbet",
+        "siden kan ikke findes",
+    ];
+    if PHRASES.iter().any(|p| top.contains(p)) {
+        return true;
+    }
+    // Jobindex serves an expired ad as a normal 200 page with a banner, and LinkedIn
+    // puts "No longer accepting applications" well past the head. Both phrases are
+    // specific enough to search the whole body, but only on their own domain.
+    let lower_body = body.to_lowercase();
+    (domain.contains("jobindex.dk") && lower_body.contains("annoncen er udløbet"))
+        || (domain.contains("linkedin.com")
+            && lower_body.contains("no longer accepting applications"))
+}
+
+/// A job page that redirects to its site's root or to a parent path is a removed ad:
+/// employers send dead links to the careers index or the home page.
+fn redirected_up_the_path(original_url: &str, final_url: &str) -> bool {
+    let (Ok(orig), Ok(fin)) = (url::Url::parse(original_url), url::Url::parse(final_url)) else {
+        return false;
+    };
+    let host = |u: &url::Url| u.host_str().map(|h| h.trim_start_matches("www.").to_lowercase());
+    if host(&orig).is_none() || host(&orig) != host(&fin) {
+        return false;
+    }
+    let segments = |u: &url::Url| -> Vec<String> {
+        u.path_segments()
+            .map(|it| it.filter(|s| !s.is_empty()).map(str::to_lowercase).collect())
+            .unwrap_or_default()
+    };
+    let (o, f) = (segments(&orig), segments(&fin));
+    f.len() < o.len() && o[..f.len()] == f[..]
 }
 
 fn classify_by_domain(original_url: &str, final_url: &str, body_head: &str) -> ListingStatus {
@@ -251,6 +354,73 @@ pub async fn check_listing_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_button_catches_banners_past_the_head_and_keeps_archived() {
+        let filler = "<div>x</div>".repeat(3000);
+        let ji = "https://www.jobindex.dk/vis-job/r1";
+        let expired = format!("{filler}<h2>Annoncen er udløbet!</h2>");
+        assert_eq!(classify_fetched(ji, ji, 200, &expired, "<div>x</div>"), ListingStatus::Closed);
+        assert_eq!(classify_fetched(ji, ji, 200, &filler, "<div>x</div>"), ListingStatus::Active);
+        assert_eq!(
+            classify_fetched(ji, "https://www.jobindex.dk/arkiv/1", 200, "", ""),
+            ListingStatus::Archived
+        );
+        assert_eq!(classify_fetched(ji, ji, 429, "", ""), ListingStatus::Unreachable);
+    }
+
+    #[test]
+    fn confident_closed_needs_a_gone_status_or_an_explicit_phrase() {
+        let u = "https://example.com/job/1";
+        assert!(is_confidently_closed(u, u, 404, ""));
+        assert!(is_confidently_closed(u, u, 410, ""));
+        assert!(is_confidently_closed(u, u, 200, "<h1>This job has expired</h1>"));
+        assert!(!is_confidently_closed(u, u, 200, "<p>ref 404 page not found in css</p>"));
+        assert!(!is_confidently_closed(u, u, 503, "no longer accepting"));
+    }
+
+    #[test]
+    fn closed_banners_deep_in_a_board_page_are_found() {
+        let filler = "<div>x</div>".repeat(3000);
+        let jobindex = "https://www.jobindex.dk/vis-job/r1";
+        let expired = format!("{filler}<h2>Annoncen er udløbet!</h2>");
+        assert!(is_confidently_closed(jobindex, jobindex, 200, &expired));
+        assert!(!is_confidently_closed(jobindex, jobindex, 200, &filler));
+
+        let linkedin = "https://www.linkedin.com/jobs/view/1";
+        let closed = format!("{filler}<figcaption>No longer accepting applications</figcaption>");
+        assert!(is_confidently_closed(linkedin, linkedin, 200, &closed));
+        assert!(!is_confidently_closed(linkedin, linkedin, 200, &filler));
+        // The whole-body phrases are tied to their own board.
+        let other = "https://careers.acme.example/1";
+        assert!(!is_confidently_closed(other, other, 200, &expired));
+    }
+
+    #[test]
+    fn a_redirect_up_the_path_or_to_not_found_is_closed() {
+        let job = "https://apply.workable.com/acme/j/F3DE6D5215/";
+        assert!(is_confidently_closed(job, "https://apply.workable.com/acme/?not_found=true", 200, ""));
+        assert!(is_confidently_closed(job, "https://apply.workable.com/acme/", 200, ""));
+        assert!(is_confidently_closed(job, "https://apply.workable.com/", 200, ""));
+        // Same depth, a longer canonical path, another site, or a language prefix: still open.
+        assert!(!is_confidently_closed(job, job, 200, ""));
+        assert!(!is_confidently_closed("https://x.dk/job/1", "https://x.dk/job/1/title", 200, ""));
+        assert!(!is_confidently_closed("https://www.jobindex.dk/c?t=1", "https://employer.dk/ad/1", 200, ""));
+        assert!(!is_confidently_closed("https://x.dk/da/jobs/1", "https://x.dk/jobs/1", 200, ""));
+    }
+
+    #[test]
+    fn closed_phrases_count_in_visible_text_but_not_in_scripts_or_deep_in_the_ad() {
+        let u = "https://careers.acme.example/job/1";
+        let shell = "<html><body><nav>Jobs</nav><p>Sorry, this position has been filled.</p></body></html>";
+        assert!(is_confidently_closed(u, u, 200, shell));
+        let hr = "<body><div>Info</div><p>Stillingen er ikke online.</p></body>";
+        assert!(is_confidently_closed(u, u, 200, hr));
+        let script = r#"<body><script>var t={"err":"This job is no longer available"}</script><p>Apply</p></body>"#;
+        assert!(!is_confidently_closed(u, u, 200, script));
+        let deep = format!("<body><p>{}</p><p>we are no longer accepting agency CVs</p></body>", "word ".repeat(1500));
+        assert!(!is_confidently_closed(u, u, 200, &deep));
+    }
 
     #[test]
     fn jobindex_http_404_is_closed_not_unreachable() {

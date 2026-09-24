@@ -10,6 +10,12 @@ import { en } from "../../i18n/en";
 import { isTerminal, progressPercent, type RunView } from "./runSummary";
 import { errorMessage } from "./runErrors";
 
+function phaseLabel(stats: RunView["stats"]): string {
+  if (stats.messagesSeen === 0 && stats.listingsCommitted === 0) return t.scanPhaseOpening;
+  if (stats.llmCalls > 0) return t.scanPhaseScoring;
+  return t.scanPhaseReading;
+}
+
 const t = en.mailMatch;
 
 const statusLabels: Record<RunView["status"], string> = {
@@ -51,14 +57,22 @@ export function RunSummaryCard({
 
       {!terminal ? (
         <div className="run-summary__progress">
+          <p className="run-summary__phase" role="status">
+            <span className="run-summary__pulse" aria-hidden="true" />
+            {phaseLabel(stats)}
+          </p>
           <progress value={percent ?? undefined} max={100} />
-          <span>{t.scanProgressListings(stats.listingsCommitted)}</span>
-          <span>{t.scanProgressMessages(stats.messagesSeen)}</span>
-          {onCancel ? (
-            <button type="button" onClick={onCancel}>
-              {t.scanCancel}
-            </button>
-          ) : null}
+          <div className="run-summary__progress-row">
+            <span>
+              {t.scanProgressListings(stats.listingsCommitted)} ·{" "}
+              {t.scanProgressMessages(stats.messagesSeen)}
+            </span>
+            {onCancel ? (
+              <button type="button" onClick={onCancel}>
+                {t.scanCancel}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -77,6 +91,7 @@ export function RunSummaryCard({
             </>
           ) : null}
         </li>
+        {stats.closed > 0 ? <li>{t.summaryClosed(stats.closed)}</li> : null}
         {stats.enrichmentFailures > 0 ? (
           <li>{t.summaryEnrichmentFailures(stats.enrichmentFailures)}</li>
         ) : null}

@@ -17,6 +17,8 @@ export type RunStats = {
   alreadyTracked: number;
   llmCalls: number;
   enrichmentFailures: number;
+  /** Listings whose page says the posting is gone; never scored, never queued. */
+  closed: number;
   errors: number;
   budgetExhausted: boolean;
   listingLimitReached: boolean;
@@ -32,6 +34,7 @@ export const emptyStats: RunStats = {
   alreadyTracked: 0,
   llmCalls: 0,
   enrichmentFailures: 0,
+  closed: 0,
   errors: 0,
   budgetExhausted: false,
   listingLimitReached: false,
@@ -83,6 +86,7 @@ export function parseStats(raw: unknown): RunStats {
     alreadyTracked: asNumber(source.alreadyTracked),
     llmCalls: asNumber(source.llmCalls),
     enrichmentFailures: asNumber(source.enrichmentFailures),
+    closed: asNumber(source.closed),
     errors: asNumber(source.errors),
     budgetExhausted: source.budgetExhausted === true,
     listingLimitReached: source.listingLimitReached === true,
@@ -93,6 +97,7 @@ export type ProgressEvent = {
   runId: string;
   listingsCommitted: number;
   messagesSeen: number;
+  stats?: Partial<RunStats>;
   status: string;
 };
 
@@ -114,13 +119,31 @@ export function applyProgress(current: RunView | null, event: ProgressEvent): Ru
       ? current
       : { runId: event.runId, status: "running" as RunStatus, stats: { ...emptyStats } };
 
+  const incoming = parseStats({
+    ...event.stats,
+    listingsCommitted: event.listingsCommitted,
+    messagesSeen: event.messagesSeen,
+  });
+  const prev = base.stats;
+  const forward = (a: number, b: number) => Math.max(a, b);
+
   return {
     ...base,
     status: asStatus(event.status),
     stats: {
-      ...base.stats,
-      listingsCommitted: Math.max(base.stats.listingsCommitted, event.listingsCommitted),
-      messagesSeen: Math.max(base.stats.messagesSeen, event.messagesSeen),
+      listingsCommitted: forward(prev.listingsCommitted, incoming.listingsCommitted),
+      messagesSeen: forward(prev.messagesSeen, incoming.messagesSeen),
+      messagesParsed: forward(prev.messagesParsed, incoming.messagesParsed),
+      suppressedByDismissal: forward(prev.suppressedByDismissal, incoming.suppressedByDismissal),
+      underCutoff: forward(prev.underCutoff, incoming.underCutoff),
+      inboxNew: forward(prev.inboxNew, incoming.inboxNew),
+      alreadyTracked: forward(prev.alreadyTracked, incoming.alreadyTracked),
+      llmCalls: forward(prev.llmCalls, incoming.llmCalls),
+      enrichmentFailures: forward(prev.enrichmentFailures, incoming.enrichmentFailures),
+      closed: forward(prev.closed, incoming.closed),
+      errors: forward(prev.errors, incoming.errors),
+      budgetExhausted: prev.budgetExhausted || incoming.budgetExhausted,
+      listingLimitReached: prev.listingLimitReached || incoming.listingLimitReached,
     },
   };
 }

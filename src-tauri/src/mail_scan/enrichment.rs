@@ -89,6 +89,14 @@ impl Enrichment {
         }
     }
 
+    /// The listing page says the posting is gone. Not a failure: the listing is dropped.
+    pub fn closed(reason: impl Into<String>) -> Self {
+        Self {
+            state: EnrichmentState::Closed,
+            ..Self::failed(reason)
+        }
+    }
+
     pub fn failed(reason: impl Into<String>) -> Self {
         Self {
             partial: HashMap::new(),
@@ -141,6 +149,13 @@ impl Enrichment {
 
 pub trait ListingEnricher: Send + Sync {
     fn enrich(&self, listing: &ListingEvent) -> Enrichment;
+
+    /// Whether the listing's page says the posting is gone. Asked before scoring, so a
+    /// dead listing costs no model call. Only a confident "closed" answers true: an
+    /// unreachable or unfetchable page is not evidence.
+    fn is_closed(&self, _listing: &ListingEvent) -> bool {
+        false
+    }
 }
 
 /// Whether enrichment will fetch this listing at all. Used to avoid charging the run
@@ -233,18 +248,27 @@ impl LlmEnricher {
         &self,
         listing: &ListingEvent,
         url: &str,
-    ) -> Result<(String, Option<String>), String> {
+    ) -> Result<(String, Option<String>), Unavailable> {
         let first = match self.fetcher.fetch(url) {
             Ok(page) => page,
             Err(FetchError::Refused(e)) => {
-                return Err(format!("link refused by the fetch guard: {e}"))
+                return Err(Unavailable::Failed(format!("link refused by the fetch guard: {e}")))
             }
             Err(FetchError::Failed(e)) => {
-                return Err(format!("could not fetch the listing: {e}"))
+                return Err(Unavailable::Failed(format!("could not fetch the listing: {e}")))
             }
         };
+        if is_closed(url, &first) {
+            return Err(Unavailable::Closed(format!(
+                "the listing is closed (HTTP {})",
+                first.status
+            )));
+        }
         if !(200..300).contains(&first.status) {
-            return Err(format!("the listing page returned HTTP {}", first.status));
+            return Err(Unavailable::Failed(format!(
+                "the listing page returned HTTP {}",
+                first.status
+            )));
         }
 
         let board = Board::of(&listing.url);
@@ -262,6 +286,12 @@ impl LlmEnricher {
         if board == Board::Other {
             if let Some(next) = listing_page::wrapper_link(&first.body, &first.final_url) {
                 if let Ok(ad) = self.fetcher.fetch(&next) {
+                    if is_closed(&next, &ad) {
+                        return Err(Unavailable::Closed(format!(
+                            "the employer's ad is closed (HTTP {})",
+                            ad.status
+                        )));
+                    }
                     if (200..300).contains(&ad.status) && !page_text(&ad.body).trim().is_empty() {
                         return Ok((page_text(&ad.body), Some(ad.final_url)));
                     }
@@ -273,6 +303,15 @@ impl LlmEnricher {
     }
 }
 
+enum Unavailable {
+    Closed(String),
+    Failed(String),
+}
+
+fn is_closed(requested_url: &str, page: &FetchedPage) -> bool {
+    crate::listing_check::is_confidently_closed(requested_url, &page.final_url, page.status, &page.body)
+}
+
 /// Strip a fetched page down to text. Never rendered, never injected into the webview
 /// (spec §6.3) — the only consumer is the prompt.
 pub fn page_text(html: &str) -> String {
@@ -280,6 +319,17 @@ pub fn page_text(html: &str) -> String {
 }
 
 impl ListingEnricher for LlmEnricher {
+    fn is_closed(&self, listing: &ListingEvent) -> bool {
+        let url = listing.url.trim();
+        if url.is_empty() || !listing_page_fetchable(listing) {
+            return false;
+        }
+        match self.fetcher.fetch(url) {
+            Ok(page) => is_closed(url, &page),
+            Err(_) => false,
+        }
+    }
+
     fn enrich(&self, listing: &ListingEvent) -> Enrichment {
         // The URL is the extractor's parsed anchor, never a model-supplied string, and
         // the fetcher re-validates it and every redirect hop.
@@ -293,7 +343,8 @@ impl ListingEnricher for LlmEnricher {
 
         let (text, employer_url) = match self.resolve(listing, url) {
             Ok(resolved) => resolved,
-            Err(reason) => return Enrichment::failed(reason),
+            Err(Unavailable::Closed(reason)) => return Enrichment::closed(reason),
+            Err(Unavailable::Failed(reason)) => return Enrichment::failed(reason),
         };
         if text.trim().is_empty() {
             return Enrichment::failed("the listing page had no readable text");
@@ -508,6 +559,17 @@ mod following_tests {
             );
             self
         }
+        fn status_page(mut self, url: &str, status: u16, body: &str) -> Self {
+            self.pages.insert(
+                url.to_string(),
+                FetchedPage {
+                    final_url: url.to_string(),
+                    status,
+                    body: body.to_string(),
+                },
+            );
+            self
+        }
         fn asked(&self) -> Vec<String> {
             self.asked.lock().unwrap().clone()
         }
@@ -583,6 +645,87 @@ mod following_tests {
         assert!(e.page_text.unwrap().contains("Apply by 1 October"));
         assert!(reader.read.lock().unwrap()[0].contains("Geodata Analyst"));
         assert_eq!(e.state, EnrichmentState::Partial);
+    }
+
+    #[test]
+    fn a_removed_listing_is_closed_and_never_read_by_the_model() {
+        for status in [404, 410] {
+            let fetcher = FakeFetcher::default().status_page(JOBINDEX, status, "<p>gone</p>");
+            let reader = FakeReader::default();
+
+            let e = enrich(&fetcher, &reader, &listing(JOBINDEX, "jobindex"));
+
+            assert_eq!(e.state, EnrichmentState::Closed, "HTTP {status}");
+            assert!(reader.read.lock().unwrap().is_empty(), "no model call for a dead page");
+        }
+    }
+
+    #[test]
+    fn the_precheck_flags_only_confidently_closed_pages() {
+        let ok = "https://careers.acme.example/jobs/1";
+        let gone = "https://careers.acme.example/jobs/2";
+        let down = "https://careers.acme.example/jobs/3";
+        let fetcher = FakeFetcher::default()
+            .page(ok, ok, "<p>Apply now</p>")
+            .status_page(gone, 410, "")
+            .status_page(down, 503, "");
+        let enricher =
+            LlmEnricher::with_seams(Box::new(fetcher), Box::new(FakeReader::default()));
+
+        assert!(!enricher.is_closed(&listing(ok, "other")));
+        assert!(enricher.is_closed(&listing(gone, "other")));
+        assert!(!enricher.is_closed(&listing(down, "other")), "an outage is not a closing");
+        assert!(!enricher.is_closed(&listing("https://nowhere.example/x", "other")));
+    }
+
+    #[test]
+    fn a_page_that_says_the_position_is_filled_is_closed() {
+        let url = "https://careers.acme.example/jobs/9";
+        let fetcher = FakeFetcher::default().page(
+            url,
+            url,
+            "<html><body><h1>Sorry, this position has been filled.</h1></body></html>",
+        );
+
+        let e = enrich(&fetcher, &FakeReader::default(), &listing(url, "other"));
+
+        assert_eq!(e.state, EnrichmentState::Closed);
+    }
+
+    #[test]
+    fn a_server_error_is_a_failure_not_a_closed_listing() {
+        let fetcher = FakeFetcher::default().status_page(JOBINDEX, 503, "<p>try later</p>");
+
+        let e = enrich(&fetcher, &FakeReader::default(), &listing(JOBINDEX, "jobindex"));
+
+        assert_eq!(e.state, EnrichmentState::Failed);
+    }
+
+    #[test]
+    fn a_live_page_that_only_mentions_404_stays_open() {
+        let url = "https://careers.acme.example/jobs/10";
+        let fetcher = FakeFetcher::default().page(
+            url,
+            url,
+            "<html><style>.e404{}</style><body><p>Apply now. Ref 404-22.</p></body></html>",
+        );
+
+        let e = enrich(&fetcher, &FakeReader::default(), &listing(url, "other"));
+
+        assert_ne!(e.state, EnrichmentState::Closed);
+    }
+
+    #[test]
+    fn a_closed_employer_ad_behind_a_wrapper_page_is_closed() {
+        let board = "https://www.jobbank.dk/job/123";
+        let full_ad = "https://careers.acme.example/jobs/42";
+        let fetcher = FakeFetcher::default()
+            .page(board, board, &format!(r#"<a href="{full_ad}">Apply on the employer site</a>"#))
+            .status_page(full_ad, 404, "gone");
+
+        let e = enrich(&fetcher, &FakeReader::default(), &listing(board, "other"));
+
+        assert_eq!(e.state, EnrichmentState::Closed);
     }
 
     #[test]

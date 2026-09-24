@@ -68,6 +68,7 @@ pub struct MailScanProgress {
     pub run_id: String,
     pub listings_committed: u32,
     pub messages_seen: u32,
+    pub stats: RunStats,
     pub status: RunStatus,
 }
 
@@ -239,7 +240,8 @@ fn flush_buffer(
 /// the run must stop.
 ///
 /// The gate runs here, before the listing takes a place in a pass-1 batch: a listing
-/// that is dismissed or already a Job costs no model call and no page fetch.
+/// that is dismissed or already a Job costs no model call and no page fetch, and one
+/// whose page says the posting is closed costs a page fetch but no model call.
 fn admit_listing(
     conn: &mut rusqlite::Connection,
     run_id: &str,
@@ -257,6 +259,10 @@ fn admit_listing(
             state.fail("E_DB", e);
             return Ok(false);
         }
+    }
+    if engine.is_closed(&listing) {
+        state.stats.count(persist::PersistOutcome::Closed);
+        return Ok(true);
     }
     state.buffer.push(listing);
     if state.buffer.len() >= engine.batch_size() {
@@ -616,6 +622,7 @@ fn drive_scan(
                         run_id: run_id.to_string(),
                         listings_committed: st.stats.listings_committed,
                         messages_seen: st.stats.messages_seen,
+                        stats: st.stats.clone(),
                         status: RunStatus::Running,
                     },
                 );
@@ -659,6 +666,7 @@ fn drive_scan(
             run_id: run_id.to_string(),
             listings_committed: state.stats.listings_committed,
             messages_seen: state.stats.messages_seen,
+            stats: state.stats.clone(),
             status: state.status,
         },
     );

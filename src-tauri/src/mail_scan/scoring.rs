@@ -518,6 +518,12 @@ impl ScoringEngine {
         }
     }
 
+    /// Whether the listing's page says the posting is gone. Costs a page fetch, never a
+    /// model call, so it runs before the listing takes a place in a scoring batch.
+    pub fn is_closed(&self, listing: &ListingEvent) -> bool {
+        self.enricher.as_ref().is_some_and(|e| e.is_closed(listing))
+    }
+
     /// Enrich a listing that reached the inbox, charging the run budget.
     ///
     /// Budget exhaustion here is not a failure: the match is already useful, so it is
