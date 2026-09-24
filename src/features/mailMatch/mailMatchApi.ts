@@ -66,6 +66,7 @@ export type MailScanSettingsPayload = {
   sinceDays: number;
   maxCalls: number;
   provider: string;
+  titleBlocklist: string[];
 };
 
 export type ResolvedSource = {

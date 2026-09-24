@@ -91,6 +91,7 @@ export function RunSummaryCard({
             </>
           ) : null}
         </li>
+        {stats.skippedByTitle > 0 ? <li>{t.summarySkippedByTitle(stats.skippedByTitle)}</li> : null}
         {stats.closed > 0 ? <li>{t.summaryClosed(stats.closed)}</li> : null}
         {stats.enrichmentFailures > 0 ? (
           <li>{t.summaryEnrichmentFailures(stats.enrichmentFailures)}</li>

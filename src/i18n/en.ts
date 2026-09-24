@@ -536,6 +536,7 @@ export const en = {
     summaryNew: (n: number) => `${n} new match${n === 1 ? "" : "es"}`,
     summaryAlreadyTracked: (n: number) => `${n} already on your board`,
     summaryUnderCutoff: (n: number) => `${n} below cutoff`,
+    summarySkippedByTitle: (n: number) => `${n} skipped by title`,
     summaryClosed: (n: number) => `${n} closed, skipped`,
     summarySuppressed: (n: number) => `${n} suppressed by a dismissal`,
     summarySuppressedLink: "Show what was suppressed",
@@ -612,6 +613,18 @@ export const en = {
     sinceLabel: "Look back (days)",
     budgetLabel: "Model calls per scan",
     budgetHint: "A scan stops cleanly at this cap and can be continued afterwards.",
+    titleBlocklistLabel: "Skip titles containing",
+    titleBlocklistPlaceholder: "lead, head of, manager, *leder",
+    titleBlocklistInfoLabel: "How to add words",
+    titleBlocklistHint:
+      "Listings whose title contains any of these are skipped before scoring, so they cost nothing.",
+    titleBlocklistHelp: [
+      "Separate entries with commas or put each on its own line: lead, principal, head of",
+      "Case does not matter, and a word matches only as a whole word: “lead” skips “Lead Data Scientist” but not “Leadership Programme”.",
+      "Use several words for a phrase: “head of” skips “Head of Data” only when the words appear together, in that order.",
+      "Add * at the start or end to match longer words: “*leder” skips “Teamleder” and “Afdelingsleder”, “manag*” skips “Manager” and “Managing”.",
+      "Only the title is checked. Skipped listings are not queued, and changing this list affects future scans only.",
+    ],
     providerLabel: "Scoring provider",
     scoringKeyHint:
       "Mail scan uses the Scaleway API key from Settings → Integrations (Save key — not Save overrides).",

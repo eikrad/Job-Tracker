@@ -36,6 +36,9 @@ pub struct MailScanSettings {
     pub max_calls: u32,
     #[serde(default = "default_provider")]
     pub provider: String,
+    /// Words or phrases that skip a listing when its title contains them.
+    #[serde(default)]
+    pub title_blocklist: Vec<String>,
 }
 
 fn default_cutoff() -> i32 {
@@ -59,6 +62,7 @@ impl Default for MailScanSettings {
             since_days: default_since_days(),
             max_calls: default_max_calls(),
             provider: default_provider(),
+            title_blocklist: Vec::new(),
         }
     }
 }
