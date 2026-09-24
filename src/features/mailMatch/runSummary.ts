@@ -19,6 +19,8 @@ export type RunStats = {
   enrichmentFailures: number;
   /** Listings whose page says the posting is gone; never scored, never queued. */
   closed: number;
+  /** Listings skipped because the title has a word from the user's blocklist. */
+  skippedByTitle: number;
   errors: number;
   budgetExhausted: boolean;
   listingLimitReached: boolean;
@@ -35,6 +37,7 @@ export const emptyStats: RunStats = {
   llmCalls: 0,
   enrichmentFailures: 0,
   closed: 0,
+  skippedByTitle: 0,
   errors: 0,
   budgetExhausted: false,
   listingLimitReached: false,
@@ -87,6 +90,7 @@ export function parseStats(raw: unknown): RunStats {
     llmCalls: asNumber(source.llmCalls),
     enrichmentFailures: asNumber(source.enrichmentFailures),
     closed: asNumber(source.closed),
+    skippedByTitle: asNumber(source.skippedByTitle),
     errors: asNumber(source.errors),
     budgetExhausted: source.budgetExhausted === true,
     listingLimitReached: source.listingLimitReached === true,
@@ -141,6 +145,7 @@ export function applyProgress(current: RunView | null, event: ProgressEvent): Ru
       llmCalls: forward(prev.llmCalls, incoming.llmCalls),
       enrichmentFailures: forward(prev.enrichmentFailures, incoming.enrichmentFailures),
       closed: forward(prev.closed, incoming.closed),
+      skippedByTitle: forward(prev.skippedByTitle, incoming.skippedByTitle),
       errors: forward(prev.errors, incoming.errors),
       budgetExhausted: prev.budgetExhausted || incoming.budgetExhausted,
       listingLimitReached: prev.listingLimitReached || incoming.listingLimitReached,

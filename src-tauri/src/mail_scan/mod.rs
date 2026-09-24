@@ -19,6 +19,7 @@ pub mod sidecar;
 pub mod scoring;
 pub mod spawn;
 pub mod status;
+pub mod title_filter;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -82,6 +83,7 @@ struct DriveState {
     /// Listings held back so pass 1 can be batched (spec §8.3). Bounded by the batch
     /// size, and each one is still committed in its own transaction after scoring.
     buffer: Vec<ListingEvent>,
+    title_filter: title_filter::TitleFilter,
 }
 
 impl DriveState {
@@ -93,7 +95,13 @@ impl DriveState {
             error_summary: None,
             sources,
             buffer: Vec::new(),
+            title_filter: title_filter::TitleFilter::default(),
         }
+    }
+
+    fn with_title_filter(mut self, filter: title_filter::TitleFilter) -> Self {
+        self.title_filter = filter;
+        self
     }
 
     fn fail(&mut self, code: &str, summary: String) {
@@ -259,6 +267,11 @@ fn admit_listing(
             state.fail("E_DB", e);
             return Ok(false);
         }
+    }
+    if state.title_filter.matches(&listing.title) {
+        state.stats.listings_committed += 1;
+        state.stats.skipped_by_title += 1;
+        return Ok(true);
     }
     if engine.is_closed(&listing) {
         state.stats.count(persist::PersistOutcome::Closed);
@@ -512,6 +525,7 @@ pub fn mail_scan_start(
         });
     }
 
+    let title_filter = title_filter::TitleFilter::new(&settings.title_blocklist);
     let app2 = app.clone();
     let runtime2 = runtime.inner.clone();
     let run_id2 = run_id.clone();
@@ -523,6 +537,7 @@ pub fn mail_scan_start(
             &mut child,
             &cancel_file,
             source_meta,
+            title_filter,
             &mut engine,
         );
         let mut guard = runtime2.lock().unwrap_or_else(|e| e.into_inner());
@@ -590,10 +605,11 @@ fn drive_scan(
     child: &mut SpawnedScan,
     cancel_file: &Path,
     sources: HashMap<String, MailSource>,
+    title_filter: title_filter::TitleFilter,
     engine: &mut ScoringEngine,
 ) -> Result<(), String> {
     let mut conn = db::connection(app)?;
-    let mut state = DriveState::new(sources);
+    let mut state = DriveState::new(sources).with_title_filter(title_filter);
     let mut last_emit = std::time::Instant::now()
         .checked_sub(std::time::Duration::from_secs(1))
         .unwrap_or_else(std::time::Instant::now);
@@ -678,11 +694,22 @@ fn drive_scan(
 pub fn consume_event_stream<R: std::io::Read>(
     conn: &mut rusqlite::Connection,
     run_id: &str,
-    mut reader: R,
+    reader: R,
     engine: &mut ScoringEngine,
 ) -> Result<RunStats, String> {
+    consume_event_stream_filtered(conn, run_id, reader, engine, title_filter::TitleFilter::default())
+}
+
+#[cfg(test)]
+pub fn consume_event_stream_filtered<R: std::io::Read>(
+    conn: &mut rusqlite::Connection,
+    run_id: &str,
+    mut reader: R,
+    engine: &mut ScoringEngine,
+    filter: title_filter::TitleFilter,
+) -> Result<RunStats, String> {
     start_run(conn, run_id)?;
-    let mut state = DriveState::new(HashMap::new());
+    let mut state = DriveState::new(HashMap::new()).with_title_filter(filter);
     consume_reader(conn, run_id, &mut reader, engine, &mut state, |_, _| {})?;
     update_run_stats(conn, run_id, &state.stats)?;
     finish_run(

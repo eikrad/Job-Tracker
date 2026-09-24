@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { en } from "../../i18n/en";
 import { llmKeyStatus } from "../../lib/tauriApi";
+import { formatBlocklist, parseBlocklist } from "./titleBlocklist";
 import {
   mailScanDeleteAllData,
   mailScanDetectThunderbird,
@@ -60,6 +61,8 @@ export function MailScanSettings() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scoringKeyConfigured, setScoringKeyConfigured] = useState(false);
+  const [blocklistText, setBlocklistText] = useState("");
+  const [blocklistHelpOpen, setBlocklistHelpOpen] = useState(false);
 
   const load = useCallback(
     () =>
@@ -73,6 +76,7 @@ export function MailScanSettings() {
       ])
         .then(([loaded, sources, short, full, probe, keyStatus]) => {
           setSettings(loaded);
+          setBlocklistText(formatBlocklist(loaded.titleBlocklist ?? []));
           setResolved(sources);
           setProfiles({ short, full });
           setSidecar(probe);
@@ -392,6 +396,43 @@ export function MailScanSettings() {
         />
       </label>
       <p className="muted settingsHint">{t.budgetHint}</p>
+
+      <div className="settingsRow blocklistRow">
+        <label htmlFor="title-blocklist">{t.titleBlocklistLabel}</label>
+        <button
+          type="button"
+          className="infoButton"
+          aria-label={t.titleBlocklistInfoLabel}
+          aria-expanded={blocklistHelpOpen}
+          aria-controls="title-blocklist-help"
+          onClick={() => setBlocklistHelpOpen((open) => !open)}
+        >
+          i
+        </button>
+      </div>
+      {blocklistHelpOpen ? (
+        <ul id="title-blocklist-help" className="blocklistHelp muted">
+          {t.titleBlocklistHelp.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ) : null}
+      <textarea
+        id="title-blocklist"
+        className="blocklistInput"
+        rows={2}
+        value={blocklistText}
+        placeholder={t.titleBlocklistPlaceholder}
+        onChange={(e) => setBlocklistText(e.target.value)}
+        onBlur={() => {
+          const entries = parseBlocklist(blocklistText);
+          setBlocklistText(formatBlocklist(entries));
+          if (entries.join("\n") !== (settings.titleBlocklist ?? []).join("\n")) {
+            patch({ titleBlocklist: entries });
+          }
+        }}
+      />
+      <p className="muted settingsHint">{t.titleBlocklistHint}</p>
 
       <h4 className="settingsSubTitle">{t.sidecarHeading}</h4>
       {sidecar?.available ? (

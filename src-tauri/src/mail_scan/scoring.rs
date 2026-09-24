@@ -1170,6 +1170,16 @@ mod tests {
         engine: &mut ScoringEngine,
         listings: &[ListingEvent],
     ) -> crate::mail_scan::persist::RunStats {
+        scan_filtered(conn, run_id, engine, listings, Default::default())
+    }
+
+    fn scan_filtered(
+        conn: &mut rusqlite::Connection,
+        run_id: &str,
+        engine: &mut ScoringEngine,
+        listings: &[ListingEvent],
+        filter: crate::mail_scan::title_filter::TitleFilter,
+    ) -> crate::mail_scan::persist::RunStats {
         let mut stream = String::from(
             r#"{"t":"started","protocol":2,"run_id":"r","sidecar_version":"1.0.0","sources":1}"#,
         );
@@ -1186,7 +1196,8 @@ mod tests {
             stream.push_str(&line.to_string());
         }
         stream.push('\n');
-        crate::mail_scan::consume_event_stream(conn, run_id, stream.as_bytes(), engine).unwrap()
+        crate::mail_scan::consume_event_stream_filtered(conn, run_id, stream.as_bytes(), engine, filter)
+            .unwrap()
     }
 
     #[test]
@@ -1231,6 +1242,25 @@ mod tests {
         assert_eq!(stats.listings_committed, 1, "{stats:?}");
         assert_eq!(stats.inbox_new, 0, "{stats:?}");
         assert_eq!(stats.llm_calls, 0, "{stats:?}");
+    }
+
+    #[test]
+    fn a_blocked_title_costs_no_scoring_and_no_fetch() {
+        let mut conn = db();
+        let blocked = listing("Lead Data Scientist", "leads the team");
+        let fine = listing("Rust Engineer", "great role");
+        let fetches = Arc::new(AtomicUsize::new(0));
+        let scorer = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(&scorer, ScoringConfig::default())
+            .with_enricher(Box::new(CountingEnricher(fetches.clone())));
+        let filter = crate::mail_scan::title_filter::TitleFilter::new(&["lead".to_string()]);
+
+        let stats = scan_filtered(&mut conn, "r1", &mut engine, &[blocked, fine], filter);
+
+        assert_eq!(scorer.batch_sizes(), vec![1], "only the other listing is scored");
+        assert_eq!(fetches.load(Ordering::SeqCst), 1, "and only it is fetched");
+        assert_eq!(stats.skipped_by_title, 1, "{stats:?}");
+        assert_eq!(stats.inbox_new, 1, "{stats:?}");
     }
 
     #[test]

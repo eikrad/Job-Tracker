@@ -31,6 +31,9 @@ pub struct RunStats {
     /// Listings whose page says the posting is gone, kept out of the inbox.
     #[serde(default)]
     pub closed: u32,
+    /// Listings skipped because the title contains a word from the user's blocklist.
+    #[serde(default)]
+    pub skipped_by_title: u32,
     pub errors: u32,
     /// Run hit the call cap. Not a failure — the run still `completed`.
     pub budget_exhausted: bool,
