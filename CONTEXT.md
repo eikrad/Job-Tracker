@@ -15,7 +15,7 @@ A review queue of scored and enriched candidates from local job-alert mail folde
 _Avoid_: Capture Inbox, email inbox, draft jobs
 
 **Mail Match**:
-One candidate listing from a Mail Scan (score, reasons, draft fields), not yet a Job. Accept is one click: it creates a Job in status Interesting from the draft, and can be undone right after (the Job is deleted and the match returns to pending). A listing that is already a Job — its fingerprint was accepted before, or a Job carries its link as `url` or Board Link — is recorded as a sighting and never becomes a Mail Match again; a scan never writes onto an existing Job. That check (and the dismissal check) runs before scoring, so such a listing costs no model call and no page fetch.
+One candidate listing from a Mail Scan (score, reasons, draft fields), not yet a Job. Accept is one click: it creates a Job in status Interesting from the draft, and can be undone right after (the Job is deleted and the match returns to pending). A listing that is already a Job — its fingerprint was accepted before, or a Job carries its link as `url` or Board Link — is recorded as a sighting and never becomes a Mail Match again; a scan never writes onto an existing Job. That check (and the dismissal check and the title blocklist) runs before scoring, so such a listing costs no model call and no page fetch. A **Closed listing** — its page says the posting is gone — costs one page fetch but no model call, and never becomes a Mail Match.
 _Avoid_: Job, application, capture item, update suggestion (retired: scans no longer propose changes to existing Jobs)
 
 **Job**:

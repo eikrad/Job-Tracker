@@ -82,8 +82,18 @@ struct DriveState {
     sources: HashMap<String, MailSource>,
     /// Listings held back so pass 1 can be batched (spec §8.3). Bounded by the batch
     /// size, and each one is still committed in its own transaction after scoring.
-    buffer: Vec<ListingEvent>,
+    buffer: Vec<Admitted>,
     title_filter: title_filter::TitleFilter,
+    /// Written by `mail_scan_cancel`. The sidecar watches it too, but listings it
+    /// already wrote to the pipe would otherwise each still cost a fetch and a call.
+    cancel_file: Option<PathBuf>,
+}
+
+/// A listing waiting for its scoring batch, with the page the closed-check fetched so
+/// enrichment does not fetch it again.
+struct Admitted {
+    listing: ListingEvent,
+    first_page: Option<enrichment::FetchedPage>,
 }
 
 impl DriveState {
@@ -96,12 +106,22 @@ impl DriveState {
             sources,
             buffer: Vec::new(),
             title_filter: title_filter::TitleFilter::default(),
+            cancel_file: None,
         }
     }
 
     fn with_title_filter(mut self, filter: title_filter::TitleFilter) -> Self {
         self.title_filter = filter;
         self
+    }
+
+    fn with_cancel_file(mut self, cancel_file: &Path) -> Self {
+        self.cancel_file = Some(cancel_file.to_path_buf());
+        self
+    }
+
+    fn cancel_requested(&self) -> bool {
+        self.cancel_file.as_deref().is_some_and(Path::exists)
     }
 
     fn fail(&mut self, code: &str, summary: String) {
@@ -213,26 +233,26 @@ fn flush_buffer(
         return Ok(true);
     }
     let buffered = std::mem::take(&mut state.buffer);
-    let refs: Vec<&ListingEvent> = buffered.iter().collect();
+    let refs: Vec<&ListingEvent> = buffered.iter().map(|a| &a.listing).collect();
     let batch = engine.score_batch(conn, &refs)?;
     let identities = ScoringIdentities {
         pass1: engine.identity(1),
         pass2: engine.identity(2),
     };
 
-    for (listing, scored) in buffered.iter().zip(batch.results.iter()) {
+    for (Admitted { listing, first_page }, scored) in buffered.into_iter().zip(batch.results.iter()) {
         let Some(scored) = scored else { continue };
-        // Only what reached the inbox is worth a fetch; under-cutoff listings are
-        // recorded as sightings and never enriched.
+        // Only what reached the inbox is enriched; under-cutoff listings are recorded
+        // as sightings and never sent to the model.
         let enrichment = if scored.outcome == Verdict::Inbox {
-            engine.enrich(listing)
+            engine.enrich(&listing, first_page)
         } else {
             Enrichment::skipped()
         };
         if enrichment.state == EnrichmentState::Failed {
             state.stats.enrichment_failures += 1;
         }
-        match persist_listing(conn, run_id, listing, scored, &enrichment, &identities) {
+        match persist_listing(conn, run_id, &listing, scored, &enrichment, &identities) {
             Ok(outcome) => state.stats.count(outcome),
             Err(e) => {
                 state.fail("E_DB", e);
@@ -248,8 +268,9 @@ fn flush_buffer(
 /// the run must stop.
 ///
 /// The gate runs here, before the listing takes a place in a pass-1 batch: a listing
-/// that is dismissed or already a Job costs no model call and no page fetch, and one
-/// whose page says the posting is closed costs a page fetch but no model call.
+/// that is dismissed, already a Job, or has a blocked title costs no model call and no
+/// page fetch, and one whose page says the posting is closed costs a page fetch but no
+/// model call. That fetch is kept for enrichment, so no listing is fetched twice.
 fn admit_listing(
     conn: &mut rusqlite::Connection,
     run_id: &str,
@@ -273,11 +294,19 @@ fn admit_listing(
         state.stats.skipped_by_title += 1;
         return Ok(true);
     }
-    if engine.is_closed(&listing) {
-        state.stats.count(persist::PersistOutcome::Closed);
-        return Ok(true);
-    }
-    state.buffer.push(listing);
+    let first_page = match engine.precheck(conn, &listing) {
+        Ok(enrichment::Precheck::Closed) => {
+            state.stats.count(persist::PersistOutcome::Closed);
+            return Ok(true);
+        }
+        Ok(enrichment::Precheck::Open(page)) => Some(page),
+        Ok(enrichment::Precheck::Unknown) => None,
+        Err(e) => {
+            state.fail("E_DB", e);
+            return Ok(false);
+        }
+    };
+    state.buffer.push(Admitted { listing, first_page });
     if state.buffer.len() >= engine.batch_size() {
         return flush_buffer(conn, run_id, engine, state);
     }
@@ -393,6 +422,15 @@ fn consume_reader<R: std::io::Read>(
     let mut line_buf: Vec<u8> = Vec::with_capacity(4096);
     let mut stopped = false;
     loop {
+        // Checked here, not only by the sidecar: the pipe can hold a hundred listings
+        // the sidecar wrote before it saw the cancel, and scoring them first would make
+        // Cancel look broken for minutes. Buffered listings are dropped unscored; their
+        // mail's cursor was never advanced, so the next scan picks them up.
+        if state.cancel_requested() {
+            state.status = RunStatus::Cancelled;
+            stopped = true;
+            break;
+        }
         match read_event_line(reader, &mut line_buf, MAX_LINE_BYTES) {
             Ok(None) => break,
             Ok(Some(event)) => {
@@ -609,7 +647,9 @@ fn drive_scan(
     engine: &mut ScoringEngine,
 ) -> Result<(), String> {
     let mut conn = db::connection(app)?;
-    let mut state = DriveState::new(sources).with_title_filter(title_filter);
+    let mut state = DriveState::new(sources)
+        .with_title_filter(title_filter)
+        .with_cancel_file(cancel_file);
     let mut last_emit = std::time::Instant::now()
         .checked_sub(std::time::Duration::from_secs(1))
         .unwrap_or_else(std::time::Instant::now);

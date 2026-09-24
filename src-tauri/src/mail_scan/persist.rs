@@ -95,7 +95,9 @@ pub enum PersistOutcome {
     /// Scored and recorded as a sighting, but it is a Job the user already tracks — no
     /// inbox row. Alert mails repeat listings for weeks; each repeat is not a new match.
     AlreadyTracked,
-    /// The listing page says the posting is gone — recorded as a sighting, no inbox row.
+    /// The listing page says the posting is gone — no inbox row. Caught before scoring,
+    /// nothing is written (a later scan fetches it again, but never scores it); caught
+    /// at enrichment, its score is already cached as a sighting.
     Closed,
 }
 
@@ -158,6 +160,21 @@ pub fn finish_run(
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Close runs a previous app process left `running`: it quit or crashed mid-scan, so
+/// nothing will ever finish them. Only safe at startup, before this process can have
+/// started a run of its own. Their listings are kept, and cursors were never advanced
+/// past unscored mail, so the next scan picks up where they stopped.
+pub fn close_interrupted_runs(conn: &Connection) -> Result<usize, String> {
+    conn.execute(
+        "UPDATE mail_scan_runs
+         SET status = 'failed', finished_at = ?1, error_code = 'E_INTERRUPTED',
+             error_summary = 'The app closed while this scan was running.'
+         WHERE status = 'running'",
+        params![chrono::Utc::now().to_rfc3339()],
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -864,6 +881,30 @@ mod tests {
             .query_row("SELECT score FROM mail_match_inbox", [], |r| r.get(0))
             .unwrap();
         assert_eq!(score, 9);
+    }
+
+    #[test]
+    fn runs_left_running_by_a_previous_process_are_closed_as_interrupted() {
+        let mut conn = db();
+        start_run(&mut conn, "stale").unwrap();
+        start_run(&mut conn, "done").unwrap();
+        finish_run(&mut conn, "done", RunStatus::Completed, None, None).unwrap();
+
+        assert_eq!(close_interrupted_runs(&conn).unwrap(), 1);
+
+        let row = |id: &str| -> (String, Option<String>, Option<String>) {
+            conn.query_row(
+                "SELECT status, error_code, finished_at FROM mail_scan_runs WHERE run_id = ?1",
+                params![id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap()
+        };
+        let (status, code, finished) = row("stale");
+        assert_eq!(status, "failed");
+        assert_eq!(code.as_deref(), Some("E_INTERRUPTED"));
+        assert!(finished.is_some());
+        assert_eq!(row("done").0, "completed", "finished runs are left alone");
     }
 
     #[test]

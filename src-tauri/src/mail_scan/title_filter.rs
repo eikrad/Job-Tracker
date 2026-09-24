@@ -3,7 +3,11 @@
 //! Runs in the gate, before any page fetch or model call, so a skipped listing is free.
 //! Matching is on whole words, case-insensitive, so "lead" does not hit "leadership" or
 //! "Platform". `*` at the start or end of a word matches any letters there, which is
-//! how compound words are caught: `*leder` matches "teamleder" and "afdelingsleder".
+//! how compound words are caught: `*leder` matches "teamleder" and "afdelingsleder",
+//! and `*lead*` matches any word containing "lead".
+//!
+//! An entry is split into words the same way a title is, so `team-lead` is the phrase
+//! "team lead" and matches "Team Lead" and "Team-lead", never "Team Assistant".
 
 #[derive(Debug, Clone, Default)]
 pub struct TitleFilter {
@@ -15,14 +19,16 @@ enum Token {
     Exact(String),
     Prefix(String),
     Suffix(String),
+    Contains(String),
 }
 
 impl Token {
-    fn parse(word: &str, star_before: bool, star_after: bool) -> Self {
+    fn parse(word: String, star_before: bool, star_after: bool) -> Self {
         match (star_before, star_after) {
-            (true, false) => Token::Suffix(word.to_string()),
-            (false, true) => Token::Prefix(word.to_string()),
-            _ => Token::Exact(word.to_string()),
+            (false, false) => Token::Exact(word),
+            (false, true) => Token::Prefix(word),
+            (true, false) => Token::Suffix(word),
+            (true, true) => Token::Contains(word),
         }
     }
 
@@ -31,6 +37,7 @@ impl Token {
             Token::Exact(w) => word == w,
             Token::Prefix(w) => word.starts_with(w.as_str()),
             Token::Suffix(w) => word.ends_with(w.as_str()),
+            Token::Contains(w) => word.contains(w.as_str()),
         }
     }
 }
@@ -42,17 +49,19 @@ fn words(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// One blocklist entry as tokens. `*` counts only next to a word; anywhere else it is
-/// ignored like any other punctuation.
+/// One blocklist entry as tokens, split into words exactly like a title. A `*` at the
+/// start of the entry opens its first word, one at the end opens its last; anywhere
+/// else it is ignored like any other punctuation.
 fn parse_entry(entry: &str) -> Vec<Token> {
-    entry
-        .split_whitespace()
-        .filter_map(|chunk| {
-            let star_before = chunk.starts_with('*');
-            let star_after = chunk.ends_with('*');
-            let word = words(chunk).into_iter().next()?;
-            Some(Token::parse(&word, star_before, star_after))
-        })
+    let entry = entry.trim();
+    let star_before = entry.starts_with('*');
+    let star_after = entry.ends_with('*');
+    let words = words(entry);
+    let last = words.len().saturating_sub(1);
+    words
+        .into_iter()
+        .enumerate()
+        .map(|(i, word)| Token::parse(word, star_before && i == 0, star_after && i == last))
         .collect()
 }
 
@@ -124,6 +133,24 @@ mod tests {
         assert!(f.matches("Chef for data"));
         assert!(f.matches("Team Lead – ML"));
         assert!(f.matches("Team-lead, ML"));
+        assert!(!f.matches("Team Assistant"), "every word of the entry must match");
+    }
+
+    #[test]
+    fn a_star_on_both_sides_matches_inside_a_word() {
+        let f = filter(&["*lead*"]);
+        assert!(f.matches("Teamleader"));
+        assert!(f.matches("Leadership Programme"));
+        assert!(f.matches("Lead Engineer"));
+        assert!(!f.matches("Data Engineer"));
+    }
+
+    #[test]
+    fn stars_only_open_the_outer_words_of_a_phrase() {
+        let f = filter(&["head of*"]);
+        assert!(f.matches("Head of Data"));
+        assert!(f.matches("Head offshore ops"), "last word is a prefix");
+        assert!(!f.matches("Overhead of Data"), "first word stays whole");
     }
 
     #[test]

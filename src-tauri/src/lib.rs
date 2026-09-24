@@ -18,6 +18,14 @@ pub fn run() {
             if let Err(e) = secrets::init_app_store(app.handle()) {
                 log::warn!("Secret store init failed: {}", secrets::redact(&e));
             }
+            // No scan can be running yet in this process, so any `running` row is left
+            // over from one that quit mid-scan. Before first launch the table may not
+            // exist; that is not worth failing startup over.
+            if let Err(e) = db::connection(app.handle())
+                .and_then(|conn| mail_scan::persist::close_interrupted_runs(&conn))
+            {
+                log::warn!("Could not close interrupted mail scans: {e}");
+            }
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

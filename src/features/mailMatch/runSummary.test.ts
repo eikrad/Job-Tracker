@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyProgress,
   emptyStats,
+  idleSeconds,
   isTerminal,
   parseStats,
   progressPercent,
@@ -108,6 +109,38 @@ describe("live progress", () => {
       expect(view.status).toBe(status);
       expect(isTerminal(view)).toBe(true);
     }
+  });
+
+  it("counts idle time from the last counter that moved", () => {
+    const event = { runId: "ms_1", listingsCommitted: 5, messagesSeen: 0, status: "running" };
+    let view = applyProgress(null, event, 1_000);
+    view = applyProgress(view, { ...event, stats: { llmCalls: 2 } }, 4_000);
+    expect(idleSeconds(view, 10_000)).toBe(6);
+    // An event that moves nothing (or moves a counter backwards) is not activity.
+    view = applyProgress(view, { ...event, listingsCommitted: 3 }, 9_000);
+    expect(idleSeconds(view, 10_000)).toBe(6);
+  });
+
+  it("has no idle time once the run is over", () => {
+    const view = applyProgress(
+      null,
+      { runId: "ms_1", listingsCommitted: 1, messagesSeen: 1, status: "completed" },
+      1_000,
+    );
+    expect(idleSeconds(view, 99_000)).toBeNull();
+  });
+
+  it("forwards every counter, not only the listed ones", () => {
+    const view = applyProgress(null, {
+      runId: "ms_1",
+      listingsCommitted: 1,
+      messagesSeen: 0,
+      status: "running",
+      stats: { closed: 4, skippedByTitle: 2, budgetExhausted: true },
+    });
+    expect(view.stats.closed).toBe(4);
+    expect(view.stats.skippedByTitle).toBe(2);
+    expect(view.stats.budgetExhausted).toBe(true);
   });
 
   it("treats an unknown status as still running", () => {

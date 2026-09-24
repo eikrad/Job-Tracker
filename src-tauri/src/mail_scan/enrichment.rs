@@ -150,12 +150,29 @@ impl Enrichment {
 pub trait ListingEnricher: Send + Sync {
     fn enrich(&self, listing: &ListingEvent) -> Enrichment;
 
-    /// Whether the listing's page says the posting is gone. Asked before scoring, so a
-    /// dead listing costs no model call. Only a confident "closed" answers true: an
-    /// unreachable or unfetchable page is not evidence.
-    fn is_closed(&self, _listing: &ListingEvent) -> bool {
-        false
+    /// Enrich from a page [`Self::precheck`] already fetched, so a listing that reaches
+    /// the inbox is not fetched twice.
+    fn enrich_prefetched(&self, listing: &ListingEvent, _first_page: FetchedPage) -> Enrichment {
+        self.enrich(listing)
     }
+
+    /// Fetch the listing's page and say whether the posting is gone. Asked before
+    /// scoring, so a dead listing costs no model call. Only a confident "closed" is
+    /// [`Precheck::Closed`]: an unreachable or unfetchable page is not evidence.
+    fn precheck(&self, _listing: &ListingEvent) -> Precheck {
+        Precheck::Unknown
+    }
+}
+
+/// What the pre-scoring page fetch found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Precheck {
+    /// The page says the posting is gone.
+    Closed,
+    /// The page is live; kept so enrichment can reuse it.
+    Open(FetchedPage),
+    /// Not fetched, or the fetch failed. Not evidence either way.
+    Unknown,
 }
 
 /// Whether enrichment will fetch this listing at all. Used to avoid charging the run
@@ -248,24 +265,25 @@ impl LlmEnricher {
         &self,
         listing: &ListingEvent,
         url: &str,
-    ) -> Result<(String, Option<String>), Unavailable> {
-        let first = match self.fetcher.fetch(url) {
+        prefetched: Option<FetchedPage>,
+    ) -> Result<(String, Option<String>), ResolveError> {
+        let first = match prefetched.map_or_else(|| self.fetcher.fetch(url), Ok) {
             Ok(page) => page,
             Err(FetchError::Refused(e)) => {
-                return Err(Unavailable::Failed(format!("link refused by the fetch guard: {e}")))
+                return Err(ResolveError::Failed(format!("link refused by the fetch guard: {e}")))
             }
             Err(FetchError::Failed(e)) => {
-                return Err(Unavailable::Failed(format!("could not fetch the listing: {e}")))
+                return Err(ResolveError::Failed(format!("could not fetch the listing: {e}")))
             }
         };
-        if is_closed(url, &first) {
-            return Err(Unavailable::Closed(format!(
+        if page_says_closed(url, &first) {
+            return Err(ResolveError::Closed(format!(
                 "the listing is closed (HTTP {})",
                 first.status
             )));
         }
         if !(200..300).contains(&first.status) {
-            return Err(Unavailable::Failed(format!(
+            return Err(ResolveError::Failed(format!(
                 "the listing page returned HTTP {}",
                 first.status
             )));
@@ -286,8 +304,8 @@ impl LlmEnricher {
         if board == Board::Other {
             if let Some(next) = listing_page::wrapper_link(&first.body, &first.final_url) {
                 if let Ok(ad) = self.fetcher.fetch(&next) {
-                    if is_closed(&next, &ad) {
-                        return Err(Unavailable::Closed(format!(
+                    if page_says_closed(&next, &ad) {
+                        return Err(ResolveError::Closed(format!(
                             "the employer's ad is closed (HTTP {})",
                             ad.status
                         )));
@@ -303,12 +321,13 @@ impl LlmEnricher {
     }
 }
 
-enum Unavailable {
+/// Why [`LlmEnricher::resolve`] produced no page text.
+enum ResolveError {
     Closed(String),
     Failed(String),
 }
 
-fn is_closed(requested_url: &str, page: &FetchedPage) -> bool {
+fn page_says_closed(requested_url: &str, page: &FetchedPage) -> bool {
     crate::listing_check::is_confidently_closed(requested_url, &page.final_url, page.status, &page.body)
 }
 
@@ -318,19 +337,8 @@ pub fn page_text(html: &str) -> String {
     crate::job_search::extract_job_page_text(html, MAX_PAGE_CHARS)
 }
 
-impl ListingEnricher for LlmEnricher {
-    fn is_closed(&self, listing: &ListingEvent) -> bool {
-        let url = listing.url.trim();
-        if url.is_empty() || !listing_page_fetchable(listing) {
-            return false;
-        }
-        match self.fetcher.fetch(url) {
-            Ok(page) => is_closed(url, &page),
-            Err(_) => false,
-        }
-    }
-
-    fn enrich(&self, listing: &ListingEvent) -> Enrichment {
+impl LlmEnricher {
+    fn enrich_from(&self, listing: &ListingEvent, prefetched: Option<FetchedPage>) -> Enrichment {
         // The URL is the extractor's parsed anchor, never a model-supplied string, and
         // the fetcher re-validates it and every redirect hop.
         let url = listing.url.trim();
@@ -341,10 +349,10 @@ impl ListingEnricher for LlmEnricher {
             return Enrichment::not_fetchable();
         }
 
-        let (text, employer_url) = match self.resolve(listing, url) {
+        let (text, employer_url) = match self.resolve(listing, url, prefetched) {
             Ok(resolved) => resolved,
-            Err(Unavailable::Closed(reason)) => return Enrichment::closed(reason),
-            Err(Unavailable::Failed(reason)) => return Enrichment::failed(reason),
+            Err(ResolveError::Closed(reason)) => return Enrichment::closed(reason),
+            Err(ResolveError::Failed(reason)) => return Enrichment::failed(reason),
         };
         if text.trim().is_empty() {
             return Enrichment::failed("the listing page had no readable text");
@@ -359,6 +367,28 @@ impl ListingEnricher for LlmEnricher {
             employer_url,
             ..enrichment.with_page_text(text)
         }
+    }
+}
+
+impl ListingEnricher for LlmEnricher {
+    fn precheck(&self, listing: &ListingEvent) -> Precheck {
+        let url = listing.url.trim();
+        if url.is_empty() || !listing_page_fetchable(listing) {
+            return Precheck::Unknown;
+        }
+        match self.fetcher.fetch(url) {
+            Ok(page) if page_says_closed(url, &page) => Precheck::Closed,
+            Ok(page) => Precheck::Open(page),
+            Err(_) => Precheck::Unknown,
+        }
+    }
+
+    fn enrich(&self, listing: &ListingEvent) -> Enrichment {
+        self.enrich_from(listing, None)
+    }
+
+    fn enrich_prefetched(&self, listing: &ListingEvent, first_page: FetchedPage) -> Enrichment {
+        self.enrich_from(listing, Some(first_page))
     }
 }
 
@@ -671,11 +701,29 @@ mod following_tests {
             .status_page(down, 503, "");
         let enricher =
             LlmEnricher::with_seams(Box::new(fetcher), Box::new(FakeReader::default()));
+        let check = |url: &str| enricher.precheck(&listing(url, "other"));
 
-        assert!(!enricher.is_closed(&listing(ok, "other")));
-        assert!(enricher.is_closed(&listing(gone, "other")));
-        assert!(!enricher.is_closed(&listing(down, "other")), "an outage is not a closing");
-        assert!(!enricher.is_closed(&listing("https://nowhere.example/x", "other")));
+        assert!(matches!(check(ok), Precheck::Open(_)));
+        assert_eq!(check(gone), Precheck::Closed);
+        assert_ne!(check(down), Precheck::Closed, "an outage is not a closing");
+        assert_eq!(check("https://nowhere.example/x"), Precheck::Unknown);
+    }
+
+    #[test]
+    fn enrichment_reuses_the_prechecked_page_instead_of_fetching_again() {
+        let url = "https://careers.acme.example/jobs/1";
+        let fetcher = FakeFetcher::default().page(url, url, "<p>Apply now</p>");
+        let enricher =
+            LlmEnricher::with_seams(Box::new(fetcher.clone()), Box::new(FakeReader::default()));
+        let l = listing(url, "other");
+
+        let Precheck::Open(page) = enricher.precheck(&l) else {
+            panic!("a live page is open");
+        };
+        let e = enricher.enrich_prefetched(&l, page);
+
+        assert_eq!(fetcher.asked(), vec![url.to_string()], "one fetch for both steps");
+        assert_eq!(e.page_text.as_deref(), Some("Apply now"));
     }
 
     #[test]

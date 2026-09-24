@@ -6,17 +6,32 @@
  * cannot drift into showing something a live one never did.
  */
 
+import { useEffect, useState } from "react";
 import { en } from "../../i18n/en";
-import { isTerminal, progressPercent, type RunView } from "./runSummary";
+import { idleSeconds, isTerminal, progressPercent, type RunView } from "./runSummary";
 import { errorMessage } from "./runErrors";
 
+const t = en.mailMatch;
+
+/** A live run whose counters have not moved for this long gets a "still running" note. */
+const QUIET_AFTER_SECONDS = 20;
+
 function phaseLabel(stats: RunView["stats"]): string {
-  if (stats.messagesSeen === 0 && stats.listingsCommitted === 0) return t.scanPhaseOpening;
+  if (stats.messagesParsed === 0 && stats.listingsCommitted === 0) return t.scanPhaseOpening;
   if (stats.llmCalls > 0) return t.scanPhaseScoring;
   return t.scanPhaseReading;
 }
 
-const t = en.mailMatch;
+/** The current time, re-read every few seconds while `live`, so idle time counts up. */
+function useClock(live: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!live) return;
+    const id = window.setInterval(() => setNow(Date.now()), 5_000);
+    return () => window.clearInterval(id);
+  }, [live]);
+  return now;
+}
 
 const statusLabels: Record<RunView["status"], string> = {
   running: t.statusRunning,
@@ -42,6 +57,8 @@ export function RunSummaryCard({
   const percent = progressPercent(view);
   const terminal = isTerminal(view);
   const failure = errorMessage(view.errorCode);
+  const now = useClock(!terminal);
+  const idle = idleSeconds(view, now);
 
   return (
     <article className={`run-summary run-summary--${view.status}`}>
@@ -65,7 +82,7 @@ export function RunSummaryCard({
           <div className="run-summary__progress-row">
             <span>
               {t.scanProgressListings(stats.listingsCommitted)} ·{" "}
-              {t.scanProgressMessages(stats.messagesSeen)}
+              {t.scanProgressMessages(stats.messagesParsed)}
             </span>
             {onCancel ? (
               <button type="button" onClick={onCancel}>
@@ -73,6 +90,9 @@ export function RunSummaryCard({
               </button>
             ) : null}
           </div>
+          {idle !== null && idle >= QUIET_AFTER_SECONDS ? (
+            <p className="run-summary__quiet">{t.scanStillWorking(idle)}</p>
+          ) : null}
         </div>
       ) : null}
 
