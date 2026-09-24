@@ -347,8 +347,14 @@ pub(crate) fn strip_html_to_text(html: &str) -> String {
 /// path does — one HTML-to-text implementation, so "never render untrusted HTML"
 /// (spec §6.3) holds for both callers.
 pub(crate) fn extract_job_page_text(html: &str, max_chars: usize) -> String {
-    let lower = html.to_lowercase();
-    let body_start = lower.find("<body").unwrap_or(0);
+    // Search the original bytes, not a lowercased copy: lowercasing can change a
+    // character's byte length ("İ"), which would make the index land mid-character and
+    // panic on an untrusted page. `<` is ASCII, so the match is always a char boundary.
+    let body_start = html
+        .as_bytes()
+        .windows(5)
+        .position(|w| w.eq_ignore_ascii_case(b"<body"))
+        .unwrap_or(0);
     let body_html = &html[body_start..];
     let stripped = strip_html_to_text(body_html);
     stripped.chars().take(max_chars).collect()
@@ -1227,6 +1233,14 @@ mod tests {
         assert!(text.contains("Build APIs & integrations"));
         assert!(text.contains("Apply from Copenhagen"));
         assert!(!text.contains("<article>"));
+    }
+
+    #[test]
+    fn page_text_survives_characters_whose_lowercase_has_another_length() {
+        // "İ" lowercases to three bytes from two; a lowercased-copy index would slice
+        // the original mid-character and panic.
+        let html = format!("<head>{}</head><BODY><p>ønsker dig</p></BODY>", "İ".repeat(8));
+        assert_eq!(extract_job_page_text(&html, 100), "ønsker dig");
     }
 
     // ── build_search_url ───────────────────────────────────────────────────

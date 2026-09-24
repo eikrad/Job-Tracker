@@ -2446,6 +2446,12 @@ pre {
   opacity: 0.85;
 }
 
+.run-summary__quiet {
+  margin: 0;
+  font-size: 0.8125rem;
+  opacity: 0.75;
+}
+
 .run-summary__counters {
   display: flex;
   flex-wrap: wrap;

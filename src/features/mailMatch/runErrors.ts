@@ -37,6 +37,8 @@ export function errorMessage(code: string | null | undefined): string | null {
       return t.errorLlmOther;
     case "E_DB":
       return t.errorDb;
+    case "E_INTERRUPTED":
+      return t.errorInterrupted;
     default:
       return t.errorUnknown;
   }

@@ -20,6 +20,7 @@ describe("run error messages", () => {
     "E_LLM_MODEL",
     "E_LLM_UNAVAILABLE",
     "E_LLM",
+    "E_INTERRUPTED",
   ])("explains %s", (code) => {
     const message = errorMessage(code);
     expect(message).toBeTruthy();

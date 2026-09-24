@@ -122,14 +122,23 @@ pub fn is_confidently_closed(
     if !(200..400).contains(&status) {
         return false;
     }
-    let domain = extract_domain(original_url).unwrap_or_default();
-    if domain.contains("linkedin.com") && final_url.contains("/expired") {
+    // Board rules read the page we ended on, not the link we started from: a Jobindex
+    // tracking link that lands on an employer site is the employer's page.
+    let Ok(landed) = url::Url::parse(final_url) else {
+        return false;
+    };
+    let on_linkedin = on_site(&landed, "linkedin.com");
+    let on_jobindex = on_site(&landed, "jobindex.dk");
+    if on_linkedin && landed.path().contains("/expired") {
         return true;
     }
-    if final_url.contains("jobindex.dk/arkiv") || final_url.contains("not_found=true") {
+    if on_jobindex && landed.path().starts_with("/arkiv") {
         return true;
     }
-    if redirected_up_the_path(original_url, final_url) {
+    if landed.query_pairs().any(|(k, v)| k == "not_found" && v == "true") {
+        return true;
+    }
+    if redirected_up_the_path(original_url, &landed) {
         return true;
     }
 
@@ -165,19 +174,27 @@ pub fn is_confidently_closed(
     // puts "No longer accepting applications" well past the head. Both phrases are
     // specific enough to search the whole body, but only on their own domain.
     let lower_body = body.to_lowercase();
-    (domain.contains("jobindex.dk") && lower_body.contains("annoncen er udløbet"))
-        || (domain.contains("linkedin.com")
-            && lower_body.contains("no longer accepting applications"))
+    (on_jobindex && lower_body.contains("annoncen er udløbet"))
+        || (on_linkedin && lower_body.contains("no longer accepting applications"))
+}
+
+/// Whether `url` is on `site` or one of its subdomains — never a lookalike such as
+/// `notlinkedin.com` or a path that merely mentions the site.
+fn on_site(url: &url::Url, site: &str) -> bool {
+    url.host_str().is_some_and(|host| {
+        let host = host.to_ascii_lowercase();
+        host == site || host.ends_with(&format!(".{site}"))
+    })
 }
 
 /// A job page that redirects to its site's root or to a parent path is a removed ad:
 /// employers send dead links to the careers index or the home page.
-fn redirected_up_the_path(original_url: &str, final_url: &str) -> bool {
-    let (Ok(orig), Ok(fin)) = (url::Url::parse(original_url), url::Url::parse(final_url)) else {
+fn redirected_up_the_path(original_url: &str, fin: &url::Url) -> bool {
+    let Ok(orig) = url::Url::parse(original_url) else {
         return false;
     };
     let host = |u: &url::Url| u.host_str().map(|h| h.trim_start_matches("www.").to_lowercase());
-    if host(&orig).is_none() || host(&orig) != host(&fin) {
+    if host(&orig).is_none() || host(&orig) != host(fin) {
         return false;
     }
     let segments = |u: &url::Url| -> Vec<String> {
@@ -185,7 +202,7 @@ fn redirected_up_the_path(original_url: &str, final_url: &str) -> bool {
             .map(|it| it.filter(|s| !s.is_empty()).map(str::to_lowercase).collect())
             .unwrap_or_default()
     };
-    let (o, f) = (segments(&orig), segments(&fin));
+    let (o, f) = (segments(&orig), segments(fin));
     f.len() < o.len() && o[..f.len()] == f[..]
 }
 
@@ -394,6 +411,21 @@ mod tests {
         // The whole-body phrases are tied to their own board.
         let other = "https://careers.acme.example/1";
         assert!(!is_confidently_closed(other, other, 200, &expired));
+        // A board's tracking link that lands on an employer page is the employer's page.
+        assert!(!is_confidently_closed("https://www.jobindex.dk/c?t=1", other, 200, &expired));
+    }
+
+    #[test]
+    fn board_url_rules_need_the_board_host_not_a_mention_of_it() {
+        let job = "https://careers.acme.example/jobs/1";
+        let lookalike = "https://notlinkedin.com/jobs/view/1/expired";
+        assert!(!is_confidently_closed(lookalike, lookalike, 200, ""));
+        let mention = "https://careers.acme.example/jobs/1?from=jobindex.dk/arkiv";
+        assert!(!is_confidently_closed(job, mention, 200, ""));
+        let param = "https://careers.acme.example/jobs/1?ref=not_found=true";
+        assert!(!is_confidently_closed(job, param, 200, ""));
+        let li = "https://dk.linkedin.com/jobs/view/1";
+        assert!(is_confidently_closed(li, "https://dk.linkedin.com/jobs/view/1/expired", 200, ""));
     }
 
     #[test]

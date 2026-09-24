@@ -530,6 +530,8 @@ export const en = {
     scanPhaseOpening: "Opening your mail folders…",
     scanPhaseReading: "Reading job emails and pulling out listings…",
     scanPhaseScoring: "Scoring listings against your profile…",
+    scanStillWorking: (seconds: number) =>
+      `No new results for ${seconds < 90 ? `${seconds} s` : `${Math.round(seconds / 60)} min`} — a slow listing page or model reply. The scan is still running.`,
 
     // Run summary
     summaryTitle: "Scan finished",
@@ -554,6 +556,8 @@ export const en = {
     errorSidecarMissing: "The mail scanner could not be started. Try reinstalling the app.",
     errorSidecarVersion: "The mail scanner is out of date with the app. Try reinstalling.",
     errorSidecarStopped: "The mail scanner stopped unexpectedly. Results so far are kept — try again.",
+    errorInterrupted:
+      "The app closed while this scan was running. Results so far are kept, and the next scan picks up where it stopped.",
     errorProtocol: "The mail scanner sent something unexpected. Nothing was lost — please report this.",
     errorLlmAuth: "The provider rejected the API key. Check it in Settings.",
     errorLlmModel: "The provider did not recognise the model. Check the model id in Settings.",
@@ -622,7 +626,7 @@ export const en = {
       "Separate entries with commas or put each on its own line: lead, principal, head of",
       "Case does not matter, and a word matches only as a whole word: “lead” skips “Lead Data Scientist” but not “Leadership Programme”.",
       "Use several words for a phrase: “head of” skips “Head of Data” only when the words appear together, in that order.",
-      "Add * at the start or end to match longer words: “*leder” skips “Teamleder” and “Afdelingsleder”, “manag*” skips “Manager” and “Managing”.",
+      "Add * at the start or end to match longer words: “*leder” skips “Teamleder” and “Afdelingsleder”, “manag*” skips “Manager” and “Managing”, and “*lead*” skips any word containing “lead”.",
       "Only the title is checked. Skipped listings are not queued, and changing this list affects future scans only.",
     ],
     providerLabel: "Scoring provider",

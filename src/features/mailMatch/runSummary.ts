@@ -54,6 +54,8 @@ export type RunView = {
   errorCode?: string | null;
   errorSummary?: string | null;
   modelId?: string | null;
+  /** Live runs only: when a counter last moved (ms since epoch). */
+  lastActivityAt?: number;
 };
 
 function asNumber(value: unknown): number {
@@ -116,12 +118,18 @@ function asStatus(value: string): RunStatus {
  *
  * Counters only ever move forward within a run: events are coalesced at 4/s and can
  * arrive out of order, and a progress bar that jumps backwards reads as a bug.
+ * `lastActivityAt` is stamped with `now` whenever a counter moves, so the card can tell
+ * a slow stretch from a stalled scan.
  */
-export function applyProgress(current: RunView | null, event: ProgressEvent): RunView {
-  const base =
+export function applyProgress(
+  current: RunView | null,
+  event: ProgressEvent,
+  now: number = Date.now(),
+): RunView {
+  const base: RunView =
     current && current.runId === event.runId
       ? current
-      : { runId: event.runId, status: "running" as RunStatus, stats: { ...emptyStats } };
+      : { runId: event.runId, status: "running", stats: { ...emptyStats }, lastActivityAt: now };
 
   const incoming = parseStats({
     ...event.stats,
@@ -129,28 +137,30 @@ export function applyProgress(current: RunView | null, event: ProgressEvent): Ru
     messagesSeen: event.messagesSeen,
   });
   const prev = base.stats;
-  const forward = (a: number, b: number) => Math.max(a, b);
+  const stats = { ...prev } as Record<keyof RunStats, number | boolean>;
+  let moved = false;
+  for (const key of Object.keys(emptyStats) as (keyof RunStats)[]) {
+    const [a, b] = [prev[key], incoming[key]];
+    if (typeof a === "boolean") {
+      stats[key] = a || (b as boolean);
+    } else {
+      stats[key] = Math.max(a, b as number);
+      moved ||= (b as number) > a;
+    }
+  }
 
   return {
     ...base,
     status: asStatus(event.status),
-    stats: {
-      listingsCommitted: forward(prev.listingsCommitted, incoming.listingsCommitted),
-      messagesSeen: forward(prev.messagesSeen, incoming.messagesSeen),
-      messagesParsed: forward(prev.messagesParsed, incoming.messagesParsed),
-      suppressedByDismissal: forward(prev.suppressedByDismissal, incoming.suppressedByDismissal),
-      underCutoff: forward(prev.underCutoff, incoming.underCutoff),
-      inboxNew: forward(prev.inboxNew, incoming.inboxNew),
-      alreadyTracked: forward(prev.alreadyTracked, incoming.alreadyTracked),
-      llmCalls: forward(prev.llmCalls, incoming.llmCalls),
-      enrichmentFailures: forward(prev.enrichmentFailures, incoming.enrichmentFailures),
-      closed: forward(prev.closed, incoming.closed),
-      skippedByTitle: forward(prev.skippedByTitle, incoming.skippedByTitle),
-      errors: forward(prev.errors, incoming.errors),
-      budgetExhausted: prev.budgetExhausted || incoming.budgetExhausted,
-      listingLimitReached: prev.listingLimitReached || incoming.listingLimitReached,
-    },
+    stats: stats as RunStats,
+    lastActivityAt: moved ? now : (base.lastActivityAt ?? now),
   };
+}
+
+/** Seconds since a live run's counters last moved, or null when it is not live. */
+export function idleSeconds(view: RunView, now: number = Date.now()): number | null {
+  if (isTerminal(view) || view.lastActivityAt === undefined) return null;
+  return Math.max(0, Math.floor((now - view.lastActivityAt) / 1000));
 }
 
 /** Build a view from a finished run row, for History. */

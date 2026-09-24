@@ -518,17 +518,36 @@ impl ScoringEngine {
         }
     }
 
-    /// Whether the listing's page says the posting is gone. Costs a page fetch, never a
-    /// model call, so it runs before the listing takes a place in a scoring batch.
-    pub fn is_closed(&self, listing: &ListingEvent) -> bool {
-        self.enricher.as_ref().is_some_and(|e| e.is_closed(listing))
+    /// Fetch the listing's page before scoring, so a closed posting costs no model call.
+    ///
+    /// A listing the score cache already knows is not fetched: scoring it is free, so
+    /// the check would save nothing, and known listings must stay free (a re-run costs
+    /// no network either). Should it reach the inbox, enrichment still sees a closing.
+    pub fn precheck(
+        &self,
+        conn: &Connection,
+        listing: &ListingEvent,
+    ) -> Result<crate::mail_scan::enrichment::Precheck, String> {
+        use crate::mail_scan::enrichment::Precheck;
+        let Some(enricher) = self.enricher.as_ref() else {
+            return Ok(Precheck::Unknown);
+        };
+        if self.cached_pass(conn, &listing_content_hash(listing), 1)?.is_some() {
+            return Ok(Precheck::Unknown);
+        }
+        Ok(enricher.precheck(listing))
     }
 
-    /// Enrich a listing that reached the inbox, charging the run budget.
+    /// Enrich a listing that reached the inbox, charging the run budget. `first_page` is
+    /// the page [`Self::precheck`] fetched, reused so the listing is fetched once.
     ///
     /// Budget exhaustion here is not a failure: the match is already useful, so it is
     /// enqueued `skipped` and the user can retry that one item from the inbox.
-    pub fn enrich(&mut self, listing: &ListingEvent) -> crate::mail_scan::enrichment::Enrichment {
+    pub fn enrich(
+        &mut self,
+        listing: &ListingEvent,
+        first_page: Option<crate::mail_scan::enrichment::FetchedPage>,
+    ) -> crate::mail_scan::enrichment::Enrichment {
         use crate::mail_scan::enrichment::Enrichment;
         let Some(enricher) = self.enricher.as_ref() else {
             return Enrichment::skipped();
@@ -540,7 +559,10 @@ impl ScoringEngine {
         if self.budget.reserve().is_err() {
             return Enrichment::skipped();
         }
-        let result = enricher.enrich(listing);
+        let result = match first_page {
+            Some(page) => enricher.enrich_prefetched(listing, page),
+            None => enricher.enrich(listing),
+        };
         if result.is_usable() {
             self.budget.record_success();
         }
@@ -1155,7 +1177,7 @@ mod tests {
             .with_enricher(Box::new(CountingEnricher(calls.clone())));
 
         // The fixture listings are Indeed links, which are never fetchable.
-        let e = engine.enrich(&listing("Rust Engineer", "great role"));
+        let e = engine.enrich(&listing("Rust Engineer", "great role"), None);
 
         assert_eq!(e.error.as_deref(), Some(crate::mail_scan::enrichment::NOT_FETCHABLE));
         assert_eq!(engine.budget().calls_used(), 0);
@@ -1180,6 +1202,13 @@ mod tests {
         listings: &[ListingEvent],
         filter: crate::mail_scan::title_filter::TitleFilter,
     ) -> crate::mail_scan::persist::RunStats {
+        let stream = listing_stream(listings);
+        crate::mail_scan::consume_event_stream_filtered(conn, run_id, stream.as_bytes(), engine, filter)
+            .unwrap()
+    }
+
+    /// The sidecar's NDJSON for `listings`, as the driver reads it.
+    fn listing_stream(listings: &[ListingEvent]) -> String {
         let mut stream = String::from(
             r#"{"t":"started","protocol":2,"run_id":"r","sidecar_version":"1.0.0","sources":1}"#,
         );
@@ -1196,8 +1225,37 @@ mod tests {
             stream.push_str(&line.to_string());
         }
         stream.push('\n');
-        crate::mail_scan::consume_event_stream_filtered(conn, run_id, stream.as_bytes(), engine, filter)
-            .unwrap()
+        stream
+    }
+
+    #[test]
+    fn a_cancel_stops_the_driver_even_with_listings_still_in_the_pipe() {
+        let mut conn = db();
+        crate::mail_scan::persist::start_run(&mut conn, "r1").unwrap();
+        let scorer = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(&scorer, ScoringConfig::default());
+        let listings: Vec<ListingEvent> =
+            (0..30).map(|i| listing(&format!("Engineer {i}"), "role")).collect();
+        let stream = listing_stream(&listings);
+        let cancel = std::env::temp_dir().join(format!("jt-cancel-test-{}", std::process::id()));
+        let _ = std::fs::remove_file(&cancel);
+        let mut state =
+            crate::mail_scan::DriveState::new(Default::default()).with_cancel_file(&cancel);
+
+        // The user presses Cancel after the first few events have been read.
+        let mut ticks = 0;
+        crate::mail_scan::consume_reader(&mut conn, "r1", &mut stream.as_bytes(), &mut engine, &mut state, |_, _| {
+            ticks += 1;
+            if ticks == 3 {
+                std::fs::write(&cancel, b"1").unwrap();
+            }
+        })
+        .unwrap();
+        let _ = std::fs::remove_file(&cancel);
+
+        assert_eq!(state.status, crate::mail_scan::status::RunStatus::Cancelled);
+        assert_eq!(scorer.total_calls(), 0, "nothing left in the pipe was scored");
+        assert_eq!(state.stats.inbox_new, 0);
     }
 
     #[test]
@@ -1261,6 +1319,77 @@ mod tests {
         assert_eq!(fetches.load(Ordering::SeqCst), 1, "and only it is fetched");
         assert_eq!(stats.skipped_by_title, 1, "{stats:?}");
         assert_eq!(stats.inbox_new, 1, "{stats:?}");
+    }
+
+    /// Counts page fetches: one per precheck, one per enrichment that had no page yet.
+    /// A title with "Gone" in it is a closed posting.
+    struct PrecheckingEnricher(Arc<AtomicUsize>);
+
+    impl crate::mail_scan::enrichment::ListingEnricher for PrecheckingEnricher {
+        fn enrich(&self, _listing: &ListingEvent) -> crate::mail_scan::enrichment::Enrichment {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            crate::mail_scan::enrichment::Enrichment::from_partial(Default::default())
+        }
+
+        fn enrich_prefetched(
+            &self,
+            _listing: &ListingEvent,
+            _first_page: crate::mail_scan::enrichment::FetchedPage,
+        ) -> crate::mail_scan::enrichment::Enrichment {
+            crate::mail_scan::enrichment::Enrichment::from_partial(Default::default())
+        }
+
+        fn precheck(&self, listing: &ListingEvent) -> crate::mail_scan::enrichment::Precheck {
+            use crate::mail_scan::enrichment::{FetchedPage, Precheck};
+            self.0.fetch_add(1, Ordering::SeqCst);
+            if listing.title.contains("Gone") {
+                return Precheck::Closed;
+            }
+            Precheck::Open(FetchedPage {
+                final_url: listing.url.clone(),
+                status: 200,
+                body: "<p>Apply</p>".into(),
+            })
+        }
+    }
+
+    fn fetchable(title: &str) -> ListingEvent {
+        ListingEvent {
+            url: format!("https://careers.acme.example/{}", title.replace(' ', "-")),
+            ..listing(title, "a role")
+        }
+    }
+
+    #[test]
+    fn a_closed_listing_costs_one_fetch_and_an_open_one_is_fetched_once() {
+        let mut conn = db();
+        let fetches = Arc::new(AtomicUsize::new(0));
+        let scorer = SharedScorer::new(FakeScorer::scoring(8, 9));
+        let mut engine = engine_with(&scorer, ScoringConfig::default())
+            .with_enricher(Box::new(PrecheckingEnricher(fetches.clone())));
+
+        let stats = scan(&mut conn, "r1", &mut engine, &[fetchable("Gone Engineer"), fetchable("Rust Engineer")]);
+
+        assert_eq!(scorer.batch_sizes(), vec![1], "the closed listing is never scored");
+        assert_eq!(fetches.load(Ordering::SeqCst), 2, "one fetch each, none repeated");
+        assert_eq!(stats.closed, 1, "{stats:?}");
+        assert_eq!(stats.inbox_new, 1, "{stats:?}");
+    }
+
+    #[test]
+    fn a_rerun_over_known_listings_fetches_nothing() {
+        let mut conn = db();
+        let scorer = SharedScorer::new(FakeScorer::scoring(2, 2));
+        let mut engine = engine_with(&scorer, ScoringConfig::default());
+        let known = fetchable("Barista");
+        scan(&mut conn, "r1", &mut engine, std::slice::from_ref(&known));
+
+        let fetches = Arc::new(AtomicUsize::new(0));
+        let mut engine = engine_with(&scorer, ScoringConfig::default())
+            .with_enricher(Box::new(PrecheckingEnricher(fetches.clone())));
+        scan(&mut conn, "r2", &mut engine, &[known]);
+
+        assert_eq!(fetches.load(Ordering::SeqCst), 0, "a cached listing costs no network");
     }
 
     #[test]

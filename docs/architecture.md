@@ -231,6 +231,12 @@ mail_scan_start ──► sidecar (Python, no network, no secrets)
         │            gate: dismissed or already a Job? ──► sighting only (no call, no fetch)
         │                    │ no
         │                    ▼
+        │            title blocklist match? ──► skipped (no call, no fetch)
+        │                    │ no
+        │                    ▼
+        │            not in score cache: fetch page, closed? ──► skipped (no call)
+        │                    │ no (page kept for enrichment)
+        │                    ▼
         │            listings buffered (≤10) ──► pass 1 batch score  ─┐
         │                                                             │ cache first
         │                    ┌──────────── pass 2 (per listing) ◄──────┘
@@ -265,6 +271,14 @@ Properties worth knowing before changing any of it:
   a pass-1 batch: dismissed and already-tracked listings never reach the model or the
   network. `persist_listing` re-checks after enrichment only for the case the gate
   cannot see — the employer ad a board link led to is already a Job's `url`.
+- **A closed posting costs one fetch, never a model call.** A listing the score cache
+  does not know has its page fetched before scoring (`ScoringEngine::precheck`), and
+  `listing_check::is_confidently_closed` drops it on a gone status, a redirect up the
+  path, or an explicit closed phrase. The live page is handed on to enrichment, so no
+  listing is fetched twice. Cached listings skip the check (scoring them is free); if
+  one reaches the inbox, enrichment catches the closing instead.
+- **The title blocklist runs before anything that costs.** `title_filter` matches
+  whole words, case-insensitive, with `*` at an entry's start or end for compounds.
 - **The inbox is read, not rendered.** The row detail shows the draft's full
   `raw_text` as plain text, the latest pass-1 and pass-2 reasons (joined from
   `mail_scored_sightings`), and the ad and Board Link opened through
