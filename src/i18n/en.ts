@@ -527,12 +527,16 @@ export const en = {
     scanPreflightCancel: "Not now",
     scanProgressListings: (n: number) => `${n} listing${n === 1 ? "" : "s"} processed`,
     scanProgressMessages: (n: number) => `${n} message${n === 1 ? "" : "s"} read`,
+    scanPhaseOpening: "Opening your mail folders…",
+    scanPhaseReading: "Reading job emails and pulling out listings…",
+    scanPhaseScoring: "Scoring listings against your profile…",
 
     // Run summary
     summaryTitle: "Scan finished",
     summaryNew: (n: number) => `${n} new match${n === 1 ? "" : "es"}`,
     summaryAlreadyTracked: (n: number) => `${n} already on your board`,
     summaryUnderCutoff: (n: number) => `${n} below cutoff`,
+    summaryClosed: (n: number) => `${n} closed, skipped`,
     summarySuppressed: (n: number) => `${n} suppressed by a dismissal`,
     summarySuppressedLink: "Show what was suppressed",
     summaryEnrichmentFailures: (n: number) => `${n} could not be fetched`,

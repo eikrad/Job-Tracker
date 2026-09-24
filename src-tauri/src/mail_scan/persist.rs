@@ -11,7 +11,7 @@ use crate::mail_scan::enrichment::Enrichment;
 use crate::mail_scan::protocol::ListingEvent;
 use crate::mail_scan::score_cache::{record_sighting, ScoreIdentity};
 use crate::mail_scan::scoring::ScoreOutcome;
-use crate::mail_scan::status::{InboxStatus, RunStatus, SourceKind, Verdict};
+use crate::mail_scan::status::{EnrichmentState, InboxStatus, RunStatus, SourceKind, Verdict};
 
 /// Counters mirrored into `mail_scan_runs.stats_json` so the History view can render a
 /// finished run through the same component as a live one (spec §8.4).
@@ -28,6 +28,9 @@ pub struct RunStats {
     pub already_tracked: u32,
     pub llm_calls: u32,
     pub enrichment_failures: u32,
+    /// Listings whose page says the posting is gone, kept out of the inbox.
+    #[serde(default)]
+    pub closed: u32,
     pub errors: u32,
     /// Run hit the call cap. Not a failure — the run still `completed`.
     pub budget_exhausted: bool,
@@ -53,6 +56,10 @@ impl RunStats {
             PersistOutcome::AlreadyTracked => {
                 self.listings_committed += 1;
                 self.already_tracked += 1;
+            }
+            PersistOutcome::Closed => {
+                self.listings_committed += 1;
+                self.closed += 1;
             }
         }
     }
@@ -85,6 +92,8 @@ pub enum PersistOutcome {
     /// Scored and recorded as a sighting, but it is a Job the user already tracks — no
     /// inbox row. Alert mails repeat listings for weeks; each repeat is not a new match.
     AlreadyTracked,
+    /// The listing page says the posting is gone — recorded as a sighting, no inbox row.
+    Closed,
 }
 
 pub fn start_run(conn: &mut Connection, run_id: &str) -> Result<(), String> {
@@ -365,6 +374,11 @@ pub fn persist_listing(
     if is_tracked(&tx, &fp_id, listing, enrichment.employer_url.as_deref())? {
         tx.commit().map_err(|e| e.to_string())?;
         return Ok(PersistOutcome::AlreadyTracked);
+    }
+
+    if effective_outcome == Verdict::Inbox && enrichment.state == EnrichmentState::Closed {
+        tx.commit().map_err(|e| e.to_string())?;
+        return Ok(PersistOutcome::Closed);
     }
 
     let existing: Option<i64> = tx
@@ -847,6 +861,33 @@ mod tests {
             .query_row("SELECT score FROM mail_match_inbox", [], |r| r.get(0))
             .unwrap();
         assert_eq!(score, 9);
+    }
+
+    #[test]
+    fn a_closed_listing_is_recorded_but_never_reaches_the_inbox() {
+        let mut conn = db();
+        start_run(&mut conn, "r1").unwrap();
+        let l = listing("Dev", "jobindex:closed", "acme|dev|kbh");
+        let scored = scored_for(&l, Verdict::Inbox);
+
+        let outcome = persist_listing(
+            &mut conn,
+            "r1",
+            &l,
+            &scored,
+            &Enrichment::closed("the listing is closed (HTTP 404)"),
+            &identities(),
+        )
+        .unwrap();
+
+        assert_eq!(outcome, PersistOutcome::Closed);
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM mail_match_inbox", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 0);
+        let mut stats = RunStats::default();
+        stats.count(outcome);
+        assert_eq!(stats.closed, 1);
     }
 
     /// Enrichment failure must never cost the user a listing (spec §5.2).

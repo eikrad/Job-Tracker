@@ -111,6 +111,9 @@ text_enum! {
         Failed => "failed",
         /// Not attempted: under the cutoff, or a board that is never fetched.
         Skipped => "skipped",
+        /// The listing page says the posting is gone. Never stored: such a listing is
+        /// dropped before it reaches the inbox.
+        Closed => "closed",
     }
 }
 
@@ -168,8 +171,8 @@ mod tests {
             &["ok", "invalid", "skipped"],
         );
         round_trips(
-            &[E::Complete, E::Partial, E::Failed, E::Skipped],
-            &["complete", "partial", "failed", "skipped"],
+            &[E::Complete, E::Partial, E::Failed, E::Skipped, E::Closed],
+            &["complete", "partial", "failed", "skipped", "closed"],
         );
         round_trips(
             &[R::Running, R::Completed, R::Cancelled, R::Failed],
