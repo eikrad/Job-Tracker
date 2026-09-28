@@ -5,12 +5,14 @@ from Conventional Commit messages. Nobody edits version numbers by hand.
 
 ## How a release happens
 
-1. On every push to `main`, the **Release** workflow (`.github/workflows/release-please.yml`)
+1. Changes reach `main` the usual way: feature branch → `staging` → `main`.
+2. On every push to `main`, the **Release** workflow (`.github/workflows/release-please.yml`)
    opens or updates a pull request titled `chore(main): release X.Y.Z`. It bumps the
    version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, syncs
    `package-lock.json` and `src-tauri/Cargo.lock`, and adds the `CHANGELOG.md` entry.
-2. When you want to release, merge that pull request. release-please tags `vX.Y.Z` and
-   publishes a GitHub release with the same notes.
+3. When you want to release, merge that pull request. release-please tags `vX.Y.Z`,
+   publishes a GitHub release with the same notes, and opens a pull request that merges
+   `main` back into `staging`. Merge that one too.
 
 Until you merge the release PR, it keeps collecting whatever lands on `main`. Installers
 are not built by CI; build them locally with `npm run tauri:build:release`.

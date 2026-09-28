@@ -125,6 +125,17 @@ To mirror CI's Python job exactly (pip instead of uv): `pip install -r requireme
 
 Fix issues or explain in the PR why something is intentionally skipped.
 
+## Branches
+
+```
+feature branch  →  staging  →  main
+```
+
+- Branch from `staging` and open pull requests against `staging`, never `main`.
+- `main` is updated only by merging `staging` into it after validation, plus the release
+  PR (see [docs/releasing.md](docs/releasing.md)). The **Protect main** check enforces this.
+- Dependabot also targets `staging`.
+
 ## Pull requests
 
 1. **Scope:** One logical change per PR when possible (easier review and bisect).

@@ -7,7 +7,7 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
-    target-branch: "main"
+    target-branch: "staging"
     labels:
       - "dependencies"
 
@@ -18,7 +18,7 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
-    target-branch: "main"
+    target-branch: "staging"
     labels:
       - "dependencies"
 
@@ -29,7 +29,7 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 3
-    target-branch: "main"
+    target-branch: "staging"
     labels:
       - "dependencies"
 
@@ -40,7 +40,7 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 3
-    target-branch: "main"
+    target-branch: "staging"
     labels:
       - "dependencies"
       - "ci"

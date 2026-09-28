@@ -3,7 +3,8 @@ name: Release
 # On every push to main, release-please keeps a release PR up to date: the next
 # version (from Conventional Commit prefixes) in package.json, tauri.conf.json and
 # Cargo.toml, the lockfiles synced to it, and the CHANGELOG entry. Merging that PR
-# tags the release and publishes a GitHub release. See docs/releasing.md.
+# tags the release, publishes a GitHub release and opens a PR that merges main
+# back into staging. See docs/releasing.md.
 on:
   push:
     branches: [main]
@@ -56,3 +57,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "chore: sync lockfiles with the release version"
           git push
+
+      # The release commit lands on main only; bring it back so staging shows the
+      # released version and the next release PR starts from it.
+      - name: Open a PR to merge the release back into staging
+        if: steps.release.outputs.release_created
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          gh pr create --repo "${{ github.repository }}" --base staging --head main \
+            --title "chore: merge release ${{ steps.release.outputs.tag_name }} back into staging" \
+            --body "Brings the version bump and CHANGELOG of ${{ steps.release.outputs.tag_name }} from main into staging." \
+            || echo "A back-merge PR is already open."
