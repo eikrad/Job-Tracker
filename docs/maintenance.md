@@ -2,6 +2,142 @@
 
 ---
 
+## 2026-09-23
+
+### ⚠️ Backlog note — two manual weekly-maintenance PRs stacked unmerged, plus one blocked Dependabot PR
+
+Re-verified the live open-PR list fresh via `list_pull_requests` (state=open, fields-trimmed) rather than trusting the task brief's summary alone — it matched exactly, three open PRs total, nothing more:
+
+- **#140** — `chore: weekly maintenance 2026-09-16 - security fixes and dependency bumps` (branch `claude/upbeat-cray-5i21zt`, base `main`) — still open, unmerged.
+- **#124** — `chore: weekly maintenance 2026-09-09 - security lockfile fixes` (branch `claude/upbeat-cray-9vpoxd`, base `main`) — still open, unmerged. Its `npm audit fix` / `cargo update -p rustls -p chacha20` / `uv sync` lockfile fixes never landed on `main`, which is exactly why this cycle re-discovered the identical `browserslist`/`baseline-browser-mapping`/`@humanfs/node` npm findings and the identical `rustls`/`chacha20` cargo findings from scratch (see Findings below) — #140's own log already noted it had to redundantly redo #124's fixes for the same reason.
+- **#105** — `chore(deps-dev): bump typescript from 6.0.3 to 7.0.2` (Dependabot, open since 2026-08-24) — **re-verified still genuinely blocked, not neglect.** `typescript-eslint`'s current stable release is `8.70.1` (checked fresh, not assumed) and its peer dependency range is still `typescript@">=4.8.4 <6.1.0"` — unchanged from every prior cycle's finding. Confirmed live, not just from the peer-range metadata: test-installed `typescript@7.0.2` (`npm install typescript@7.0.2 --no-save`) and re-ran `npm run lint`, which hard-fails at runtime with `Error: typescript-eslint does not support TS 7.0.` (thrown directly from `typescript-eslint/dist/index.js`, not just an `ERESOLVE` install-time warning). Could not reach the upstream tracking issue (typescript-eslint/typescript-eslint#10940) directly this cycle (GitHub read access for that repo isn't enabled in this session), but the live peer-range check and the reproduced runtime error are sufficient to confirm the blocker is unchanged. Test install was not saved — `package.json`/`package-lock.json` were restored to `typescript@6.0.3` via `npm ci` before any real changes were made.
+
+**No third manual maintenance PR had accumulated before this cycle** — #140 and #124 are the only two open manual PRs, not three. This cycle's own PR (below) makes that **three manual weekly-maintenance PRs open simultaneously** the moment it's created, which is worse than either #140's or #124's cycle saw individually. **Flagging prominently: the repo owner should merge (or close, if superseded) #124 and #140 soon, oldest-first, before this queue grows further** — every cycle that goes by without merging means the next cycle re-discovers and re-fixes the same lockfile-only findings from scratch, which is exactly what happened here for a second time.
+
+### Checks performed
+- `git fetch origin` — branch `claude/upbeat-cray-56037b` was already exactly at `origin/main` tip (`9007f60`), zero unique commits either direction — no reset needed, this is a clean fresh branch off current `main`.
+- Read `.github/workflows/frontend.yml`, `rust.yml`, `python.yml` fresh (not assumed from prior logs) — all three still exist with the same names and steps as previously mirrored. Also noticed a **new fourth workflow, `weekly-audit.yml`** (`Weekly Security Audit`, cron `0 6 * * 1` + `workflow_dispatch`), not present in earlier cycles' logs — runs `npm audit` / `pip-audit` / `cargo audit` on a schedule and opens/updates a `security-audit`-labelled issue on findings. Confirmed via `list_issues`-equivalent reasoning that this doesn't change this cycle's process (no open `security-audit` issue existed to reconcile against), but future cycles should check for one.
+- Full local check suite mirroring all three CI workflows exactly: `npm ci`, `npm run lint`, `npm run test`, `npm run build`. Tauri's Linux system deps (`libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `patchelf`) were **already installed** in this sandbox session (checked via `dpkg -l` before assuming a fresh install was needed) — then `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` and `cargo test --manifest-path src-tauri/Cargo.toml`. A clean Python 3.12 venv (`python3.12 -m venv`, since the sandbox's default `python3` resolves to 3.11) + `pip install -r requirements-dev.txt` + `ruff check tests python` / `black --check tests python` / `isort --check-only tests python` / `pytest -q` — matching `python.yml`'s actual invocation (`tests python`, not a blanket `.`).
+- All baselines were green before any change was made — nothing pre-existing on `main` was broken.
+- Security audits, fresh: `npm audit`; `uv export --format requirements-txt --no-hashes` + `pip-audit` (installed fresh); `cargo audit --file src-tauri/Cargo.lock` (installed `cargo-audit` fresh via `cargo install cargo-audit --locked`, ~v0.22.2 — the advisory-database "yanked" checks against crates.io threw many transient 503s through the sandbox's proxy path, same as several prior cycles, but the advisory-database scan itself completed and returned results).
+- Outdated-package survey: `npm outdated`, `uv lock --upgrade --dry-run`, `cargo update --dry-run --manifest-path src-tauri/Cargo.toml`. Re-checked `.github/dependabot.yml` (unchanged: 4 ecosystems — npm root, cargo `/src-tauri`, pip root, github-actions, all targeting `main`), `src-tauri/tauri.conf.json` (still no dependency version pins beyond the app's own `"version": "0.4.0"`), and every pinned Action across all four workflow files (`actions/checkout@v7`, `actions/setup-node@v7`, `actions/setup-python@v7`, `actions/cache@v6`, `actions/github-script@v9`, `Swatinem/rust-cache@v2`, `astral-sh/setup-uv@v7`, `dtolnay/rust-toolchain@stable`) — all covered by the `github-actions` ecosystem (`dtolnay/rust-toolchain@stable` tracks the `stable` tag by design, not a numbered version Dependabot would bump).
+- `uv lock --check` — passed with no drift; `uv.lock` was already in sync with `pyproject.toml` this cycle.
+- Re-ran the full frontend, Rust, and Python check suites after every batch of fixes (npm audit fix → npm update → cargo update → uv lock upgrades), not just once at the end.
+
+### Findings
+
+**1. `npm audit` — 3 vulnerabilities at baseline (2 moderate, 1 high), 0 after.** Same three findings #140's log already identified and fixed on its own unmerged branch — re-discovered fresh here because #124/#140 never merged to `main`.
+
+| Package | Severity | Issue | Fix | Applied? |
+|---|---|---|---|---|
+| `browserslist` (transitive, via `vite`) | high | Unbounded memory growth (no cache eviction) via distinct query results, leading to eventual OOM (GHSA-c83g-rgw3-j3cx); uncaught crash / prototype write via untrusted `browserslist-stats.json` (GHSA-73wf-gq98-2v4g) | `npm audit fix` | Yes |
+| `baseline-browser-mapping` (transitive, via `browserslist`) | moderate | Process termination on invalid input causes denial of service (GHSA-w5vr-8v7q-w6rv) | `npm audit fix` | Yes |
+| `@humanfs/node` (transitive) | moderate | Recursive copy follows symlinked files and copies data from outside the source tree (GHSA-p498-v437-472g) | `npm audit fix` | Yes |
+
+**2. `cargo audit` — 1 real vulnerability at baseline (new advisory, not previously seen in this log), fixed; plus a yanked-crate warning also fixed as part of the same update.**
+
+| Crate | Version (before) | Advisory | Severity | Fixed via |
+|---|---|---|---|---|
+| `rustls` | 0.23.37 | RUSTSEC-2026-0285 — TLS 1.3 handshake messages incorrectly accepted across encryption level boundaries (published 2026-09-14, so new since the last-merged 2026-08-26 baseline) | 5.3 medium | `cargo update -p rustls -p chacha20` → `rustls` `0.23.45` (also pulled `rustls-webpki` `0.103.13` → `0.103.15`) |
+| `chacha20` | 0.10.1 | Warning: yanked (not a CVE, but the installed version was pulled from the registry) | — | Same update → `0.10.2` |
+
+Both fixes are lockfile-only — no `Cargo.toml` range was edited. `rustls` is pulled in transitively via `reqwest` → `hyper-rustls`/`tokio-rustls`; `chacha20` via the project's own direct `rand = "0.10"`. Neither overlaps any open Dependabot cargo PR (there are none open right now). Remaining 10 `cargo audit` findings (down from 11 — the `chacha20` yanked warning is now gone) are informational warnings: unmaintained `fxhash`, `proc-macro-error`, and the `unic-*` crate family (Unicode data used transitively), plus unsound advisories on old transitive `anyhow` (RUSTSEC-2026-0190), `glib` (RUSTSEC-2024-0429), and `rand 0.7.3` (RUSTSEC-2026-0097, a different, older transitive `rand` than the project's own `rand = "0.10"`, now resolving `0.10.2`). None actionable from this repo's manifests. Re-ran `cargo clippy -D warnings` and `cargo test` after the lockfile update — both stayed clean (0 warnings; 330 passed, 0 failed, 3 ignored).
+
+**3. `pip-audit` — 0 vulnerabilities, both before and after.** Clean run against the `uv export`-ed requirements, both at baseline and after the transitive bumps below.
+
+**4. `uv.lock` — no drift this cycle.** `uv lock --check` passed outright.
+
+**5. `uv lock --upgrade --dry-run` surfaced three safe transitive Python dev-tool bumps, all applied** (none are direct deps Dependabot's pip ecosystem tracks — that only covers `pytest`/`black`/`isort`/`ruff` directly):
+
+| Package | Before | After |
+|---|---|---|
+| `click` (via `black`) | 8.4.2 | 8.5.0 |
+| `platformdirs` (via `black`) | 4.11.2 | 4.11.12 |
+| `pygments` (via `pytest`) | 2.20.0 | 2.21.0 |
+
+**6. Fourteen safe npm bumps applied, all within existing `package.json` semver ranges, none overlapping an open Dependabot PR** (only #105 is open, and it's the excluded `typescript` major):
+
+| Package | Before | After |
+|---|---|---|
+| `@tauri-apps/cli` | 2.11.4 | 2.11.5 |
+| `@testing-library/react` | 16.3.2 | 16.3.3 |
+| `@types/node` | 26.5.1 | 26.6.2 |
+| `@types/react` | 19.2.18 | 19.3.0 |
+| `@types/react-dom` | 19.2.5 | 19.3.0 |
+| `eslint` | 10.9.0 | 10.11.0 |
+| `eslint-plugin-react-refresh` | 0.5.5 | 0.5.7 |
+| `globals` | 17.11.0 | 17.12.0 |
+| `happy-dom` | 20.11.6 | 20.14.5 |
+| `lucide-react` | 1.33.0 | 1.47.0 |
+| `react` | 19.2.8 | 19.3.0 |
+| `react-dom` | 19.2.8 | 19.3.0 |
+| `react-router-dom` | 7.18.3 | 7.18.4 |
+| `typescript-eslint` | 8.68.0 | 8.70.1 |
+
+Note: a plain `npm update` (no package names) failed outright in this sandbox's npm (`10.9.7`) with an internal error (`Cannot read properties of null (reading 'edgesOut')`) — a known npm resolver bug, not a project issue. Worked around by listing every package explicitly (`npm update <pkg> <pkg> ...`), which succeeded cleanly.
+
+**7. `typescript-eslint`'s peer range still excludes TypeScript 7 — re-verified live, unchanged.** See the Backlog note above for the full re-verification (peer-range check + reproduced runtime error under a real TS7 test install). Not applied.
+
+**8. New major flagged this cycle: `vitest` `4.1.11` → `5.0.1`.** Not previously listed in this log's majors table. `package.json`'s range (`^4.1.11`) correctly caps `npm update` at the 4.x line, so nothing was bumped automatically. Not investigated further (no attempted migration) — flagged for owner review; a `vitest` major typically also requires checking `@vitest/coverage-*`/config compatibility, out of scope for a routine dependency cycle.
+
+**9. Two previously-flagged majors confirmed resolved — dropped from the table.** `eslint`/`@eslint/js` (`package.json` now reads `^10.9.0`/`^10.0.1` — the 9→10 major is already applied) and Rust `rand` (`src-tauri/Cargo.toml` now reads `rand = "0.10"` — the 0.8→0.9 major is already applied, and it's a rand 0.7.3 transitive elsewhere, not this crate, that shows up in `cargo audit`'s unsound warnings). Both re-verified directly against the manifests, not assumed from the prior log.
+
+**10. `pytest`'s `<10` upper bound is currently not constraining anything.** Checked `pip index versions pytest` fresh: the latest published release is still `9.1.1` — `pytest` 10 does not exist yet. The pin is inert for now; re-check once a `pytest` 10.x actually ships.
+
+**11. No outdated items found beyond Dependabot's four ecosystems.** `src-tauri/tauri.conf.json` still carries no dependency version pins; every pinned Action is covered by the `github-actions` ecosystem (see Checks performed).
+
+**12. `cargo update --dry-run` surveys ~150+ transitive crates with newer semver-compatible versions** (large churn: `tokio`, `wasm-bindgen`, `web-sys`, `zbus`/`zvariant`, `winnow`, `wit-bindgen`, ICU/`zerovec`/`unicode-*` crates, `time`, `uuid`, etc.), same pattern as every prior cycle. None tied to a known vulnerability beyond the `rustls`/`chacha20` fix already applied (Finding 2) — no blanket `cargo update` applied, consistent with standing policy.
+
+### Fixes applied
+- `npm audit fix` — resolved all 3 npm vulnerabilities (`browserslist`, `baseline-browser-mapping`, `@humanfs/node`), all transitive.
+- `npm update @tauri-apps/cli @testing-library/react @types/node @types/react @types/react-dom eslint eslint-plugin-react-refresh globals happy-dom lucide-react react react-dom react-router-dom typescript-eslint` — fourteen safe patch/minor bumps, all within already-declared `package.json` ranges (Finding 6).
+- `cargo update -p rustls -p chacha20` — fixes the `rustls` RUSTSEC-2026-0285 finding and the `chacha20` yanked warning (Finding 2), lockfile-only.
+- `uv lock --upgrade-package click --upgrade-package platformdirs --upgrade-package pygments` — three safe transitive Python dev-tool bumps (Finding 5).
+- **No `package.json`, `Cargo.toml`, `pyproject.toml`, or `requirements-dev.txt` edits** — only `package-lock.json`, `src-tauri/Cargo.lock`, and `uv.lock` changed.
+- **`typescript` (PR #105) and `vitest` majors not touched** — see Findings 7–8.
+
+### Majors flagged for owner decision (not applied)
+
+| Item | In use | Latest | Notes |
+|---|---|---|---|
+| `typescript` (npm) | `~6.0.0` (resolves `6.0.3`) | `7.0.2` | Major, recurring flag since 2026-08-05. Dependabot's own **PR #105** proposes this exact bump — re-verified red this cycle via a real TS7 test install: `npm run lint` throws `typescript-eslint does not support TS 7.0` at runtime. `typescript-eslint@8.70.1` (current stable) still declares `peer typescript@">=4.8.4 <6.1.0"`. Re-flag next cycle; check whether `typescript-eslint` has shipped TS7 support before either side can land. |
+| `vitest` (npm) | `^4.1.11` (resolves `4.1.11`) | `5.0.1` | **New major, first flagged this cycle.** `package.json`'s range correctly capped `npm update` at 4.x. Not investigated for migration effort — flag for owner review next cycle. |
+
+Dropped this cycle (confirmed already applied, re-verified against the manifests directly): `eslint`/`@eslint/js` 9→10, Rust `rand` 0.8→0.9 (see Finding 9). `pytest`'s `<10` cap remains in `pyproject.toml` but is currently inert — no `pytest` 10 release exists yet (Finding 10).
+
+### Open PR backlog
+
+**Manual weekly-maintenance PRs — two open, unmerged, and this cycle's own PR makes three (see Backlog note above):**
+
+| PR | Title | Opened | Status |
+|---|---|---|---|
+| #140 | `chore: weekly maintenance 2026-09-16 - security fixes and dependency bumps` | 2026-09-16 | Open, unmerged |
+| #124 | `chore: weekly maintenance 2026-09-09 - security lockfile fixes` | 2026-09-09 | Open, unmerged |
+
+**Dependabot PRs:**
+
+| PR | Title | Ecosystem | Notes |
+|---|---|---|---|
+| #105 | `chore(deps-dev): bump typescript from 6.0.3 to 7.0.2` | npm | **Major, still red** — re-verified live this cycle, see Backlog note and Finding 7 |
+
+Only one open Dependabot PR right now (down from the six-deep backlog seen in the last-merged 2026-08-26 cycle) — but that's because none of #106–#110 are open any more (merged or superseded at some point after 2026-08-26, off this cycle's own branch), not because this cycle closed anything. The real backlog problem this cycle is the **manual** maintenance-PR stack (#140, #124, and now this one) — flagged prominently at the top of this entry.
+
+### Post-change verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | 0 errors, 1 pre-existing warning (`JobDetailPage.tsx` exhaustive-deps — unchanged from baseline) |
+| `npm run test` | 28 test files, 218 tests passed (baseline and post-change identical) |
+| `npm run build` | `tsc -b && vite build` — succeeds |
+| `npm audit` | 3 (2 moderate, 1 high) → 0 vulnerabilities |
+| `cargo clippy --all-targets -- -D warnings` | Clean, 0 warnings (before and after the `rustls`/`chacha20` lockfile update) |
+| `cargo test` (`src-tauri/`) | 330 passed, 0 failed, 3 ignored (before and after) |
+| `cargo audit` | 1 vulnerability + 11 warnings → 0 vulnerabilities + 10 warnings |
+| `pytest -q` | 87 passed (no Python source files touched this cycle, only `uv.lock`) |
+| `ruff check tests python` / `black --check tests python` / `isort --check-only tests python` | All clean |
+
+---
+
 ## 2026-08-26
 
 ### Checks performed
