@@ -5,7 +5,7 @@
 [![Python](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml)
 [![Alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/eikrad/Job-Tracker)
 
-Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, optional **AI-assisted extraction** (Google **Gemini** or **Mistral**), and web-based job discovery.
+Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, optional **AI-assisted extraction** (**Scaleway DeepSeek** by default, or Google **Gemini** / **Mistral**), and web-based job discovery.
 
 ## Features
 
@@ -14,9 +14,9 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 - **Configurable status workflow** — the default board pipeline is `Interesting → Plan to Apply → Application Sent → Feedback → Done`; column names are editable in Settings
 - **Quick capture** — paste a job URL into the header's Capture drawer to auto-fetch and AI-extract it into a draft; unresolved captures land in a Capture Inbox for later triage. A copyable handoff link (`?capture_url=…`) lets you queue a URL from outside the app (e.g. a bookmark); the app picks it up as a browser capture the next time it loads
 - **Mail scan & Mail Match Inbox** — point the app at your local Thunderbird mail folders and it reads job-alert digests, scores each listing against your own Candidate Profiles, and queues the good ones for review. Nothing is ever saved without you approving it; dismissals are revocable, and mail is read **read-only from local folders** (no IMAP, no passwords)
-- **In-app job search** — search Jobindex and Indeed without leaving the app (SerpAPI + Brave Search fallback), with one-click save
+- **In-app job search** — search Jobindex, Indeed, LinkedIn, and The Hub without leaving the app (SerpAPI + Brave Search fallback), with one-click save
 - **Listing status check** — one click on the job detail page checks whether a saved listing is still active, closed, archived, or unreachable (direct fetch, or via SerpAPI for sources that block automated requests, e.g. Indeed)
-- **AI-assisted extraction** — paste a job listing and let Gemini or Mistral fill in the fields automatically
+- **AI-assisted extraction** — paste a job listing and let Scaleway DeepSeek (default), Gemini, or Mistral fill in the fields automatically
 - **Application PDFs** — attach and manage documents per application
 - **Deadline tracking** — apply-by, interview, and role-start dates shown on a calendar month view, plus a Reminder Center panel on the dashboard surfacing upcoming and overdue deadlines
 - **Google Calendar integration** — push events to your primary Google Calendar via OAuth PKCE (no Client Secret required)
@@ -30,7 +30,7 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 flowchart TD
     DISCOVER([Find a job]) --> SOURCE
     SOURCE{How?} -->|in-app search| SEARCH[Job search\nJobindex · Indeed\nSerpAPI + Brave fallback]
-    SOURCE -->|paste listing| EXTRACT[AI extraction\nGemini / Mistral\nfills fields automatically]
+    SOURCE -->|paste listing| EXTRACT[AI extraction\nScaleway / Gemini / Mistral\nfills fields automatically]
     SOURCE -->|manual entry| FORM[Add job form]
     SEARCH --> SAVE[Save to board]
     EXTRACT --> SAVE
@@ -48,7 +48,7 @@ graph TD
     UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC commands| RUST[Rust backend<br>Tauri v2]
     RUST -->|rusqlite| DB[(SQLite<br>jobs · status_history · job_documents)]
     RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
-    UI -->|HTTPS, browser fetch| AI[AI text extraction<br>Gemini / Mistral]
+    RUST -->|HTTPS via llm client| AI[AI text extraction<br>Scaleway / Gemini / Mistral]
     RUST -->|HTTPS| SEARCH[Job search & listing check<br>SerpAPI + Brave fallback]
     RUST -->|OAuth 2 PKCE + HTTPS| GCAL[Google Calendar API<br>create events]
 ```
@@ -64,7 +64,7 @@ See [docs/architecture.md](docs/architecture.md) for a deeper breakdown of compo
 | Desktop shell | Tauri v2 (Rust) |
 | Database | SQLite via rusqlite |
 | Drag-and-drop | dnd-kit |
-| AI extraction | Google Gemini / Mistral (user-supplied key) |
+| AI extraction | Scaleway DeepSeek (default), Google Gemini, or Mistral (user-supplied key; calls made from Rust) |
 | Job search & listing check | SerpAPI (primary) + Brave Search API (fallback) |
 | Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
 | Testing | Vitest (frontend), cargo test (Rust), pytest (Python scripts) |
@@ -164,7 +164,8 @@ Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:g
 ## Configuration
 
 1. Copy [`fake.env`](fake.env) to `.env` if you want file-based config (optional).
-2. **AI extraction**: choose **Gemini** or **Mistral** in the app and paste the matching API key (stored in local storage for that build). Keys in `.env` are optional for file-based tooling; the desktop UI does not read `.env` for these calls.
+2. **AI extraction**: in **Settings → Integrations**, pick a provider (**Scaleway DeepSeek** is the default) and paste the matching API key. Keys are stored in the OS keyring (falling back to a `0600` file), never in `.env`, and never sent to the web view. Keys in `.env` are optional for file-based tooling only; the desktop UI does not read `.env` for these calls.
+   - **Scaleway DeepSeek**: sign up at [Scaleway](https://console.scaleway.com/) and create a secret key for the Generative APIs product; this is also the provider **Mail scan** uses (see below), regardless of which provider is selected for manual extraction.
    - **Mistral**: sign up at [La Plateforme](https://console.mistral.ai/); the free **Experiment** tier is typically enough for occasional job-text extraction (high monthly token allowance; rate limits apply — see [Mistral help center](https://help.mistral.ai/)). Limits can change; check their current docs.
    - **Gemini**: Google AI Studio API key as before.
 3. **Job Search providers**: in **Settings**, add one or both:
@@ -218,9 +219,11 @@ If **Create in Google** fails after a long time, use **Disconnect** and **Connec
 ## Mail scan
 
 Configure mail folders and both Candidate Profiles in **Settings → Mail scan**, then press
-**Scan job emails**. A pre-run sheet shows the *resolved* folder paths, the model, the
-cutoff, and an estimate of how many model calls the run will cost, before it spends
-anything.
+**Scan job emails**. Mail scan always scores through the **Scaleway DeepSeek** API key
+from **Settings → Integrations**, independent of which provider is selected for manual
+AI extraction — add a Scaleway key first if you want to use it. A pre-run sheet shows
+the *resolved* folder paths, the model, the cutoff, and an estimate of how many model
+calls the run will cost, before it spends anything.
 
 What comes back lands in the **Mail Match Inbox** (`/mail-matches`), separate from the
 Capture Inbox:
