@@ -125,6 +125,17 @@ To mirror CI's Python job exactly (pip instead of uv): `pip install -r requireme
 
 Fix issues or explain in the PR why something is intentionally skipped.
 
+## Branches
+
+```
+feature branch  →  staging  →  main
+```
+
+- Branch from `staging` and open pull requests against `staging`, never `main`.
+- `main` is updated only by merging `staging` into it after validation, plus the release
+  PR (see [docs/releasing.md](docs/releasing.md)). The **Protect main** check enforces this.
+- Dependabot also targets `staging`.
+
 ## Pull requests
 
 1. **Scope:** One logical change per PR when possible (easier review and bisect).
@@ -134,16 +145,23 @@ Fix issues or explain in the PR why something is intentionally skipped.
 
 ## Commit messages
 
-Prefer clear, conventional prefixes when it fits:
+Use [Conventional Commits](https://www.conventionalcommits.org/). Versions and the
+CHANGELOG are generated from them (see [docs/releasing.md](docs/releasing.md)), and a
+check fails pull requests with a commit that lacks a prefix:
 
 - `feat:` new user-facing behavior
 - `fix:` bug fix
+- `feat!:` / `fix!:` (or a `BREAKING CHANGE:` footer) incompatible change
+- `perf:`, `security:`, `revert:` also appear in the CHANGELOG
 - `chore:` tooling, deps, config
 - `docs:` documentation only
 - `test:` tests only
 - `refactor:` behavior unchanged
+- `build:`, `ci:`, `style:`
 
 Example: `fix: validate import JSON before bulk insert`
+
+Never edit the version numbers by hand; the release PR does it.
 
 ## App identifier
 
