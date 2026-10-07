@@ -8,6 +8,7 @@ Documentation for Job Tracker.
 |------|----------------|
 | [architecture.md](architecture.md) | App structure, tech stack, key data flows (capture, adding a job, AI extraction, job search, listing check, Google Calendar), CI setup — with Mermaid diagrams |
 | [maintenance.md](maintenance.md) | Dependency versions, upgrade notes, and periodic maintenance tasks |
+| [releasing.md](releasing.md) | Release process: Conventional Commits, release-please, staging → main |
 | [adr/](adr/) | Architecture Decision Records — one decision per file, with rejected alternatives |
 | [../CONTEXT.md](../CONTEXT.md) | Domain glossary (ubiquitous language) |
 
