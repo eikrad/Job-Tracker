@@ -29,9 +29,12 @@ Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications
 ```mermaid
 flowchart TD
     DISCOVER([Find a job]) --> SOURCE
-    SOURCE{How?} -->|in-app search| SEARCH[Job search\nJobindex · Indeed\nSerpAPI + Brave fallback]
+    SOURCE{How?} -->|in-app search| SEARCH[Job search\nJobindex · Indeed · LinkedIn · The Hub\nSerpAPI + Brave fallback]
     SOURCE -->|paste listing| EXTRACT[AI extraction\nScaleway / Gemini / Mistral\nfills fields automatically]
     SOURCE -->|manual entry| FORM[Add job form]
+    SOURCE -->|job-alert mails| MAIL[Mail scan\nlocal Thunderbird folders\nscored against your profiles]
+    MAIL --> INBOX[Mail Match Inbox\nyou accept or dismiss]
+    INBOX --> SAVE
     SEARCH --> SAVE[Save to board]
     EXTRACT --> SAVE
     FORM --> SAVE
@@ -48,6 +51,7 @@ graph TD
     UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC commands| RUST[Rust backend<br>Tauri v2]
     RUST -->|rusqlite| DB[(SQLite<br>jobs · status_history · job_documents)]
     RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
+    RUST -->|stdin/stdout NDJSON| SIDECAR[Python sidecar<br>reads local mail folders only]
     RUST -->|HTTPS via llm client| AI[AI text extraction<br>Scaleway / Gemini / Mistral]
     RUST -->|HTTPS| SEARCH[Job search & listing check<br>SerpAPI + Brave fallback]
     RUST -->|OAuth 2 PKCE + HTTPS| GCAL[Google Calendar API<br>create events]
@@ -69,7 +73,7 @@ See [docs/architecture.md](docs/architecture.md) for a deeper breakdown of compo
 | Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
 | Testing | Vitest (frontend), cargo test (Rust), pytest (Python scripts) |
 
-Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
+Contributing (build, PR checklist, commits; pull requests target the `staging` branch): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
 
 ## Documentation
 
@@ -77,6 +81,8 @@ Contributing (build, PR checklist, commits): see **[CONTRIBUTING.md](CONTRIBUTIN
 |------|----------------|
 | [docs/architecture.md](docs/architecture.md) | App structure, tech stack, and detailed data flow diagrams for all key features |
 | [docs/maintenance.md](docs/maintenance.md) | Dependency versions, upgrade notes, and periodic maintenance tasks |
+| [docs/releasing.md](docs/releasing.md) | How versions and the CHANGELOG are produced (release-please) |
+| [CONTEXT.md](CONTEXT.md) | Domain glossary used across code and docs |
 | [docs/refactor-sync-roadmap.md](docs/refactor-sync-roadmap.md) | Planned performance refactors and future cross-device sync roadmap |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Build setup, pre-commit hooks, platform prerequisites, and PR checklist |
 
@@ -253,6 +259,9 @@ Notes on how it behaves:
 - **Mail is hostile input.** Listing text is passed to the model as data, hidden HTML
   and invisible characters are stripped, and a listing that tries to instruct the model
   is flagged rather than trusted. Fetched pages are never rendered in the app.
+- **Skips happen before they cost.** Listings whose title matches your **title blocklist**
+  (Settings → Mail scan) and listings whose page says the posting is closed never reach
+  the model.
 - **Re-runs are cheap.** Scores are cached, so a crashed or cancelled scan costs almost
   nothing to repeat. Editing a Candidate Profile re-scores the backlog; *copying* the
   file does not. A listing you dismissed, or one already on your board, is skipped
@@ -281,7 +290,7 @@ the app.
 
 ## CI & tests
 
-GitHub Actions runs three independent workflows on every push and pull request (each with its own status badge above), plus a scheduled security audit:
+GitHub Actions runs three independent workflows on every push and pull request (each with its own status badge above), plus a commit-message check on pull requests and a scheduled security audit:
 
 | Workflow | What it checks |
 |---|---|
