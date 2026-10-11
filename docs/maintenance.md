@@ -2,6 +2,79 @@
 
 ---
 
+## 2026-10-07
+
+### Checks performed
+- Reset `claude/upbeat-cray-ouyr43` to `origin/staging` (`2b584e3`). Read `CONTRIBUTING.md`, this log, and `frontend.yml` / `python.yml` / `rust.yml` (unchanged). No PR template exists in `.github/`.
+- Baseline (before any change), mirroring CI: `npm ci`, `npm run lint` (0 errors, 1 pre-existing `JobDetailPage.tsx` exhaustive-deps warning), `npm run test` (29 files, 226 tests), `npm run build`; Python 3.12 venv + `requirements-dev.txt`: `ruff`, `black --check`, `isort --check-only`, `pytest -q` (87 passed); `cargo clippy -D warnings` and `cargo test` (357 passed, 3 ignored) after installing the Tauri system deps via apt. Everything was green except the `npm audit` finding below.
+- Audits: `npm audit`, `pip-audit` (on `uv export`), `cargo audit --file src-tauri/Cargo.lock` (`cargo-audit` 0.22.2).
+- Outdated: `npm outdated`, `uv lock --upgrade --dry-run`, `cargo update --dry-run`. The sandbox proxy blocked `www.retsinformation.dk` (not needed for any check).
+
+### Findings
+
+**1. `npm audit` — 2 high at baseline, 0 after `npm audit fix` (lockfile only).**
+
+| Package | Issue |
+|---|---|
+| `brace-expansion` (transitive) | DoS via uncontrolled recursion on nested brace groups (GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p) |
+| `source-map-js` (transitive) | Event-loop DoS via indexed source-map section offsets (GHSA-68fv-2mgg-jv7q) |
+
+**2. `pip-audit` — 0 vulnerabilities.**
+
+**3. `cargo audit` — 0 vulnerabilities, 10 warnings at baseline, 9 after.** The `anyhow` unsound advisory (RUSTSEC-2026-0190) was fixed by `cargo update -p anyhow` (1.0.102 → 1.0.104). Remaining warnings are unchanged and not actionable from our manifests: unmaintained `fxhash`, `proc-macro-error`, `unic-*` crates; unsound `glib 0.18.5` (RUSTSEC-2024-0429) and transitive `rand 0.7.3` (RUSTSEC-2026-0097).
+
+**4. Safe bumps applied (within existing ranges; `package.json` / `Cargo.toml` / `pyproject.toml` untouched).**
+
+| Ecosystem | Package | Before | After |
+|---|---|---|---|
+| npm | `@types/node` | 26.6.2 | 26.6.4 |
+| npm | `@vitejs/plugin-react` | 6.1.1 | 6.1.2 |
+| npm | `globals` | 17.12.0 | 17.13.0 |
+| npm | `typescript-eslint` | 8.70.1 | 8.71.1 |
+| Rust | `anyhow` (security) | 1.0.102 | 1.0.104 |
+| Python | `black` | 26.5.1 | 26.10.0 |
+| Python | `iniconfig` | 2.3.0 | 2.3.1 |
+| Python | `platformdirs` | 4.11.12 | 4.12.3 |
+| Python | `rpds-py` | 2026.6.3 | 2026.9.1 |
+
+`black` 26.10.0 produced no reformatting (`black --check` clean).
+
+**5. Deliberately skipped because an open Dependabot PR covers them:** `tauri` 2.12.1, `tauri-build` 2.7.1, `tauri-plugin-log` 2.10.0, `rand` 0.10.3, `@tauri-apps/cli` 2.12.1, `eslint` 10.12.0, `lucide-react` 1.50.0 (latest is 1.52.0), `vite` 8.3.2 (latest 8.3.3), `vitest` 5.0.3, `isort` 9.0.2, `ruff` 0.16.10 (PRs #156, #162–#171).
+
+**6. Tauri version sync.** The Dependabot PRs bump the `@tauri-apps/cli` (2.12.1) and the `tauri` crate (2.12.1) separately, but nothing bumps `@tauri-apps/api` (currently 2.11.1; latest 2.12.1). Merging the cli/crate PRs would leave `@tauri-apps/api` one minor behind, and Tauri's CLI warns on JS/Rust minor mismatches. `@tauri-apps/api` was intentionally not bumped here so it can move together with those PRs; recommend merging the cli + `tauri` PRs together and then bumping `@tauri-apps/api` to 2.12.1 (Dependabot should open a PR for it, or do it by hand).
+
+**7. Large `cargo update --dry-run` churn** (230 transitive crates, incl. several major-looking jumps such as `brotli` 8 → 9, `cipher` 0.4 → 0.5, `aes` 0.8 → 0.9). Not applied, consistent with the standing policy of no blanket `cargo update`.
+
+### Fixes applied
+- `npm audit fix`; `npm update @types/node @vitejs/plugin-react globals typescript-eslint`.
+- `cargo update -p anyhow`.
+- `uv lock --upgrade-package black --upgrade-package iniconfig --upgrade-package platformdirs --upgrade-package rpds-py`.
+- Only `package-lock.json`, `src-tauri/Cargo.lock`, `uv.lock` and this log changed.
+
+### Majors flagged for owner decision (not applied)
+
+| Item | In use | Latest | Notes |
+|---|---|---|---|
+| `typescript` (npm) | `~6.0.0` (6.0.3) | 7.0.2 | `typescript-eslint` 8.71.1 still targets TS < 6.1 (not re-tested this cycle; last verified 2026-09-23 as failing at lint runtime). Blocked until `typescript-eslint` supports TS 7. |
+| `vitest` (npm) | `^4.1.11` | 5.0.3 | Dependabot PR open; needs migration review and a check of config compatibility. Not applied. |
+| `pytest` (Python) | `<10` cap | 9.x | Cap is inert; no 10.x release known. |
+
+### Post-change verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | 0 errors, 1 pre-existing warning |
+| `npm run test` | 29 files, 226 tests passed |
+| `npm run build` | succeeds |
+| `npm audit` | 2 high → 0 |
+| `cargo clippy --all-targets -- -D warnings` | clean |
+| `cargo test` | 357 passed, 0 failed, 3 ignored |
+| `cargo audit` | 0 vulnerabilities; warnings 10 → 9 |
+| `pip-audit` | 0 vulnerabilities |
+| `ruff` / `black --check` / `isort --check-only` / `pytest -q` | clean; 87 passed |
+
+---
+
 ## 2026-09-23
 
 ### ⚠️ Backlog note — two manual weekly-maintenance PRs stacked unmerged, plus one blocked Dependabot PR
