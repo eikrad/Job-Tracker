@@ -14,6 +14,7 @@ graph TD
     RUST -->|rusqlite| DB[(SQLite<br>jobs · status_history · job_documents)]
     RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
     RUST -->|OS keyring / 0600 file| KEYS[API keys<br>LLM · SerpAPI · Brave]
+    RUST -->|stdin/stdout NDJSON| SIDECAR[Python sidecar<br>reads local mail folders only]
     RUST -->|HTTPS via llm client| AI[AI text extraction<br>Scaleway / Gemini / Mistral]
     RUST -->|HTTPS api_client| SEARCH[Job search<br>SerpAPI + Brave]
     RUST -->|HTTPS fetch_untrusted| LIST[Listing page fetch<br>SSRF-hardened]
@@ -35,7 +36,8 @@ graph TD
 | Job search & listing check | SerpAPI (primary) + Brave Search API (fallback); listing URLs via `fetch_untrusted` |
 | Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
 | Theme | "Breath" light/dark palette (KDE/Manjaro); OS-aware via `prefers-color-scheme`, togglable in the header (`src/lib/theme.ts`, `src/hooks/useTheme.ts`) |
-| Testing | Vitest (frontend), cargo test (Rust), pytest (Python scripts) |
+| Mail-scan sidecar | Python 3.12 (`python/mail_scan`), no network; frozen with PyInstaller for release builds |
+| Testing | Vitest (frontend), cargo test (Rust), pytest (Python sidecar and contract tests) |
 | Linting | ESLint, TypeScript, cargo clippy, Ruff, Black, isort |
 
 ---
@@ -221,38 +223,24 @@ All data lives in the OS app data directory — nothing is stored in the repo.
 
 ### Mail scan
 
-```
-Settings (folders, profiles, key)
-        │
-        ▼
-mail_scan_start ──► sidecar (Python, no network, no secrets)
-        │                    │ NDJSON events on stdout
-        │                    ▼
-        │            gate: dismissed or already a Job? ──► sighting only (no call, no fetch)
-        │                    │ no
-        │                    ▼
-        │            title blocklist match? ──► skipped (no call, no fetch)
-        │                    │ no
-        │                    ▼
-        │            not in score cache: fetch page, closed? ──► skipped (no call)
-        │                    │ no (page kept for enrichment)
-        │                    ▼
-        │            listings buffered (≤10) ──► pass 1 batch score  ─┐
-        │                                                             │ cache first
-        │                    ┌──────────── pass 2 (per listing) ◄──────┘
-        │                    ▼
-        │            enrichment: fetch_untrusted ──► text ──► same normalizer
-        │                    │                                as the job form
-        │                    ▼
-        └──────────► one transaction per listing ──► mail_match_inbox
-                                                          │
-                                                          ▼
-                                            Mail Match Inbox (review)
-                                                          │
-                                              Accept ──► one click, Undo offered
-                                                          │
-                                                          ▼
-                                            jobs + job_field_provenance
+```mermaid
+flowchart TD
+    S["Settings: folders, profiles, key"] --> START[mail_scan_start]
+    START --> SC["Sidecar: Python, no network, no secrets"]
+    SC -->|NDJSON events| G{"Dismissed or already a Job?"}
+    G -->|yes| SIGHT["Sighting only: no model call, no fetch"]
+    G -->|no| T{"Title blocklist match?"}
+    T -->|yes| SKIP["Skipped: no model call, no fetch"]
+    T -->|no| C{"In score cache?"}
+    C -->|no| F["Fetch page; closed posting is skipped, no model call"]
+    C -->|yes| P1
+    F --> P1["Pass 1: batch score, up to 10 listings"]
+    P1 --> P2["Pass 2: per-listing score"]
+    P2 --> E["Enrichment: fetch_untrusted, then the job-form normalizer"]
+    E --> TX["One transaction per listing"]
+    TX --> INBOX[("mail_match_inbox")]
+    INBOX --> REVIEW["Mail Match Inbox review"]
+    REVIEW -->|"Accept, Undo offered"| JOB[("jobs + job_field_provenance")]
 ```
 
 Properties worth knowing before changing any of it:
