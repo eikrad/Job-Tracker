@@ -2,6 +2,32 @@
 
 ---
 
+## 2026-10-14
+
+### Checks performed
+- `git fetch origin`; branch reset to `origin/staging` (`f91a1da`).
+- Baseline: `npm ci`, `npm run lint` (0 errors, 1 pre-existing warning), `npm test` **226 passed**, `npm run build`, `uv run pytest` **87 passed** - **green**. Nothing broken.
+- Security: `npm audit` **0**; `pip-audit` (Python 3.12) **no known vulnerabilities**; `cargo audit` (v0.22.2) **9 vulnerabilities** (see below).
+- Open PRs: 12 Dependabot PRs (#156, #163, #164, #167-#171, #174-#178) for tauri, serde_json, tauri-plugin-log, vite, eslint, lucide-react, vitest, ruff, black, isort. Their bumps were **not duplicated**.
+- **Not run:** `cargo check` / `clippy` / `cargo test` - GTK/WebKit system libraries (`gdk-3.0.pc`) are not installable in this sandbox. CI's Rust workflow covers it. Only `Cargo.lock` changed, patch-level, no manifest edits.
+
+### Fixes applied
+- **Security (Rust, lockfile only, `cargo update -p quinn-proto -p rustls`)**:
+  - `quinn-proto` 0.11.15 -> 0.11.19: RUSTSEC-2026-0338, -0339, -0340, -0341, -0342 (fixed in >=0.11.17 / 0.11.18).
+  - `rustls` 0.23.45 -> 0.23.46: RUSTSEC-2026-0346, -0347, -0348, -0349.
+  - `cargo audit` now reports 0 vulnerabilities; remaining informational warnings (`fxhash`, `proc-macro-error`, `unic-*`, `glib`, `rand` 0.7.3) are transitive via tauri and unchanged.
+- **Safe npm updates** (`package-lock.json` only, ranges unchanged): `@types/node` 26.6.5, `happy-dom` 20.14.6, `react` / `react-dom` 19.3.1, `typescript-eslint` 8.71.2. After: lint, 226 tests, build, `npm audit` green.
+- Left to the existing Dependabot PRs: `eslint`, `vite`, `lucide-react`, `vitest`, `@tauri-apps/cli`, tauri crates, python dev tools. `@tauri-apps/api` 2.12.4 not bumped so JS and Rust Tauri versions can move together with PRs #168/#174.
+
+### Majors - flagged, NOT applied
+| Package | Current | Latest | Why held back |
+|---|---|---|---|
+| `typescript` | 6.0.3 | 7.0.2 | `typescript-eslint` does not support TS 7 yet. |
+| `vitest` | 4.1.11 | 5.0.4 | Major; already proposed in Dependabot #171 - review and merge there. |
+| `happy-dom` | 20.14.6 | 21.0.1 | Major; test environment, not yet evaluated. |
+
+---
+
 ## 2026-10-07
 
 ### Checks performed
