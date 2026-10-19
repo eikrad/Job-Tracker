@@ -71,9 +71,22 @@ See [docs/architecture.md](docs/architecture.md) for a deeper breakdown of compo
 | AI extraction | Scaleway DeepSeek (default), Google Gemini, or Mistral (user-supplied key; calls made from Rust) |
 | Job search & listing check | SerpAPI (primary) + Brave Search API (fallback) |
 | Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
-| Testing | Vitest (frontend), cargo test (Rust), pytest (Python scripts) |
+| Mail scan | Python 3.12 sidecar (no network), scoring and enrichment in Rust |
+| Testing | Vitest (frontend), cargo test (Rust), pytest (Python sidecar and contract tests) |
 
 Contributing (build, PR checklist, commits; pull requests target the `staging` branch): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
+
+## Repo layout
+
+| Path | Contents |
+|------|----------|
+| `src/` | React + TypeScript UI (pages, feature modules, i18n) |
+| `src-tauri/` | Rust backend: SQLite, secrets, LLM client, job search, listing check, mail scan; `prompts/` holds model prompt templates |
+| `python/mail_scan/` | Network-less mail-scan sidecar (reads local mail folders, emits NDJSON) |
+| `schemas/` | JSON schema for sidecar events |
+| `tests/` | Python tests (sidecar, export schema, injection corpus) |
+| `scripts/` | Build, release, and desktop-shortcut helpers |
+| `docs/` | Architecture, maintenance log, ADRs, roadmap |
 
 ## Documentation
 
@@ -82,6 +95,7 @@ Contributing (build, PR checklist, commits; pull requests target the `staging` b
 | [docs/architecture.md](docs/architecture.md) | App structure, tech stack, and detailed data flow diagrams for all key features |
 | [docs/maintenance.md](docs/maintenance.md) | Dependency versions, upgrade notes, and periodic maintenance tasks |
 | [docs/releasing.md](docs/releasing.md) | How versions and the CHANGELOG are produced (release-please) |
+| [docs/adr/](docs/adr/) | Architecture Decision Records (mail scan, sidecar, key storage) |
 | [CONTEXT.md](CONTEXT.md) | Domain glossary used across code and docs |
 | [docs/refactor-sync-roadmap.md](docs/refactor-sync-roadmap.md) | Planned performance refactors and future cross-device sync roadmap |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Build setup, pre-commit hooks, platform prerequisites, and PR checklist |
