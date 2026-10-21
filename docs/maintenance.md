@@ -2,6 +2,42 @@
 
 ---
 
+## 2026-10-21
+
+### Checks performed
+- Reset `claude/upbeat-cray-eg3kyy` to `origin/staging` (`200ae38`). Checks mirror CI (`frontend.yml`, `python.yml`, `rust.yml`).
+- Baseline before changes: `npm ci`, `lint` (0 errors, 1 pre-existing `exhaustive-deps` warning), `test` (29 files, 226 tests), `build`; `ruff`, `black --check`, `isort --check-only`, `pytest -q` (87 passed); Rust system libs installed as in CI, then `clippy -D warnings` and `cargo test` (357 passed). **Nothing was broken on `staging`.**
+- Audits: `npm audit`, `pip-audit` (on `uv export`), `cargo audit --file src-tauri/Cargo.lock`.
+
+### Security findings
+| Ecosystem | Before | After |
+|---|---|---|
+| npm | 1 high: `vite` 8.3.0-8.3.2 (GHSA-9jrq-w75r-8gcw, GHSA-rq7h-c2jc-7f22, GHSA-vfpm-58rq-9qcg) and its `launch-editor` dependency (GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw, GHSA-587h-7wmj-h5pm) | 0 |
+| pip | 0 | 0 |
+| cargo | 11 vulnerabilities: `quinn-proto` 0.11.15 (RUSTSEC-2026-0338/-0339/-0340/-0341/-0342), `rustls` 0.23.45 (-0346/-0347/-0348/-0349), `rustls-webpki` 0.103.15 (-0382), `webpki-roots` 1.0.6 (-0381) | 0 |
+
+Seven unmaintained/unsound warnings remain (`fxhash`, `proc-macro-error`, `glib`, `rand` 0.7, `zvariant`/`zvariant_derive`/`zbus_names`). They come in transitively through Tauri/GTK and cannot be fixed from our manifests.
+
+### Updates applied (lockfiles only; `package.json`, `Cargo.toml`, `pyproject.toml` unchanged)
+- npm: `vite` 8.3.0 -> 8.3.5 (security), `vitest` 4.1.11 -> 4.1.12, `typescript-eslint` 8.71.1 -> 8.72.0, `happy-dom` 20.14.5 -> 20.14.6, `@types/node` 26.6.4 -> 26.6.5.
+- Rust: `cargo update -p quinn-proto -p rustls -p rustls-webpki -p webpki-roots` (rustls 0.23.46, rustls-webpki 0.103.16, webpki-roots 1.0.10, quinn-proto >= 0.11.18; cargo also swapped some `rand` 0.9 entries for `rand_pcg`).
+- Python: `uv.lock` re-synced with `pyproject.toml` (`isort` 9.0.1 -> 9.0.2, already required by the merged Dependabot PR #167).
+- Compatibility: the vite, vitest and happy-dom bumps are patch releases inside their existing ranges; build, lint and all tests pass. `npm` 10.9.4 hits an arborist bug (`Cannot read properties of null (reading 'edgesOut')`), so the npm lockfile was edited with `npx npm@11 ... --package-lock-only`.
+
+### Not touched because an open Dependabot PR covers it
+`tauri` / `tauri-build` / `tauri-plugin-log` / `serde_json` / `sha2` (#184, #182, #176, #186, #190), `@tauri-apps/api` / `@tauri-apps/cli` (#188, #181), `eslint` (#187), `vitest` 5 (#185), `ruff` (#183), `black` (#175). Note: `@tauri-apps/api`, `@tauri-apps/cli` and the `tauri` crate should be merged together to stay on the same minor. Also note that PR #179 (2026-10-14) fixes the same quinn-proto/rustls advisories and overlaps with this change in `src-tauri/Cargo.lock`; merge one of them and rebase the other.
+
+### Major changes: flagged, NOT applied
+| Item | Current | Latest | Notes |
+|---|---|---|---|
+| `typescript` | 6.0.3 | 7.0.2 | `typescript-eslint` does not yet support TS 7 |
+| `vitest` | 4.1.12 | 5.0.5 | Dependabot PR #185; needs migration review |
+| `happy-dom` | 20.x | 21.0.4 | Major; no CVE driving it |
+| Many transitive crates | -- | -- | Large `cargo update` churn (e.g. `brotli`, `cipher`, `aes`) deliberately not applied |
+
+### Post-change verification
+`npm ci`, `lint` (same 1 warning), `test` (226 passed), `build`, `npm audit` (0); `ruff`, `black`, `isort`, `pytest` (87 passed); `cargo clippy -D warnings`, `cargo test` (357 passed); `cargo audit` (0 vulnerabilities).
+
 ## 2026-10-07
 
 ### Checks performed
