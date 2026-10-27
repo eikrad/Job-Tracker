@@ -5,343 +5,105 @@
 [![Python](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml)
 [![Alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/eikrad/Job-Tracker)
 
-Desktop app (**Tauri** + **React** + local **SQLite**) to track job applications, deadlines, application PDFs, optional **AI-assisted extraction** (**Scaleway DeepSeek** by default, or Google **Gemini** / **Mistral**), and web-based job discovery.
+A local-first desktop app that tracks job applications from discovery to outcome. Everything lives in a SQLite database on your machine; no cloud account is needed.
 
-## Features
+Built with **Tauri v2** (Rust), **React 19 + TypeScript** and **SQLite**.
 
-- **Kanban / Table / Calendar dashboard** — view all applications in the format that works for you; pick a default view in Settings, search the dashboard by company/title, and use the Table's **Customize** panel to show/hide columns and filter out statuses
-- **Job detail page** — a dedicated `/job/:id` page per application with a full edit form (contact/workplace details, salary, etc.), document upload/management, and a status-change history timeline
-- **Configurable status workflow** — the default board pipeline is `Interesting → Plan to Apply → Application Sent → Feedback → Done`; column names are editable in Settings
-- **Quick capture** — paste a job URL into the header's Capture drawer to auto-fetch and AI-extract it into a draft; unresolved captures land in a Capture Inbox for later triage. A copyable handoff link (`?capture_url=…`) lets you queue a URL from outside the app (e.g. a bookmark); the app picks it up as a browser capture the next time it loads
-- **Mail scan & Mail Match Inbox** — point the app at your local Thunderbird mail folders and it reads job-alert digests, scores each listing against your own Candidate Profiles, and queues the good ones for review. Nothing is ever saved without you approving it; dismissals are revocable, and mail is read **read-only from local folders** (no IMAP, no passwords)
-- **In-app job search** — search Jobindex, Indeed, LinkedIn, and The Hub without leaving the app (SerpAPI + Brave Search fallback), with one-click save
-- **Listing status check** — one click on the job detail page checks whether a saved listing is still active, closed, archived, or unreachable (direct fetch, or via SerpAPI for sources that block automated requests, e.g. Indeed)
-- **AI-assisted extraction** — paste a job listing and let Scaleway DeepSeek (default), Gemini, or Mistral fill in the fields automatically
-- **Application PDFs** — attach and manage documents per application
-- **Deadline tracking** — apply-by, interview, and role-start dates shown on a calendar month view, plus a Reminder Center panel on the dashboard surfacing upcoming and overdue deadlines
-- **Google Calendar integration** — push events to your primary Google Calendar via OAuth PKCE (no Client Secret required)
-- **Light / dark theme** — "Breath" (KDE/Manjaro) palette; follows the OS color scheme by default or can be toggled system/light/dark from the header
-- **Import / export** — JSON and CSV for backups or migrating between machines
-- **Local-first** — all data in SQLite in the OS app data directory; no cloud account required
+## What it does
+
+| Area | Highlights |
+|---|---|
+| **Board** | Kanban, Table and Calendar views of all applications; search by company/title; configurable status pipeline (default `Interesting → Plan to Apply → Application Sent → Feedback → Done`) |
+| **Job detail** | Full edit form, PDF documents (CV, cover letter), status history timeline, one-click listing check (active / closed / archived / unreachable) |
+| **Finding jobs** | In-app search of Jobindex, Indeed, LinkedIn and The Hub (SerpAPI, Brave Search as fallback); quick capture from a pasted URL; manual entry |
+| **Mail scan** | Reads job-alert mails from your local Thunderbird folders (read-only, no IMAP), scores listings against your own Candidate Profiles and queues good ones in the Mail Match Inbox. Nothing is saved without your approval |
+| **AI extraction** | Turns pasted listing text into job fields using Scaleway DeepSeek (default), Google Gemini or Mistral with your own key |
+| **Deadlines** | Apply-by, interview and start dates, a Reminder Center, optional push to Google Calendar (OAuth PKCE, no client secret) |
+| **Comfort and privacy** | Light/dark theme, JSON/CSV import and export, API keys in the OS keyring |
 
 ## How it works
 
 ```mermaid
-flowchart TD
-    DISCOVER([Find a job]) --> SOURCE
-    SOURCE{How?} -->|in-app search| SEARCH[Job search\nJobindex · Indeed · LinkedIn · The Hub\nSerpAPI + Brave fallback]
-    SOURCE -->|paste listing| EXTRACT[AI extraction\nScaleway / Gemini / Mistral\nfills fields automatically]
-    SOURCE -->|manual entry| FORM[Add job form]
-    SOURCE -->|job-alert mails| MAIL[Mail scan\nlocal Thunderbird folders\nscored against your profiles]
-    MAIL --> INBOX[Mail Match Inbox\nyou accept or dismiss]
-    INBOX --> SAVE
-    SEARCH --> SAVE[Save to board]
-    EXTRACT --> SAVE
-    FORM --> SAVE
-    SAVE --> BOARD[Dashboard\nKanban · Table · Calendar]
-    BOARD -->|drag & drop or edit| STATUS[Update status\nconfigurable pipeline, default:\nInteresting → Plan to Apply → ... → Done]
-    STATUS --> DATES[Track deadlines\napply-by · interview · role start]
-    DATES -->|optional| GCAL[Push to Google Calendar\nOAuth PKCE]
+flowchart LR
+    FIND["Find a job<br>search · paste URL · mail scan · manual"] --> REVIEW["Review<br>Capture Inbox / Mail Match Inbox"]
+    REVIEW -->|accept| BOARD["Board<br>Kanban · Table · Calendar"]
+    BOARD --> STATUS["Move through statuses<br>history is recorded"]
+    STATUS --> DATES["Track deadlines"]
+    DATES -.->|optional| GCAL[Google Calendar]
 ```
-
-## Architecture
 
 ```mermaid
-graph TD
-    UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC commands| RUST[Rust backend<br>Tauri v2]
-    RUST -->|rusqlite| DB[(SQLite<br>jobs · status_history · job_documents)]
-    RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
-    RUST -->|stdin/stdout NDJSON| SIDECAR[Python sidecar<br>reads local mail folders only]
-    RUST -->|HTTPS via llm client| AI[AI text extraction<br>Scaleway / Gemini / Mistral]
-    RUST -->|HTTPS| SEARCH[Job search & listing check<br>SerpAPI + Brave fallback]
-    RUST -->|OAuth 2 PKCE + HTTPS| GCAL[Google Calendar API<br>create events]
+flowchart TD
+    UI["React UI<br>Vite · React Router"] -->|Tauri IPC| RUST["Rust backend<br>Tauri v2"]
+    RUST --> DB[("SQLite")]
+    RUST --> FILES["PDF files"]
+    RUST --> KEYS["OS keyring<br>API keys"]
+    RUST -->|NDJSON| SIDECAR["Python sidecar<br>local mail folders only,<br>no network"]
+    RUST -->|HTTPS| EXT["LLM providers · SerpAPI/Brave ·<br>Google Calendar"]
 ```
 
-See [docs/architecture.md](docs/architecture.md) for a deeper breakdown of components, feature modules, and data flow.
+Details: [docs/architecture.md](docs/architecture.md).
 
-## Tech Stack
+## Quick start
 
-| Layer | Technology |
-|-------|------------|
-| UI framework | React 19 + TypeScript + Vite |
-| Routing | React Router v7 |
-| Desktop shell | Tauri v2 (Rust) |
-| Database | SQLite via rusqlite |
-| Drag-and-drop | dnd-kit |
-| AI extraction | Scaleway DeepSeek (default), Google Gemini, or Mistral (user-supplied key; calls made from Rust) |
-| Job search & listing check | SerpAPI (primary) + Brave Search API (fallback) |
-| Calendar | Google Calendar API (OAuth 2 PKCE, desktop flow) |
-| Mail scan | Python 3.12 sidecar (no network), scoring and enrichment in Rust |
-| Testing | Vitest (frontend), cargo test (Rust), pytest (Python sidecar and contract tests) |
-
-Contributing (build, PR checklist, commits; pull requests target the `staging` branch): see **[CONTRIBUTING.md](CONTRIBUTING.md)**. After `npm ci`, **pre-commit** runs **`npm run verify`** (lint/tests/build + Rust + Python) so local commits match CI before you push.
-
-## Repo layout
-
-| Path | Contents |
-|------|----------|
-| `src/` | React + TypeScript UI (pages, feature modules, i18n) |
-| `src-tauri/` | Rust backend: SQLite, secrets, LLM client, job search, listing check, mail scan; `prompts/` holds model prompt templates |
-| `python/mail_scan/` | Network-less mail-scan sidecar (reads local mail folders, emits NDJSON) |
-| `schemas/` | JSON schema for sidecar events |
-| `tests/` | Python tests (sidecar, export schema, injection corpus) |
-| `scripts/` | Build, release, and desktop-shortcut helpers |
-| `docs/` | Architecture, maintenance log, ADRs, roadmap |
-
-## Documentation
-
-| File | What it covers |
-|------|----------------|
-| [docs/architecture.md](docs/architecture.md) | App structure, tech stack, and detailed data flow diagrams for all key features |
-| [docs/maintenance.md](docs/maintenance.md) | Dependency versions, upgrade notes, and periodic maintenance tasks |
-| [docs/releasing.md](docs/releasing.md) | How versions and the CHANGELOG are produced (release-please) |
-| [docs/adr/](docs/adr/) | Architecture Decision Records (mail scan, sidecar, key storage) |
-| [CONTEXT.md](CONTEXT.md) | Domain glossary used across code and docs |
-| [docs/refactor-sync-roadmap.md](docs/refactor-sync-roadmap.md) | Planned performance refactors and future cross-device sync roadmap |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Build setup, pre-commit hooks, platform prerequisites, and PR checklist |
-
-## Prerequisites
-
-- **Node.js** 20+ and npm
-- **Rust** stable (`rustup`, `cargo`)
-- **[uv](https://docs.astral.sh/uv/)** — manages the Python dev environment (`pyproject.toml` / `uv.lock`) used by the `npm run py:*` scripts and the pre-commit `verify` hook
-- **OS packages for Tauri** (WebKit + GTK on Linux). See the [official Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
-
-**Arch Linux** (example):
-
-```bash
-sudo pacman -S --needed base-devel curl wget openssl gtk3 libappindicator-gtk3 librsvg webkit2gtk-4.1 patchelf
-```
-
-**Windows**
-
-1. Install **Node.js 20+** (e.g. from [nodejs.org](https://nodejs.org/) or `winget install OpenJS.NodeJS.LTS`).
-2. Install **Rust** via [rustup](https://rustup.rs/) (use the `x86_64-pc-windows-msvc` toolchain).
-3. Install **Microsoft C++ Build Tools** for the Tauri/Rust native build: open [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and select the **"Desktop development with C++"** workload (or follow the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)).
-4. **WebView2** is bundled on current Windows 10/11; if the app fails to show a window, install the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
-
-From **PowerShell** or **cmd**, use the same commands as below (`git clone`, `npm ci`, `npm run tauri:dev`, etc.) in the project folder.
-
-## Quick start (how to run)
+Prerequisites: **Node.js 20+**, **Rust** (stable), **[uv](https://docs.astral.sh/uv/)** (Python tooling and the mail-scan sidecar in dev), and the [Tauri system packages](https://v2.tauri.app/start/prerequisites/) (WebKit + GTK on Linux, C++ Build Tools on Windows). Per-OS install commands are in [CONTRIBUTING.md](CONTRIBUTING.md#prerequisites).
 
 ```bash
 git clone https://github.com/eikrad/Job-Tracker.git
 cd Job-Tracker
 npm ci
-npm run tauri:dev
+npm run tauri:dev     # full desktop app
 ```
 
-This starts the Vite dev server and opens the **desktop window** (full app: SQLite, file storage, Tauri commands). On Windows, run these commands in **PowerShell** or **Command Prompt** from the cloned directory.
-
-In the app: **Dashboard** (Kanban / Table / Calendar) is the home route; **Add job** opens a dedicated page; clicking a job opens its **Job detail** page (`/job/:id`) for editing, documents, and status history; the **Capture** button opens a drawer to paste a job URL for auto-fetch + AI extraction (unresolved items land in the Capture Inbox); **Settings** (gear) holds API keys, board column names, and import/export.
-
-**Browser-only UI** (no database / no native features):
-
-```bash
-npm ci
-npm run dev
-```
-
-Then open the URL Vite prints (e.g. `http://localhost:5173`). Use this only for quick UI tweaks.
-
-**Production-style desktop build:**
-
-```bash
-npm ci
-npm run tauri:build
-```
-
-On **Linux**, `tauri:build` also installs a **start menu / app launcher** entry at `~/.local/share/applications/JobTracker.desktop` (same as `npm run desktop:shortcut`).
-
-Installable artifacts appear under `src-tauri/target/release/` (platform-dependent; on Windows e.g. `.exe` / installer under that tree). Packaged installers also land under `src-tauri/target/release/bundle/` when bundling runs (see below).
-
-### Tauri release bundles (Linux, AppImage)
-
-| Platform | Default bundles in this repo | Where to look |
-|----------|------------------------------|---------------|
-| **Linux** | `.deb`, `.rpm` | `src-tauri/target/release/bundle/deb/`, `…/rpm/` |
-| **Windows** | NSIS + MSI | `…/bundle/nsis/`, `…/msi/` |
-| **macOS** | `.app` + `.dmg` | `…/bundle/macos/`, `…/dmg/` |
-
-**AppImage is not in the default list.** Tauri's AppImage step invokes [**linuxdeploy**](https://github.com/linuxdeploy/linuxdeploy); if it is missing or not executable, the build fails with **`failed to run linuxdeploy`**. That is a common pain on fresh machines, so we only request formats that do not need it unless you opt in.
-
-**To build an AppImage locally:** follow [Tauri: AppImage](https://v2.tauri.app/distribute/appimage/) (linuxdeploy + AppImage plugin on `PATH`), then add `"appimage"` to `bundle.targets` in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json). Maintainer-oriented details: [CONTRIBUTING.md — Tauri release bundles](CONTRIBUTING.md#tauri-release-bundles-linux-appimage).
-
-**Arch / Manjaro:** there is no AUR package generated by these defaults; you can run the binary at `src-tauri/target/release/<app-name>` or install from `.deb`/`.rpm` if your distro supports it.
-
-### Linux desktop shortcut
-
-`npm run tauri:build` installs this automatically on Linux. To refresh the launcher without a full rebuild:
-
-```bash
-npm run desktop:shortcut
-```
-
-This creates `~/.local/share/applications/JobTracker.desktop` and copies app icons into `~/.local/share/icons/hicolor/`.
-
-Regenerate platform icons from `assets/app-icon-source.png` with `npm run icon:generate`.
+| Command | Purpose |
+|---|---|
+| `npm run tauri:dev` | Desktop app with database, keyring and native features |
+| `npm run dev` | Browser-only UI preview (no database, no AI extraction) |
+| `npm run tauri:build` | Release build and installers (`.deb`/`.rpm`, NSIS/MSI, `.app`/`.dmg`) |
+| `npm run tauri:build:release` | Release build with the frozen mail-scan sidecar (no Python needed on the target machine) |
+| `npm run verify` | Lint, tests and build for frontend, Rust and Python (also the pre-commit hook) |
 
 ## Configuration
 
-1. Copy [`fake.env`](fake.env) to `.env` if you want file-based config (optional).
-2. **AI extraction**: in **Settings → Integrations**, pick a provider (**Scaleway DeepSeek** is the default) and paste the matching API key. Keys are stored in the OS keyring (falling back to a `0600` file), never in `.env`, and never sent to the web view. Keys in `.env` are optional for file-based tooling only; the desktop UI does not read `.env` for these calls.
-   - **Scaleway DeepSeek**: sign up at [Scaleway](https://console.scaleway.com/) and create a secret key for the Generative APIs product; this is also the provider **Mail scan** uses (see below), regardless of which provider is selected for manual extraction.
-   - **Mistral**: sign up at [La Plateforme](https://console.mistral.ai/); the free **Experiment** tier is typically enough for occasional job-text extraction (high monthly token allowance; rate limits apply — see [Mistral help center](https://help.mistral.ai/)). Limits can change; check their current docs.
-   - **Gemini**: Google AI Studio API key as before.
-3. **Job Search providers**: in **Settings**, add one or both:
-   - **SerpAPI key** (primary provider)
-   - **Brave Search API key** (fallback provider)
-   
-   Provider order is:
-   1. SerpAPI
-   2. Brave Search (if SerpAPI returns no usable results)
-   
-   If both are empty, Job Search will return a configuration error and still allow manual **Open in browser**.
+Open **Settings** in the app. There is no `.env` to edit: [`fake.env`](fake.env) is only a placeholder and the app does not read it.
 
-## Job Search
-
-- Platforms in-app: **Jobindex**, **Indeed**, **LinkedIn**, **The Hub**.
-- All four platforms use the same provider-based web search (SerpAPI + Brave fallback), scoped to each platform's domain.
-- Search result cards support:
-  - **Add as Interesting** (one-click save with status `Interesting`)
-  - auto-tags from source platform/location
-  - **Open form** if you want to edit details before saving
-- **Listing status check**: once a job is saved, the **Check listing** button on its detail page re-checks the original URL and marks it `active`, `closed`, `archived`, or `unreachable` (uses SerpAPI for sources that block direct fetches, e.g. Indeed).
-
-## Google Calendar
-
-### Calendar tab (in the app)
-
-- **Month view** shows dates from your jobs: **apply-by**, **interview**, and **role start** (from SQLite only — no Google account required to view).
-- **Template**: opens Google Calendar in the browser with a prefilled all-day event (no sign-in in the app).
-- **Create in Google**: creates the event in your **primary** Google calendar via the Calendar API. Use **Settings → Connect with Google** (recommended) or paste a short-lived **access token** under **Advanced**.
-
-### One-time Google Cloud setup
-
-1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
-2. Enable **Google Calendar API** (APIs & Services → Library).
-3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
-4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
-5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store. No Client Secret is required for this desktop PKCE flow.
-
-Scope used: `https://www.googleapis.com/auth/calendar.events`.
-
-If **Create in Google** fails after a long time, use **Disconnect** and **Connect with Google** again.
-
-### Smoke test checklist (local, after Google Cloud setup)
-
-1. Start the app: `npm run tauri:dev`.
-2. **Settings → Google Calendar**: paste your **Desktop** OAuth **Client ID** → **Save Client ID** → **Connect with Google**. Finish consent in the browser.
-3. Open the **Calendar** tab: confirm the month grid lists jobs that have **apply-by**, **interview**, or **start** dates.
-4. For one job with each kind of date, use **Create in Google** and confirm events appear in your **primary** Google Calendar.
-5. **Disconnect** when finished testing if you do not want the refresh token left on this machine.
-
-## Mail scan
-
-Configure mail folders and both Candidate Profiles in **Settings → Mail scan**, then press
-**Scan job emails**. Mail scan always scores through the **Scaleway DeepSeek** API key
-from **Settings → Integrations**, independent of which provider is selected for manual
-AI extraction — add a Scaleway key first if you want to use it. A pre-run sheet shows
-the *resolved* folder paths, the model, the cutoff, and an estimate of how many model
-calls the run will cost, before it spends anything.
-
-What comes back lands in the **Mail Match Inbox** (`/mail-matches`), separate from the
-Capture Inbox:
-
-- **Pending** — matches sorted by score, with badges for incomplete details, "mail
-  snippet only" (boards like Indeed that never serve their page), suspicious content,
-  near-duplicates, and repeat sightings. Click a row to read the full ad, both score
-  reasons, and its links. **Accept** adds it to your jobs as *Interesting* in one
-  click; **Dismiss** hides it. Both show a notice with **Undo**.
-- **Dismissed** — everything you have suppressed, with its reason, restorable in one
-  click.
-- **History** — past runs and their counters.
-
-Working through the Pending tab:
-
-- **Keyboard:** `j`/`k` (or ↓/↑) move between rows, `Enter` or `o` opens the detail,
-  `a` accepts, `d` dismisses, `u` undoes the last accept or dismiss. Keys are ignored
-  while you type in the search box.
-- **Bulk:** tick rows (or *Select all shown*), then **Accept N** or **Dismiss N**. The
-  app asks once, naming the count, runs them one by one, and tells you which failed;
-  those stay selected. Only rows the current filters show are included.
-
-Notes on how it behaves:
-
-- **Scores are advisory.** A score never sets a job's `priority` or `status`, and it
-  never creates a Job on its own.
-- **Mail is hostile input.** Listing text is passed to the model as data, hidden HTML
-  and invisible characters are stripped, and a listing that tries to instruct the model
-  is flagged rather than trusted. Fetched pages are never rendered in the app.
-- **Skips happen before they cost.** Listings whose title matches your **title blocklist**
-  (Settings → Mail scan) and listings whose page says the posting is closed never reach
-  the model.
-- **Re-runs are cheap.** Scores are cached, so a crashed or cancelled scan costs almost
-  nothing to repeat. Editing a Candidate Profile re-scores the backlog; *copying* the
-  file does not. A listing you dismissed, or one already on your board, is skipped
-  before it costs a model call or a page fetch.
-- **Candidate Profiles are CV content.** They live at `$APPDATA/profiles/` mode `0600`,
-  are never shown to the web view, and are excluded from export and backup.
-- **Settings → Delete all mail scan data** removes every trace of scanning (inbox,
-  sightings, dismissals, cursors, runs, cache) and leaves your Jobs untouched.
-
-The external *Jobmails* helper this replaces is retired; day-to-day use is entirely in
-the app.
-
-## Data storage
-
-- **SQLite and uploaded PDFs** live in the OS app data directory for the Tauri app (not in this repo).
-- The repo `storage/` folder is for optional manual files; see `.gitignore`.
-- API keys are stored in the **OS keyring** (falling back to a `0600` file when no
-  secret service is available); they are never returned to the web view.
-- Candidate Profiles live at `$APPDATA/profiles/{short,full}.md`, mode `0600`, and are
-  excluded from export and backup by default.
-
-## Import / export
-
-- **Export**: JSON or CSV from the app header.
-- **Import**: JSON array (same shape as export) or CSV from export; creates **new** rows (IDs are not preserved).
-
-## CI & tests
-
-GitHub Actions runs three independent workflows on every push and pull request (each with its own status badge above), plus a commit-message check on pull requests and a scheduled security audit:
-
-| Workflow | What it checks |
+| Setting | Needed for |
 |---|---|
-| **Frontend** | `npm run lint` → `npm run test` (Vitest) → `npm run build` |
-| **Rust** | `cargo clippy` → `cargo test` |
-| **Python** | `ruff check` → `black --check` → `isort --check-only` → `pytest` |
-| **Weekly Security Audit** ([weekly-audit.yml](.github/workflows/weekly-audit.yml)) | Scheduled (Mondays) `npm audit` + `pip-audit` + `cargo-audit`; opens/updates a GitHub issue when vulnerabilities are found |
+| AI provider and API key (Scaleway, Gemini or Mistral) | AI extraction; Mail scan always uses the Scaleway key |
+| SerpAPI key and/or Brave Search key | In-app job search and listing check |
+| Google OAuth Client ID (Desktop app type) | Pushing events to Google Calendar |
+| Mail folders and Candidate Profiles | Mail scan |
 
-### Frontend (Vitest)
+Keys are stored in the OS keyring (falling back to a `0600` file) and are never sent to the web view. Step-by-step setup is in the [user guide](docs/user-guide.md).
 
-```bash
-npm ci
-npm run test        # once
-npm run test:watch  # during development
-```
+## Tech stack
 
-### Rust
+| Layer | Technology |
+|---|---|
+| UI | React 19, TypeScript, Vite, React Router v7, dnd-kit |
+| Desktop shell | Tauri v2 (Rust) |
+| Database | SQLite via rusqlite |
+| AI | Scaleway DeepSeek (default), Gemini, Mistral; calls made from Rust |
+| Search | SerpAPI, Brave Search API |
+| Mail scan | Python sidecar (`python/mail_scan`) driven over NDJSON |
+| Calendar | Google Calendar API, OAuth 2 PKCE |
+| Tests and CI | Vitest, cargo test/clippy, pytest, ruff, black, isort; GitHub Actions |
 
-```bash
-cargo test --manifest-path src-tauri/Cargo.toml
-```
+## Documentation
 
-### Python
+| Doc | What it covers |
+|---|---|
+| [docs/README.md](docs/README.md) | Index of all documentation |
+| [docs/user-guide.md](docs/user-guide.md) | Configuration, job search, Google Calendar, mail scan, data storage, installers |
+| [docs/architecture.md](docs/architecture.md) | Structure, data flows, SQLite tables, mail scan pipeline |
+| [docs/adr/](docs/adr/) | Architecture decision records |
+| [CONTEXT.md](CONTEXT.md) | Domain glossary |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Build setup, checks, branches and pull requests |
+| [docs/maintenance.md](docs/maintenance.md), [docs/releasing.md](docs/releasing.md) | Dependency upkeep and release process |
 
-Locally, these run through [**uv**](https://docs.astral.sh/uv/), which manages the Python environment from `pyproject.toml` / `uv.lock` automatically — no manual `pip install` needed:
+## Contributing
 
-```bash
-npm run py:lint    # uv run: ruff check + black --check + isort --check-only
-npm run py:format  # uv run: isort + black (writes files)
-npm run py:test    # uv run: pytest
-```
-
-CI (`.github/workflows/python.yml`) instead runs `pip install -r requirements-dev.txt` and calls `ruff` / `black` / `isort` / `pytest` directly — use that flow if you prefer a plain pip/venv over uv.
-
-Tool config: [`pyproject.toml`](pyproject.toml) (uv / local) and [`requirements-dev.txt`](requirements-dev.txt) (CI).
-
-> **Forks:** Update the badge URLs if your repo is not `eikrad/Job-Tracker`.
+Pull requests target the `staging` branch and use Conventional Commits; see [CONTRIBUTING.md](CONTRIBUTING.md). After `npm ci`, a pre-commit hook runs `npm run verify` so local commits match CI. If you fork, update the badge URLs above.
 
 ## License
 
