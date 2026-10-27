@@ -37,7 +37,7 @@ Seven unmaintained/unsound warnings remain (`fxhash`, `proc-macro-error`, `glib`
 `vitest` 5 (#185) and the Tauri 2.12 line (`tauri`, `tauri-build`, `@tauri-apps/api`, `@tauri-apps/cli`; #181, #182, #184, #188) are now merged together; the JS and Rust sides are on the same minor.
 
 ### Post-change verification
-Run locally on the rebased branch: `npm ci`, `lint` (same 1 warning), `test` (226 passed, on vitest 5), `build`, `npm audit` (1 high left: `happy-dom`); `ruff`, `black`, `isort`, `pytest` (87 passed), `uv lock --check`. The Rust change (lockfile only) was not built locally; the Rust workflow covers `clippy -D warnings` and `cargo test`.
+Run locally on the rebased branch: `npm ci`, `lint` (same 1 warning), `test` (226 passed, on vitest 5), `build`, `npm audit` (1 high left: `happy-dom`); `ruff`, `black`, `isort`, `pytest` (87 passed), `uv lock --check`; Rust (lockfile only): `clippy -D warnings` and `cargo test` (357 passed). `cargo audit` was not re-run after the rebase.
 
 ## 2026-10-07
 
