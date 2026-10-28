@@ -1,7 +1,7 @@
 # Mail Scan Integration Design
 
 Date: 2026-09-09 (rev. 2)
-Status: **Active** — approved for planning, not yet implemented (rev. 2)
+Status: **Implemented** (rev. 2) — kept as the design reference
 Scope: Embed Jobmails pipeline into Job Tracker; app-wide LLM provider expansion; full-field enrichment for mail matches
 Glossary: [`CONTEXT.md`](../../../CONTEXT.md)
 ADRs: [`0001`](../../adr/0001-no-imap-local-mail-folders-only.md), [`0002`](../../adr/0002-python-sidecar-for-mail-scan.md) (narrowed by 0004), [`0003`](../../adr/0003-mail-match-inbox-separate-from-capture.md), [`0004`](../../adr/0004-sidecar-without-network-or-secrets.md), [`0005`](../../adr/0005-api-keys-in-os-keyring.md)
