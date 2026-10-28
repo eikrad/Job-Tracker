@@ -218,6 +218,7 @@ All data lives in the OS app data directory — nothing is stored in the repo.
 | `mail_fingerprints` / `mail_fingerprint_aliases` | Tiered listing identity, stable across runs (spec §5.1) |
 | `mail_match_inbox` | Pending / accepted / dismissed matches awaiting review (`kind` and `base_job_updated_at` are leftovers of the retired update suggestions; `kind` is always `new`) |
 | `mail_match_dismissals` | Revocable suppressions, with reason and originating run |
+| `mail_digest_splits` | Cached model splits of Digest mails into listings |
 | `mail_scored_sightings` | Score cache and re-score policy, keyed by content + profile + prompt + model |
 | `mail_source_cursors` | Per-folder incremental read position, so a 200 MB folder is not re-read |
 
@@ -314,7 +315,9 @@ Each job has a dedicated page at `/job/:id` (`src/pages/JobDetailPage.tsx`) with
 
 ## CI
 
-Three independent GitHub Actions workflows run on every push and pull request, plus a scheduled security audit:
+Three independent check workflows (Frontend, Rust, Python) run on every push and pull request, plus a scheduled security audit. Three more workflows handle repository rules and releases: `commit-messages.yml`, `protect-main.yml` and `release-please.yml` (see [releasing.md](releasing.md)).
+
+
 
 | Workflow | Checks |
 |---|---|

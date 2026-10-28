@@ -24,9 +24,9 @@ Before 1.0 (`bump-minor-pre-major` and `bump-patch-for-minor-pre-major` in
 
 | Commit | Next version |
 |---|---|
-| `fix: …` | 0.4.5 → 0.4.6 |
-| `feat: …` | 0.4.5 → 0.4.6 |
-| `feat!: …` or a `BREAKING CHANGE:` footer | 0.4.5 → 0.5.0 |
+| `fix: …` | 0.4.6 → 0.4.7 |
+| `feat: …` | 0.4.6 → 0.4.7 |
+| `feat!: …` or a `BREAKING CHANGE:` footer | 0.4.6 → 0.5.0 |
 | `docs`, `chore`, `build`, `ci`, `test`, `refactor`, `style` | no release on its own |
 
 `feat`, `fix`, `perf`, `security` and `revert` appear in the CHANGELOG; the other types are
