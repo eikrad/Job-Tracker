@@ -2,6 +2,40 @@
 
 ---
 
+## 2026-10-28
+
+### Checks performed
+- `git fetch origin`; branch reset to `origin/staging` (`28716c2`). Open PR at the start: #179 (2026-10-14 maintenance). Its content (`quinn-proto` 0.11.19, `rustls` 0.23.46, the npm bumps) is **already on `staging`** via the 2026-10-21 round, so it is superseded and was not repeated; it can be closed.
+- Baseline before changes: `npm ci`, `lint` (0 errors, 1 pre-existing `exhaustive-deps` warning), `test` (29 files, 226 tests), `build`; `ruff`, `black --check`, `isort --check-only`, `pytest -q` (87 passed); `clippy -D warnings` and `cargo test` (357 passed, 3 ignored). **Nothing was broken on `staging`.** One thing was out of line: `uv.lock` was stale against `pyproject.toml` (ruff floor `>=0.17.2` from #194 but locked at 0.16.8); fixed below.
+- Tauri system libraries were installed with `apt-get update && apt-get install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf`, so Rust was verified locally.
+- Audits: `npm audit`, `pip-audit`, `cargo audit --file src-tauri/Cargo.lock`.
+
+### Security findings
+| Ecosystem | Finding | Status |
+|---|---|---|
+| npm | `happy-dom` 17.0.0-21.0.3 (GHSA-834v-8h66-3h79, high: import alias allows host code execution), test-only dev dependency | **fixed here** with `happy-dom` 20.14.6 -> 21.0.4 (a major, see below) |
+| cargo | `tokio` 1.50.0 (RUSTSEC-2026-0386, `AsyncFd::new` and related constructors violate I/O safety) | fixed here: `tokio` 1.54.1, `mio` 1.2.4 (`cargo update -p tokio -p mio`) |
+| pip | none | |
+
+Five unmaintained/unsound warnings remain (`proc-macro-error`, `glib`, `zvariant`, `zvariant_derive`, `zbus_names`), transitive through Tauri/GTK and not fixable from our manifests.
+
+### Updates applied
+- npm (lockfile, ranges unchanged except `happy-dom`): `react` / `react-dom` 19.3.1, `react-router-dom` 7.18.5, `lucide-react` 1.63.0, `@tauri-apps/cli` 2.12.4, `@types/node` 26.6.6, `happy-dom` ^21.0.4 (`package.json`).
+- Rust: `tokio`, `mio` only. A full `cargo update` would move 192 crates (including semver-0.x jumps such as `aes` 0.8 -> 0.9), too broad for a weekly round; Dependabot handles the direct ones.
+- Python: `uv.lock` re-synced with `pyproject.toml` (`ruff` 0.17.3), plus `pytest` 9.2.0, `pluggy` 1.7.0, `platformdirs` 4.14.0.
+- Compatibility: `react`, `react-dom` moved together; `@tauri-apps/cli` 2.12.4 matches the Rust `tauri` 2.12.5 on major.minor.
+
+### Major changes
+| Package | Change | Note |
+|---|---|---|
+| `happy-dom` | 20 -> **21 (applied)** | Security fix; test-only. All 226 tests pass unchanged. Please look at it, since the DOM used by tests changed. |
+| `typescript` | 6.0.3 -> 7.0.2 (**not applied**) | `typescript-eslint` does not support 7 yet. |
+
+### Verification
+`npm ci`, `lint` (same 1 warning), `test` (226 passed), `build`, `npm audit` (0); `ruff`, `black`, `isort`, `pytest` (87 passed), `uv lock --check`; `cargo clippy --all-targets -D warnings` clean, `cargo test` 357 passed; `cargo audit` has 0 vulnerabilities.
+
+---
+
 ## 2026-10-21
 
 ### Checks performed
