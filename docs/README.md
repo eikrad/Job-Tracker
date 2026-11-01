@@ -28,7 +28,7 @@ Forward-looking design documents — not descriptions of the current codebase.
 | File | What it covers |
 |------|----------------|
 | [refactor-sync-roadmap.md](refactor-sync-roadmap.md) | Planned performance refactors (phases A / B / C), Android support, and cross-device sync design |
-| [superpowers/specs/2026-09-09-mail-scan-integration-design.md](superpowers/specs/2026-09-09-mail-scan-integration-design.md) | **Active design.** In-app Mail Scan (rev. 2). See ADRs 0001–0005 and [CONTEXT.md](../CONTEXT.md) |
-| [superpowers/plans/2026-09-09-mail-scan-integration.md](superpowers/plans/2026-09-09-mail-scan-integration.md) | Plan index — PRs A (foundation), B (skeleton), C (scoring & inbox) |
+| [superpowers/specs/2026-09-09-mail-scan-integration-design.md](superpowers/specs/2026-09-09-mail-scan-integration-design.md) | Design of the in-app Mail Scan (rev. 2), now shipped. Still the reference for the reasoning; see ADRs 0001–0005 and [CONTEXT.md](../CONTEXT.md) |
+| [superpowers/plans/2026-09-09-mail-scan-integration.md](superpowers/plans/2026-09-09-mail-scan-integration.md) | Plan index for the shipped Mail Scan — PRs A (foundation), B (skeleton), C (scoring & inbox) |
 
-`superpowers/plans/` and `superpowers/specs/` otherwise hold historical plans/specs for shipped features. For shipped behaviour see [architecture.md](architecture.md).
+`superpowers/plans/` and `superpowers/specs/` hold historical plans/specs for shipped features. For shipped behaviour see [architecture.md](architecture.md).
