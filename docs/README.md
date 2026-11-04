@@ -7,9 +7,10 @@ Documentation for Job Tracker.
 | File | What it covers |
 |------|----------------|
 | [user-guide.md](user-guide.md) | Setup and usage: API keys, job search, Google Calendar, mail scan, data storage, import/export, installers and AppImage |
-| [architecture.md](architecture.md) | App structure, tech stack, key data flows (capture, adding a job, AI extraction, job search, listing check, Google Calendar), CI setup — with Mermaid diagrams |
+| [architecture.md](architecture.md) | App structure, tech stack, source map, key data flows (capture, AI extraction, job search, listing check, Google Calendar, mail scan), SQLite tables, dashboard views, CI — with Mermaid diagrams |
 | [maintenance.md](maintenance.md) | Dependency versions, upgrade notes, and periodic maintenance tasks |
 | [releasing.md](releasing.md) | Release process: Conventional Commits, release-please, staging → main |
+| [../python/README.md](../python/README.md) | Contract of the mail-scan Python sidecar (stdin config, NDJSON on stdout) |
 | [adr/](adr/) | Architecture Decision Records — one decision per file, with rejected alternatives |
 | [../CONTEXT.md](../CONTEXT.md) | Domain glossary (ubiquitous language) |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Build setup, checks, sidecar build, branches and PRs |

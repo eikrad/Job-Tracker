@@ -76,6 +76,26 @@ Open **Settings** in the app. There is no `.env` to edit: [`fake.env`](fake.env)
 
 Keys are stored in the OS keyring (falling back to a `0600` file) and are never sent to the web view. Step-by-step setup is in the [user guide](docs/user-guide.md).
 
+## Tests
+
+```bash
+npm run verify        # everything below, as in CI
+npm run test          # frontend (Vitest)
+npm run py:test       # Python sidecar and contract tests (pytest, via uv)
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `src/` | React + TypeScript UI (`features/`, `pages/`, `components/`, `lib/`) |
+| `src-tauri/` | Rust backend: Tauri commands, SQLite, LLM clients, mail-scan orchestration, prompts |
+| `python/mail_scan/` | Mail-scan sidecar (parses local Thunderbird folders; no network) |
+| `schemas/`, `tests/` | Sidecar event schema and its pytest contract tests |
+| `docs/` | Documentation, see [docs/README.md](docs/README.md) |
+| `scripts/` | Sidecar freeze, release build and desktop-shortcut scripts |
+
 ## Tech stack
 
 | Layer | Technology |

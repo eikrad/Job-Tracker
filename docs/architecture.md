@@ -64,13 +64,16 @@ src-tauri/              — Rust / Tauri backend
   src/                  — Tauri commands, SQLite access, file handling
     llm/                — Provider registry, shared chat transport (retry/classification), normalizer
     mail_scan/          — Sidecar orchestration, scoring, enrichment, accept, inbox queries, settings
-  prompts/              — Prompt templates and JSON schemas (extraction + scoring)
+  prompts/              — Prompt templates and JSON schemas (extraction, scoring, digest split)
+  fixtures/             — Listing-status classifier baseline (`listing_status_baseline.json`)
   binaries/             — Frozen mail-scan sidecar for release builds (gitignored)
   capabilities/         — Tauri permission declarations
 python/                 — Mail-scan sidecar (no network, no secrets — ADR 0004)
-docs/                   — Architecture and maintenance docs
-scripts/                — Build and tooling scripts
-tests/                  — Python integration tests (pytest)
+schemas/                — JSON Schema of the sidecar's NDJSON event stream
+docs/                   — Documentation (index: docs/README.md)
+scripts/                — Build and tooling scripts (sidecar freeze, release build, desktop shortcut)
+tests/                  — Python contract tests for the sidecar and export schema (pytest)
+.github/                — CI workflows and Dependabot config
 storage/                — Optional manual file storage (gitignored)
 ```
 
@@ -316,8 +319,6 @@ Each job has a dedicated page at `/job/:id` (`src/pages/JobDetailPage.tsx`) with
 ## CI
 
 Three independent check workflows (Frontend, Rust, Python) run on every push and pull request, plus a scheduled security audit. Three more workflows handle repository rules and releases: `commit-messages.yml`, `protect-main.yml` and `release-please.yml` (see [releasing.md](releasing.md)).
-
-
 
 | Workflow | Checks |
 |---|---|
