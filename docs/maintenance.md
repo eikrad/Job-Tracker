@@ -2,6 +2,39 @@
 
 ---
 
+## 2026-11-11
+
+### Checks performed
+- **Open PRs (verified via `mcp__github__list_pull_requests`):** #203 (2026-11-04 maintenance, unmerged), #179 (2026-10-14 maintenance), Dependabot #197 (`pytest`), #198 (`open`), #199 (`eslint`), #200 (`rusqlite`), #205 (`globals`), #206 (`log`), #207 (`vite`), #208 (`ruff`), #209 (`lucide-react`), #210 (`vitest`). Their bumps were **not duplicated**.
+- **Base:** this branch is **stacked on #203** (`claude/upbeat-cray-9i7142`, `32bb398`) because both PRs add a new entry at the top of this file. Merge #203 first. `staging` (`4f47d00`) is ahead of it by docs-only commits (README, `docs/README.md`, `docs/architecture.md`) that do not touch the files changed here.
+- **#179 is superseded:** `staging` already has `quinn-proto` 0.11.19 and `rustls` 0.23.46, the exact versions #179 proposes. It can be closed without merging.
+- Baseline **before changes**, mirroring CI (Node 22, Python 3.12): `npm ci`, `lint` (0 errors, 1 pre-existing warning in `JobDetailPage.tsx`), `test` (226 passed, 29 files), `build`; Python `ruff`, `black --check`, `isort --check-only`, `pytest -q` (87 passed). The Tauri system libraries could be installed this week, so **Rust ran too**: `cargo clippy --all-targets -D warnings` clean, `cargo test` 357 passed (3 ignored). CI on `staging` (Frontend, Python, Rust for `4f47d00`) is green. **Nothing broken on `staging`.**
+- Security: `npm audit`; `uv export` + `pip-audit`; `cargo audit` (v0.22.x, installed fresh).
+
+### Security findings
+| Ecosystem | Finding | Resolution |
+|---|---|---|
+| Rust | **New: `libsqlite3-sys` 0.38.2, RUSTSEC-2026-0459 (bundled C SQLite, CVE-2026-119375, medium 6.8)**, fixed in `libsqlite3-sys` >= 0.39 | Needs `rusqlite` 0.40 -> 0.41, a pre-1.0 minor that counts as breaking. **Dependabot #200 does exactly that, and its CI (clippy, tests) is green. Please merge #200**, which is the priority this week. Not duplicated here. |
+| Rust | `rustix` 1.1.4, RUSTSEC-2026-0486 (unsound xattr functions, informational) | **Fixed**: `cargo update -p rustix` -> 1.1.6. |
+| Rust | Unmaintained / unsound warnings (`pin-utils` (new), `proc-macro-error`, `zbus_names`, `zvariant*`, `glib` 0.18, `async-executor`) | Transitive via tauri/gtk; no fix available within the current majors. |
+| npm | `minimatch` 10.2.6, GHSA-g3hv-75wg-m249 (moderate, DoS), reported as 10 entries via `eslint` / `typescript-eslint` | Not applied, still unfixable within ranges: `eslint` 10.14 and `typescript-eslint` 8.72.2 still depend on `minimatch@^10`. Trial: an `overrides: { "minimatch": "^11.0.8" }` gives 0 vulnerabilities and lint still passes, but it forces a major onto transitive dev tooling, so it is **left for the owner to decide**. |
+| Python | `pip-audit`: no known vulnerabilities. | - |
+
+### Dependency updates
+- **npm** (`package.json` floors raised to the lockfile): `@vitejs/plugin-react` 6.2.1 -> 6.3.0 (peer `vite ^8`, compatible with 8.3.5), `typescript-eslint` 8.72.1 -> 8.72.2 (all `@typescript-eslint/*` move together, peer `typescript <6.1` is unchanged), `semver` 7.8.5 -> 7.8.6 (transitive).
+- **Python** (`uv.lock`, dev tooling): `click` 8.5.0 -> 8.5.1. `ruff` / `pytest` are left to Dependabot #208 / #197.
+- **Rust** (`Cargo.lock`): `rustix` 1.1.4 -> 1.1.6. The other crate updates are left to Dependabot, and a full `cargo update` (~170 crates, incl. `zvariant_utils` 3 -> 4) was not done blind.
+- After: `npm ci`, lint, 226 tests, build; Python lint + 87 tests; `cargo clippy` + 357 tests; all the same as baseline.
+
+### Major versions - flagged, NOT applied
+| Package | Current | Latest | Why held back |
+|---|---|---|---|
+| `typescript` | 6.0.3 | 7.0.2 | `typescript-eslint` 8.72.2 (latest) still has peer `typescript >=4.8.4 <6.1.0`. |
+| `rusqlite` | 0.40.2 | 0.41.1 | Pre-1.0 minor, contains the SQLite security fix. CI-green in Dependabot #200; merge there. |
+| `minimatch` (override) | 10.2.6 | 11.0.8 | See security table; owner decision. |
+
+---
+
 ## 2026-11-04
 
 ### Checks performed
