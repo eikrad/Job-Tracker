@@ -2,6 +2,34 @@
 
 ---
 
+## 2026-11-12 (merge round: open PRs cleared)
+
+At the owner's request every open PR was merged or closed:
+- **Merged:** #211 (maintenance 2026-11-04 + 2026-11-11, rebase-merged).
+- **Closed as superseded:** #203 (its commit landed via #211); #179 (`staging` already has `quinn-proto` 0.11.19 / `rustls` 0.23.46); Dependabot #205 (`globals` 17.14.0) and #210 (`vitest` 5.1.0), already on `staging`.
+- **Folded into one PR, because the Dependabot PRs conflicted with #211's lockfiles:**
+
+| PR | Package | Change |
+|---|---|---|
+| #200 | `rusqlite` (Rust) | 0.40.2 -> **0.41.1** (pre-1.0 minor, breaking by semver), pulls `libsqlite3-sys` 0.38.2 -> 0.39.1 and so **fixes RUSTSEC-2026-0459** (bundled SQLite) |
+| #198 | `open` (Rust) | 5.4.4 -> 5.4.5 |
+| #206 | `log` (Rust) | 0.4.34 -> 0.4.35 |
+| #199 | `eslint` | 10.13.0 -> 10.14.0 |
+| #207 | `vite` | 8.3.5 -> 8.3.8 (Dependabot proposed 8.3.6; 8.3.8 is the newest patch) |
+| #209 | `lucide-react` | 1.63.0 -> 1.72.0 (Dependabot proposed 1.70.0) |
+| #197 | `pytest` (dev) | requirement `>=9.2.0,<10` |
+| #208 | `ruff` (dev) | requirement `>=0.17.4`, `uv.lock` 0.17.3 -> 0.17.4 |
+
+vite 8.3.8's bundler (rolldown) pins its optional WASM fallback packages to `@emnapi/*` 2.0.0-beta.2. They are only installed on WASM targets, not on Linux/macOS/Windows.
+
+Verification:
+- Frontend: `npm ci`; lint gives 0 errors and the 1 known warning; 226 tests passed; build OK.
+- Python 3.12 (as `python.yml`): ruff, black and isort clean; 87 tests passed.
+- Rust: `cargo clippy --all-targets -D warnings` and `cargo test` green.
+- `npm audit` shows only the known dev-only `minimatch` advisory.
+
+---
+
 ## 2026-11-11
 
 ### Checks performed
