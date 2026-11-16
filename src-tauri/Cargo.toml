@@ -33,7 +33,7 @@ rand = "0.10"
 base64 = "0.23"
 url = "2.5"
 shellexpand = "3"
-rfd = "0.17"
+rfd = "0.18"
 
 [dev-dependencies]
 tempfile = "3"
