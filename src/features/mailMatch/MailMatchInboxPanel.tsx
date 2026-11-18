@@ -10,7 +10,7 @@
  *   file uses `dangerouslySetInnerHTML`, and `MailMatchInboxPanel.test.tsx` asserts it.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { en } from "../../i18n/en";
 import { boardName } from "../../lib/jobs/boardName";
 import { openUrlInBrowser } from "../../lib/tauriApi";
@@ -467,8 +467,11 @@ export function MailMatchInboxPanel({
   }
 
   // Keyboard triage (Pending tab only). Re-registered every render so the handler
-  // always sees current rows and focus; it is a single cheap listener.
-  useEffect(() => {
+  // always sees current rows and focus; it is a single cheap listener. A layout effect,
+  // so the new handler is in place as soon as the rows are in the DOM: a passive effect
+  // runs later, and a key pressed in between went to the previous render's handler,
+  // which still saw the old (e.g. empty) rows.
+  useLayoutEffect(() => {
     if (tab !== "pending") return;
     const onKeyDown = (e: KeyboardEvent) => {
       const command = triageCommand(e);
