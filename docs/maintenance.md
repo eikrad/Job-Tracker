@@ -2,6 +2,65 @@
 
 ---
 
+## 2026-11-18
+
+### Checks performed
+- `git fetch origin`; branch `claude/upbeat-cray-ldn9fh` reset to `origin/staging` (`4fdce36`). The remote copy of the branch only held release 0.4.6 history that is already on `staging`, so it was safe to replace.
+- **Since the last entry (2026-11-12):** no new commits on `staging`. The merge round recorded below cleared every open PR on 2026-11-12, and Dependabot opened five new PRs on 2026-11-16. Over the last two months, `staging` received the weekly rounds of 2026-10-07 to 2026-11-11 plus the Dependabot merges listed in those entries. Note: the copy of this log on `main` still ends at 2026-09-23, because `main` (release 0.4.6, 2026-09-28) has not been updated from `staging` since then. **About seven weeks of changes, including several security fixes, are on `staging` only and have not been released.**
+- **Open PRs (verified with `list_pull_requests`):** Dependabot #213 (`ruff` `>=0.17.5`), #214 (`tauri-plugin-log` 2.10.2), #215 (`rfd` 0.18.0), #216 (`eslint` 10.15.0), #217 (`rusqlite` 0.42.0). Their bumps were **not duplicated** here. No open issues (no `security-audit` issue).
+- Baseline **before changes**, mirroring CI (Node 22.23.5, Python 3.12): `npm ci`, `lint` (0 errors, 1 known warning in `JobDetailPage.tsx`), `test` (29 files, 226 passed), `build`; Python `ruff`, `black --check`, `isort --check-only`, `pytest -q` (87 passed); `uv lock --check` in sync. The Tauri system libraries could be installed, so **Rust ran too**: `cargo clippy --all-targets -D warnings` clean, `cargo test` 357 passed (3 ignored). Latest CI on `staging` (`4fdce36`) is green. **Nothing broken on `staging`.**
+- Security: `npm audit`; `uv export` + `uvx pip-audit`; `cargo audit --file src-tauri/Cargo.lock` (cargo-audit 0.23.0).
+
+### Security findings
+| Ecosystem | Finding | Resolution |
+|---|---|---|
+| Rust | **New: `quinn-udp` 0.5.14, RUSTSEC-2026-0538** (receive loop can spin after a truncated datagram; transitive via `reqwest`/`quinn`) | **Fixed**: `cargo update -p quinn-udp` -> 0.5.16 (lockfile only). |
+| Rust | `async-executor` 1.14.0 yanked | **Fixed**: -> 1.14.1. |
+| Rust | **New warning: `chrono` is unmaintained (RUSTSEC-2026-0543).** `chrono` is a *direct* dependency (about 20 uses in `src-tauri/src`). | No fixed version. Not a vulnerability; moving to e.g. `jiff` or `time` is a code change. **Owner decision.** |
+| Rust | Unmaintained / unsound warnings (`pin-utils`, `proc-macro-error`, `zbus_names`, `zvariant*`, `glib` 0.18) | Transitive via tauri/gtk; no fix within the current majors. |
+| npm | `minimatch` 10.2.6, GHSA-g3hv-75wg-m249 (moderate, DoS, dev-only lint tooling), 9 entries | **Now fixable without overrides**: `typescript-eslint` 8.73.0 (applied here) and `eslint` 10.15.0 (Dependabot #216) both moved to `minimatch@^11`. This PR alone: 9 -> 3 entries. Tried locally with #216 on top: **0 vulnerabilities**, lint unchanged. **Merge #216 to clear it.** |
+| Python | `pip-audit`: no known vulnerabilities. | - |
+
+### Dependency updates
+- **Rust** (`Cargo.lock` only): `quinn-udp` 0.5.16, `async-executor` 1.14.1 (above); Tauri patch releases together: `tauri` 2.12.5 -> 2.12.7, `tauri-build`/`tauri-codegen`/`tauri-macros` 2.7.4 -> 2.7.6, `tauri-runtime` 2.12.4, `tauri-runtime-wry` 2.12.5, `tauri-utils` 2.10.4, `wry` 0.57.3, `tao` 0.37.2, `tauri-winres` 0.3.7. `wry` 0.57.3 adds `dom_query`/`html5ever` 0.40 to the lockfile (upstream change). `tauri-plugin-log` is left to Dependabot #214. A full `cargo update` was not done blind.
+- **npm** (`package-lock.json` only, all within the existing ranges): `@tauri-apps/api` 2.12.4 -> 2.12.5, `@tauri-apps/cli` 2.12.4 -> 2.12.6, `typescript-eslint` 8.72.2 -> 8.73.0 (all `@typescript-eslint/*` together; peer `typescript <6.1` unchanged), `vitest` 5.1.0 -> 5.1.1 (`@vitest/*` together; still on `vite` 8.3.8), `lucide-react` 1.72.0 -> 1.75.0, `react-router-dom` 7.18.5 -> 7.18.6, `eslint-plugin-react-refresh` 0.5.7 -> 0.5.8. `eslint` is left to Dependabot #216.
+- **Python** (`uv.lock`, dev tooling): `platformdirs` 4.14.5 -> 4.14.7. `ruff` is left to Dependabot #213.
+- **Compatibility:** Tauri JS and Rust agree on major.minor: `@tauri-apps/api` 2.12.5 / `@tauri-apps/cli` 2.12.6 / `tauri` crate 2.12.7. `vite` 8.3.8, `vitest` 5.1.1 and `@vitejs/plugin-react` 6.3.0 (peer `vite ^8`) fit together.
+- After: `npm ci`, lint, 226 tests, build; Python lint + 87 tests; `cargo clippy` clean + 357 tests; `cargo audit` 0 vulnerabilities (7 warnings). Same as baseline.
+
+### Dependabot PRs - recommendations
+CI was checked for each PR; the Rust ones were also tried locally **together on top of this branch** (scratch branch, not pushed): `rfd` 0.18.0 + `rusqlite` 0.42.0 + `tauri-plugin-log` 2.10.2 -> `cargo clippy --all-targets -D warnings` clean, `cargo test` 357 passed, `cargo audit` 0 vulnerabilities.
+
+| PR | Change | CI | Recommendation |
+|---|---|---|---|
+| #213 | `ruff` `>=0.17.5` (dev) | green | Merge. |
+| #214 | `tauri-plugin-log` 2.10.1 -> 2.10.2 | green | Merge. |
+| #215 | `rfd` 0.17.2 -> 0.18.0 (pre-1.0 minor = **breaking by semver**) | Rust green; one Frontend run failed on the flaky test fixed below, the other run passed | Merge (re-run the failed job, or rebase after this PR). Used once (`rfd::FileDialog` in `mail_scan/settings.rs`); the lockfile change is mostly macOS (`objc2-uniform-type-identifiers`, `pollster` 1.0). Linux compiles and tests pass; **try the folder picker on macOS/Windows** if you build there. |
+| #216 | `eslint` 10.14.0 -> 10.15.0 | green | **Merge** - completes the `minimatch` fix. |
+| #217 | `rusqlite` 0.41.1 -> 0.42.0 (pre-1.0 minor = **breaking by semver**), `libsqlite3-sys` 0.39.1 -> 0.40.0 (newer bundled SQLite) | green | Merge. Note **`rusqlite` 0.43.0** (2026-11-15, same `libsqlite3-sys` ^0.40) is out already; Dependabot may follow up. Open a database once after merging as a smoke test. |
+
+These PRs and this one all touch lockfiles, so whichever is merged second may need a Dependabot rebase (`@dependabot rebase`).
+
+### Flaky test - fixed
+The "keyboard triage" tests in `src/features/mailMatch/MailMatchInboxPanel.test.tsx` failed now and then: "undoes the last dismiss with u" on #215's CI (`expected null to be 'Platform Engineer'`; the other run of the same PR passed), and "moves a visible focus through the rows with j/k" once locally in the pre-commit hook. Under CPU load the file failed 2 of 42 local runs.
+
+Cause: the panel registers its `keydown` handler in a passive `useEffect`. The tests press a key as soon as the rows appear in the DOM, which can be before React has run that effect, so the key reaches the previous render's handler, which still sees an empty list, and nothing gets focus. Fix: register the handler in `useLayoutEffect`, which runs in the same commit that puts the rows in the DOM. No behaviour change for users (nobody types within that gap). After the fix: 0 failures in 30 runs under the same load; the full suite passes.
+
+### Major versions - flagged, NOT applied
+| Package | Current | Latest | Why held back |
+|---|---|---|---|
+| `typescript` | 6.0.3 | 7.0.2 | `typescript-eslint` 8.73.0 (latest) still has peer `typescript >=4.8.4 <6.1.0` (it now has an optional `@typescript/native` 7.1 preview peer, so support is coming). |
+| `rfd` / `rusqlite` | 0.17 / 0.41 | 0.18 / 0.43 | Pre-1.0 minors; handled through Dependabot #215 / #217 (see above). |
+| `chrono` replacement | 0.4.45 | - | Unmaintained advisory; a migration, not a version bump. |
+| npm itself | 10.9.x | 12.x | Comes with Node; CI uses the npm bundled with Node 22. Nothing to do. |
+
+### Needs owner attention
+1. Merge #216 (finishes the `minimatch` advisory) and this PR (`quinn-udp` fix, flaky-test fix).
+2. `staging` has not been merged to `main` since release 0.4.6 (2026-09-28); the security fixes since then are unreleased.
+3. Decide on `chrono` (unmaintained).
+
+---
+
 ## 2026-11-12 (merge round: open PRs cleared)
 
 At the owner's request every open PR was merged or closed:
