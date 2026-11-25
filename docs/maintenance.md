@@ -2,6 +2,65 @@
 
 ---
 
+## 2026-11-25
+
+### Checks performed
+- `git fetch origin`; branch `claude/upbeat-cray-upd44z` created from `origin/staging` (`29b2307`). There was no remote copy of the branch.
+- **Since the last entry (2026-11-18):** `staging` received only the merge of #218 (the 2026-11-18 round). #213 (`ruff`) and #217 (`rusqlite` 0.42) are no longer open, superseded by #221 and #222; Dependabot opened #219-#222 on 2026-11-23. `main` is still at release 0.4.6 (2026-09-28); **the security fixes since then are on `staging` only and unreleased.**
+- **Open PRs (verified with `list_pull_requests`):** Dependabot #214, #215, #216, #219, #220, #221, #222 (see below). Their bumps were **not duplicated** here. No open issues (no `security-audit` issue).
+- **GitHub Actions:** the latest CI on `staging` (`29b2307`, Rust/Frontend/Python) is green; the Weekly Security Audit on `main` (2026-11-23) passed; the Dependabot update jobs passed.
+- Baseline **before changes**, mirroring CI (Node 22.23.5, Python 3.12 venv with `requirements-dev.txt`): `npm ci`, `lint` (0 errors, 1 known warning in `JobDetailPage.tsx`), `test` (29 files, 226 passed), `build`; Python `ruff`, `black --check`, `isort --check-only` on `tests python`, `pytest -q` (87 passed); `uv lock --check` in sync. Tauri system libraries installed: `cargo clippy --all-targets -D warnings` clean, `cargo test` 357 passed (3 ignored). **Nothing broken on `staging`.**
+- Security: `npm audit`; `uv export` + `uvx pip-audit`; `cargo audit --file src-tauri/Cargo.lock` (cargo-audit 0.23.0).
+
+### Security findings
+| Ecosystem | Finding | Resolution |
+|---|---|---|
+| Rust | **New: `cookie` 0.18.1, RUSTSEC-2026-0594** (private cookie nonces can repeat in processes that fork; transitive via `tauri`) | **Fixed**: -> 0.18.3 (lockfile only). |
+| Rust | **New: `url` 2.5.8, RUSTSEC-2026-0592** (stack overflow in `Url::origin()` on nested `blob:` URLs; direct dependency, range `2.5`) | **Fixed**: -> 2.5.9 (lockfile only). |
+| Rust | `pin-utils` unmaintained (RUSTSEC-2026-0441) | **Gone**: `futures-*` 0.3.34 no longer uses it. |
+| Rust | `chrono` unmaintained (RUSTSEC-2026-0543, direct dependency) | Unchanged; still an **owner decision** (migration, not a bump). |
+| Rust | Unmaintained / unsound warnings (`proc-macro-error`, `zbus_names`, `zvariant`, `zvariant_derive`, `glib` 0.18) | Transitive via tauri/gtk; no fix within the current majors. Warnings: 7 -> 6. |
+| npm | `minimatch` GHSA-g3hv-75wg-m249 (moderate, dev-only lint tooling), 3 entries | Still open on `staging`; **cleared by Dependabot #216** (`eslint` 10.15.0). Verified again locally: 0 vulnerabilities with #216 applied. |
+| Python | `pip-audit`: no known vulnerabilities. | - |
+
+### Dependency updates
+- **Rust** (`Cargo.lock` only, targeted `cargo update -p`, no `Cargo.toml` change): `cookie` 0.18.3, `url` 2.5.9 (above); `futures-*` 0.3.32 -> 0.3.34; Tauri runtime patches `tao` 0.37.2 -> 0.37.3, `wry` 0.57.3 -> 0.57.4, `tauri-plugin` 2.7.2 -> 2.7.4; HTTP/TLS stack patches `reqwest` 0.13.2 -> 0.13.5 (the transitive copy; the app's own `reqwest` stays 0.12.28), `hyper` 1.8.1 -> 1.13.0, `hyper-util` 0.1.21, `hyper-rustls` 0.27.10, `rustls-webpki` 0.103.17, `rustls-pki-types` 1.16.0, `tokio-rustls` 0.26.6, `quinn` 0.11.12, `dom_query` 0.30.0 (follows `wry`). A full `cargo update` (about 200 crates) was not done blind. `rand`, `rusqlite`, `rfd`, `tauri-plugin-log` are left to Dependabot.
+- **npm** (`package-lock.json` only, within existing ranges): `typescript-eslint` 8.73.0 -> 8.74.0 (all `@typescript-eslint/*` together; peer `typescript <6.1` unchanged), `vitest` 5.1.1 -> 5.1.2 (`@vitest/*` together, still on `vite` 8.3.8), `react-router-dom`/`react-router` 7.18.6 -> 7.18.7, `@types/node` 26.6.6 -> 26.6.10, `@types/react` 19.3.0 -> 19.3.3. `eslint` and `lucide-react` are left to Dependabot #216 / #219.
+- **Python** (`uv.lock`, dev tooling): `packaging` 26.3 -> 26.4, `platformdirs` 4.14.7 -> 4.14.8. `ruff` is left to Dependabot #221.
+- **Compatibility:** Tauri JS and Rust unchanged and aligned: `@tauri-apps/api` 2.12.5 / `@tauri-apps/cli` 2.12.6 / `tauri` crate 2.12.7 (all latest). `npm ls` shows no invalid or unmet peers.
+- After: `npm ci`, lint, 226 tests, build; Python lint + 87 tests; `cargo clippy` clean + 357 tests; `cargo audit` **0 vulnerabilities** (6 warnings).
+
+### Dependabot PRs - recommendations
+The Rust PRs were tried **together on top of this branch** (scratch branch, not pushed): `rusqlite` 0.43.0 + `rfd` 0.18.0 + `rand` 0.10.4 + `tauri-plugin-log` 2.10.2 -> `cargo clippy --all-targets -D warnings` clean, `cargo test` 357 passed, `cargo audit` 0 vulnerabilities. The npm PRs together (`eslint` 10.15.0 + `lucide-react` 1.77.0): `npm audit` 0 vulnerabilities, lint/226 tests/build pass.
+
+| PR | Change | CI | Recommendation |
+|---|---|---|---|
+| #214 | `tauri-plugin-log` 2.10.1 -> 2.10.2 | green | Merge. |
+| #215 | `rfd` 0.17.2 -> 0.18.0 (pre-1.0 minor = **breaking by semver**) | Rust green; one old Frontend run failed (the flaky triage test, fixed on `staging` since 2026-11-18) | Merge after `@dependabot rebase` (based on the older `staging`, so CI re-runs with the fix). Used once (`rfd::FileDialog` in `mail_scan/settings.rs`); compiles and tests pass on Linux. **Try the folder picker on macOS/Windows** if you build there (its lockfile change is mostly macOS: `objc2-uniform-type-identifiers`, `pollster` 1.0). |
+| #216 | `eslint` 10.14.0 -> 10.15.0 | green | **Merge** - clears the `minimatch` advisory. |
+| #219 | `lucide-react` 1.75.0 -> 1.77.0 | green | Merge (1.80.0 is out already; Dependabot will follow up). |
+| #220 | `rand` 0.10.3 -> 0.10.4 | green | Merge. |
+| #221 | `ruff` `>=0.17.6` (dev) | green | Merge. Lint is already clean with ruff 0.17.6. |
+| #222 | `rusqlite` 0.41.1 -> 0.43.0 (pre-1.0 minor = **breaking by semver**), `libsqlite3-sys` 0.40.0 (newer bundled SQLite) | green | Merge. Supersedes #217 (0.42). Release notes: use-after-free fixes (session/vtab/column-metadata APIs the app does not use) and "reject empty or comment-only SQL"; the app's `execute_batch` calls in `migrations.rs` all run non-empty DDL constants, and the migration tests pass. Open a database once after merging as a smoke test. |
+
+All of these touch lockfiles, so after the first merge the others may need `@dependabot rebase`.
+
+### Major versions - flagged, NOT applied
+| Package | Current | Latest | Why held back |
+|---|---|---|---|
+| `typescript` | 6.0.3 | 7.0.2 | `typescript-eslint` 8.74.0 (latest) still has peer `typescript >=4.8.4 <6.1.0`. Unchanged since last week. |
+| `reqwest` (direct) | 0.12.28 | 0.13.5 | Pre-1.0 minor = breaking. 0.13 reworks the TLS feature flags (the app uses `default-features = false` + `rustls-tls` + `blocking`), so it needs a `Cargo.toml` and possibly code change. Low urgency: 0.12 still gets fixes; the lockfile already carries 0.13 for another dependency. |
+| `tauri` / `tauri-plugin-log` | 2.12.7 / 2.10.x | 3.0.0-alpha | Alpha only; no action. |
+| `rfd` / `rusqlite` | 0.17 / 0.41 | 0.18 / 0.43 | Pre-1.0 minors; handled through Dependabot #215 / #222 (see above). |
+| `chrono` replacement | 0.4.45 | - | Unmaintained advisory; a migration, not a version bump. |
+
+### Needs owner attention
+1. Merge #216 (finishes the `minimatch` advisory) and this PR (`cookie`/`url` fixes); then the other Dependabot PRs (all look safe).
+2. `staging` has not been merged to `main` since release 0.4.6 (2026-09-28); about eight weeks of changes, including several security fixes, are unreleased.
+3. Decide on `chrono` (unmaintained) and, when convenient, `reqwest` 0.13.
+
+---
+
 ## 2026-11-18
 
 ### Checks performed
