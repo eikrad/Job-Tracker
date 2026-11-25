@@ -5,19 +5,24 @@ Detailed setup and usage for Job Tracker. For a short overview and quick start, 
 | Section | Topic |
 |---|---|
 | [Configuration](#configuration) | AI provider and job-search API keys |
+| [The board](#the-board) | Views, status columns, job details, reminders |
+| [Adding jobs](#adding-jobs) | Manual form, AI extraction, Quick capture, Capture Inbox |
 | [Job Search](#job-search) | In-app search and listing status check |
 | [Google Calendar](#google-calendar) | OAuth setup and smoke test |
 | [Mail scan](#mail-scan) | Thunderbird job-alert scanning and the Mail Match Inbox |
 | [Data storage](#data-storage) | Where data and secrets live |
-| [Import / export](#import--export) | Backup and migration |
+| [Backup, import and export](#backup-import-and-export) | Automatic backup folder, JSON/CSV |
 | [Building installers](#building-installers) | Bundles, AppImage, release build, Linux launcher |
 
 ## Configuration
 
-1. **AI extraction**: in **Settings → Integrations**, pick a provider (**Scaleway DeepSeek** is the default) and paste the matching API key. Keys are stored in the OS keyring (falling back to a `0600` file), never in `.env`, and never sent to the web view. The desktop app does not read `.env` (see [`fake.env`](../fake.env), which is only a placeholder).
+Everything is configured in **Settings** (top right). The sections are *Appearance*, *AI & calendar*, *Mail scan*, *Board columns* and *Backup & restore*.
+
+1. **AI extraction**: in **Settings → AI & calendar**, pick a provider (**Scaleway DeepSeek** is the default) and paste the matching API key. Keys are stored in the OS keyring (falling back to a `0600` file), never in `.env`, and never sent to the web view. The desktop app does not read `.env` (see [`fake.env`](../fake.env), which is only a placeholder).
    - **Scaleway DeepSeek**: sign up at [Scaleway](https://console.scaleway.com/) and create a secret key for the Generative APIs product; this is also the provider **Mail scan** uses (see below), regardless of which provider is selected for manual extraction.
    - **Mistral**: sign up at [La Plateforme](https://console.mistral.ai/); the free **Experiment** tier is typically enough for occasional job-text extraction (high monthly token allowance; rate limits apply — see [Mistral help center](https://help.mistral.ai/)). Limits can change; check their current docs.
-   - **Gemini**: Google AI Studio API key as before.
+   - **Gemini**: an API key from Google AI Studio.
+   - Click **Save key** after pasting. **Test connection** checks the selected provider. The **LLM endpoint overrides (advanced)** fields change only the base URL or model id of the selected provider (leave blank for the built-in defaults); they never store a key.
 2. **Job Search providers**: in **Settings**, add one or both:
    - **SerpAPI key** (primary provider)
    - **Brave Search API key** (fallback provider)
@@ -28,10 +33,27 @@ Detailed setup and usage for Job Tracker. For a short overview and quick start, 
    
    If both are empty, Job Search will return a configuration error and still allow manual **Open in browser**.
 
+## The board
+
+The dashboard (`/`) has three views, switched in the header: **Kanban** (drag a card to change its status), **Table** (sortable by two columns; **Customize** shows or hides columns and hides chosen statuses) and **Calendar** (month grid of apply-by, interview and start dates). The search box in the header filters all three by company or title. **Settings → Appearance** sets the view shown at startup and the theme (system, light or dark; the header button cycles it too).
+
+- **Status columns**: the default pipeline is `Interesting → Plan to Apply → Application Sent → Feedback → Done`. Rename and reorder the columns in **Settings → Board columns**. Every status change is recorded with a timestamp.
+- **Detail panel**: clicking a job shows a summary beside the board: status, priority, dates, work mode, tags, notes and the listing check. **Full details** opens the job page (`/job/:id`) with the full edit form, contact and workplace fields, notes, documents (PDFs tagged CV, Cover Letter or Other, opened in your PDF viewer) and history. A job found through a job board shows the board as a secondary "via …" link.
+- **Reminders**: the Reminder Center on the dashboard lists jobs whose apply-by date is overdue or within 14 days, except jobs in `Done`.
+
+## Adding jobs
+
+- **Add job** (header) opens a form. Paste the listing text (or just set **Job URL**, and the page text is fetched first) and press **Extract with AI** to fill the fields with the provider from Settings; review and save. `priority` is never filled by the AI. Saving warns when a job with the same URL or company and title already exists.
+- **Quick capture** (header) opens a drawer: paste a listing URL and press **Capture**. The app fetches the page, extracts the fields, and shows a preview you can edit before **Save as Interesting** (the first board column). If fetching or extraction fails, you fill in the fields by hand. The same URL capture card sits at the top of the **Add job** page.
+- **Capture Inbox** (in the same drawer) collects URLs handed to the app with a `?capture_url=<url>` link. For each one: **Prepare draft** (fetch and extract), edit, then **Accept** or **Dismiss**; the *History* filter shows handled items. The drawer's **Browser handoff link** builds such a link for you. The Capture Inbox lives in the app's local browser storage, not in the database.
+- From **Job search** and the **Mail Match Inbox**, see below.
+
 ## Job Search
 
 - Platforms in-app: **Jobindex**, **Indeed**, **LinkedIn**, **The Hub**.
 - All four platforms use the same provider-based web search (SerpAPI + Brave fallback), scoped to each platform's domain.
+- **Keywords** are suggested from the tags on your saved jobs (bigger chips are more frequent); click to select, or add your own. Optionally set a location and, for Indeed, the country site.
+- Results are scored by freshness and keyword match. **Ranking mode** shows either the top 5 across all platforms or the top 5 per platform.
 - Search result cards support:
   - **Add as Interesting** (one-click save with status `Interesting`)
   - auto-tags from source platform/location
@@ -52,11 +74,11 @@ Detailed setup and usage for Job Tracker. For a short overview and quick start, 
 2. Enable **Google Calendar API** (APIs & Services → Library).
 3. Configure the **OAuth consent screen** (External is fine for personal use; add yourself as a test user while in "Testing").
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID**.
-5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS credential store. No Client Secret is required for this desktop PKCE flow.
+5. In Job Tracker **Settings**, paste the Client ID, click **Save Client ID**, then **Connect with Google**. Your browser opens; after you approve, the app stores a **refresh token** in the OS keyring (or a `0600` file when no keyring is available). No Client Secret is required for this desktop PKCE flow.
 
 Scope used: `https://www.googleapis.com/auth/calendar.events`.
 
-If **Create in Google** fails after a long time, use **Disconnect** and **Connect with Google** again.
+If **Create in Google** fails after a long time, use **Disconnect Google** and **Connect with Google** again.
 
 ### Smoke test checklist (local, after Google Cloud setup)
 
@@ -64,16 +86,30 @@ If **Create in Google** fails after a long time, use **Disconnect** and **Connec
 2. **Settings → Google Calendar**: paste your **Desktop** OAuth **Client ID** → **Save Client ID** → **Connect with Google**. Finish consent in the browser.
 3. Open the **Calendar** tab: confirm the month grid lists jobs that have **apply-by**, **interview**, or **start** dates.
 4. For one job with each kind of date, use **Create in Google** and confirm events appear in your **primary** Google Calendar.
-5. **Disconnect** when finished testing if you do not want the refresh token left on this machine.
+5. **Disconnect Google** when finished testing if you do not want the refresh token left on this machine.
 
 ## Mail scan
 
 Configure mail folders and both Candidate Profiles in **Settings → Mail scan**, then press
-**Scan job emails**. Mail scan always scores through the **Scaleway DeepSeek** API key
-from **Settings → Integrations**, independent of which provider is selected for manual
+**Scan job emails** on the **Mail matches** page. Mail scan always scores through the
+**Scaleway DeepSeek** API key from **Settings → AI & calendar**, independent of which provider is selected for manual
 AI extraction — add a Scaleway key first if you want to use it. A pre-run sheet shows
 the *resolved* folder paths, the model, the cutoff, and an estimate of how many model
 calls the run will cost, before it spends anything.
+
+Settings → Mail scan:
+
+- **Mail folders**: **Find Thunderbird folders** lists the mail files under Thunderbird's
+  *Local Folders*, or use **Browse** (mbox file or maildir). Point at the mail file, not
+  the `.msf` index next to it. **Test read** counts the messages and shows their date range.
+- **Candidate profiles**: a *short* and a *full* version of your CV as `.md` or `.txt`
+  (not PDF). The short one screens listings (pass 1), the full one scores the survivors
+  (pass 2).
+- **Scoring**: the cutoff (minimum score to reach the inbox, default 7 of 10), how many
+  days back to read (default 90), the model-call budget per scan (default 600; a scan
+  that hits it stops cleanly and offers **Continue scan**) and the title blocklist.
+- **Scanner** shows how the sidecar runs (development `uv` or frozen binary) and whether
+  its signature was checked. **Re-score backlog** scores listings below the cutoff again.
 
 What comes back lands in the **Mail Match Inbox** (`/mail-matches`), separate from the
 Capture Inbox:
@@ -86,6 +122,9 @@ Capture Inbox:
 - **Dismissed** — everything you have suppressed, with its reason, restorable in one
   click.
 - **History** — past runs and their counters.
+
+Filters above the list narrow it by board, details (complete, incomplete, failed, not
+fetched), minimum score, and a search over title, company and board.
 
 Working through the Pending tab:
 
@@ -120,17 +159,32 @@ the app.
 
 ## Data storage
 
-- **SQLite and uploaded PDFs** live in the OS app data directory for the Tauri app (not in this repo).
+- **SQLite and uploaded PDFs** live in the OS app data directory for the Tauri app (not
+  in this repo): `~/.local/share/com.github.eikrad.jobtracker/` on Linux,
+  `%APPDATA%\com.github.eikrad.jobtracker\` on Windows,
+  `~/Library/Application Support/com.github.eikrad.jobtracker/` on macOS. The database is
+  `data/app.db`, PDFs are under `storage/applications/`.
 - The repo `storage/` folder is for optional manual files; see `.gitignore`.
-- API keys are stored in the **OS keyring** (falling back to a `0600` file when no
-  secret service is available); they are never returned to the web view.
+- API keys and the Google refresh token are stored in the **OS keyring** (falling back to
+  `0600` files when no secret service is available); they are never returned to the web
+  view.
 - Candidate Profiles live at `$APPDATA/profiles/{short,full}.md`, mode `0600`, and are
-  excluded from export and backup by default.
+  excluded from export and backup.
+- Small UI preferences (theme, board columns, default view, table layout, backup folder,
+  selected AI provider) and the Capture Inbox are kept in the app's local browser storage.
 
-## Import / export
+## Backup, import and export
 
-- **Export**: JSON or CSV from the app header.
-- **Import**: JSON array (same shape as export) or CSV from export; creates **new** rows (IDs are not preserved).
+All three are in **Settings → Backup & restore**.
+
+- **Automatic backup**: after each change to your jobs (add, edit, status change, delete,
+  import, PDF upload), the app copies the database and your PDFs to
+  `<backup folder>/JobTracker/`. The default folder is `~/Jottacloud`; point it at any
+  synced or external folder, or clear the field to switch backups off. Candidate Profiles
+  and API keys are never copied.
+- **Export**: JSON or CSV of all jobs.
+- **Import**: JSON array (same shape as export) or CSV from export; creates **new** rows
+  (IDs are not preserved; rows without a company are skipped).
 
 ## Building installers
 

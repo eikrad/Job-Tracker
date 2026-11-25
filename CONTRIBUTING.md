@@ -121,7 +121,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 uv sync && npm run py:lint && npm run py:test
 ```
 
-To mirror CI's Python job exactly (pip instead of uv): `pip install -r requirements-dev.txt && ruff check tests && black --check tests && isort --check-only tests && pytest -q`.
+To mirror CI's Python job exactly (pip instead of uv): `pip install -r requirements-dev.txt && ruff check tests python && black --check tests python && isort --check-only tests python && pytest -q`.
 
 Fix issues or explain in the PR why something is intentionally skipped.
 
