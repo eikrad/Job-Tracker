@@ -5,126 +5,149 @@
 [![Python](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml/badge.svg)](https://github.com/eikrad/Job-Tracker/actions/workflows/python.yml)
 [![Alpha](https://img.shields.io/badge/stage-alpha-orange.svg)](https://github.com/eikrad/Job-Tracker)
 
-A local-first desktop app that tracks job applications from discovery to outcome. Everything lives in a SQLite database on your machine; no cloud account is needed.
+A local-first desktop app for keeping track of your job applications, from the first
+listing you find to the final answer.
 
-Built with **Tauri v2** (Rust), **React 19 + TypeScript** and **SQLite**.
+Your jobs, documents and history live in a SQLite database on your own machine. There
+is no account and no server; the app only goes online for the optional services you
+switch on (AI extraction, job search, Google Calendar, mail scoring).
 
-## What it does
+Built with **Tauri v2** (Rust), **React 19 + TypeScript** and **SQLite**. Runs on Linux,
+Windows and macOS. The project is in **alpha**.
 
-| Area | Highlights |
+## Features
+
+| Area | What you get |
 |---|---|
-| **Board** | Kanban, Table and Calendar views of all applications; search by company/title; configurable status pipeline (default `Interesting → Plan to Apply → Application Sent → Feedback → Done`) |
-| **Job detail** | Full edit form, PDF documents (CV, cover letter), status history timeline, one-click listing check (active / closed / archived / unreachable) |
-| **Finding jobs** | In-app search of Jobindex, Indeed, LinkedIn and The Hub (SerpAPI, Brave Search as fallback); quick capture from a pasted URL; manual entry |
-| **Mail scan** | Reads job-alert mails from your local Thunderbird folders (read-only, no IMAP), scores listings against your own Candidate Profiles and queues good ones in the Mail Match Inbox. Nothing is saved without your approval |
-| **AI extraction** | Turns pasted listing text into job fields using Scaleway DeepSeek (default), Google Gemini or Mistral with your own key |
-| **Deadlines** | Apply-by, interview and start dates, a Reminder Center, optional push to Google Calendar (OAuth PKCE, no client secret) |
-| **Comfort and privacy** | Light/dark theme, JSON/CSV import and export, API keys in the OS keyring |
+| **Board** | Kanban (drag and drop), Table (sortable, custom columns, hidden statuses) and Calendar views; search by company or title; a Reminder Center for deadlines in the next 14 days |
+| **Status pipeline** | Default `Interesting → Plan to Apply → Application Sent → Feedback → Done`; rename and reorder the columns in Settings. Every status change is recorded |
+| **Job details** | Full edit form, contact and workplace fields, notes, attached PDFs (CV, cover letter, other), status timeline, and a one-click check whether the listing is still online |
+| **Adding jobs** | Manual form, AI extraction from pasted listing text, Quick capture from a URL, and a Capture Inbox for links handed over from the browser |
+| **Job search** | Searches Jobindex, Indeed, LinkedIn and The Hub with keywords taken from your saved jobs' tags (via SerpAPI, with Brave Search as fallback) |
+| **Mail scan** | Reads job-alert mails from local Thunderbird folders (no IMAP, no login), scores each listing against your own CV text and queues good matches in the Mail Match Inbox. Nothing becomes a job until you accept it |
+| **AI providers** | Scaleway DeepSeek (default), Google Gemini or Mistral, with your own API key |
+| **Calendar** | Apply-by, interview and start dates on a month grid; optional push to Google Calendar |
+| **Your data** | JSON/CSV export and import, automatic backup to a folder of your choice, API keys in the OS keyring, light and dark theme |
 
 ## How it works
 
+You collect jobs from several places, review them, and move each one through your
+pipeline:
+
 ```mermaid
 flowchart LR
-    FIND["Find a job<br>search · paste URL · mail scan · manual"] --> REVIEW["Review<br>Capture Inbox / Mail Match Inbox"]
-    REVIEW -->|accept| BOARD["Board<br>Kanban · Table · Calendar"]
-    BOARD --> STATUS["Move through statuses<br>history is recorded"]
-    STATUS --> DATES["Track deadlines"]
-    DATES -.->|optional| GCAL[Google Calendar]
+    SRC["Search · URL · mail scan · manual"] --> REVIEW["Review and accept"]
+    REVIEW --> BOARD["Board: Interesting"]
+    BOARD --> STATUS["Move through statuses"]
+    STATUS --> DONE["Done"]
+    BOARD -.-> DATES["Deadlines and reminders"]
 ```
+
+Under the hood, the React UI talks only to the Rust backend. Rust owns the database,
+the API keys and all network calls; a small Python sidecar parses local mail folders
+and has no network access:
 
 ```mermaid
-flowchart TD
-    UI["React UI<br>Vite · React Router"] -->|Tauri IPC| RUST["Rust backend<br>Tauri v2"]
+flowchart LR
+    UI["React UI"] -->|"Tauri IPC"| RUST["Rust backend"]
     RUST --> DB[("SQLite")]
-    RUST --> FILES["PDF files"]
-    RUST --> KEYS["OS keyring<br>API keys"]
-    RUST -->|NDJSON| SIDECAR["Python sidecar<br>local mail folders only,<br>no network"]
-    RUST -->|HTTPS| EXT["LLM providers · SerpAPI/Brave ·<br>Google Calendar"]
+    RUST --> KEYS["OS keyring"]
+    RUST -->|"NDJSON"| PY["Python mail sidecar"]
+    PY --> MAIL["Local mail folders"]
+    RUST -->|"HTTPS"| EXT["AI · search · Google Calendar"]
 ```
 
-Details: [docs/architecture.md](docs/architecture.md).
+More detail: [docs/architecture.md](docs/architecture.md).
 
 ## Quick start
 
-Prerequisites: **Node.js 20+**, **Rust** (stable), **[uv](https://docs.astral.sh/uv/)** (Python tooling and the mail-scan sidecar in dev), and the [Tauri system packages](https://v2.tauri.app/start/prerequisites/) (WebKit + GTK on Linux, C++ Build Tools on Windows). Per-OS install commands are in [CONTRIBUTING.md](CONTRIBUTING.md#prerequisites).
+There are no prebuilt installers yet, so you build the app from source.
+
+**Prerequisites:** Node.js 20+, Rust (stable), [uv](https://docs.astral.sh/uv/) (Python
+tooling; runs the mail-scan sidecar in development), and the
+[Tauri system packages](https://v2.tauri.app/start/prerequisites/) (WebKit + GTK on
+Linux, C++ Build Tools on Windows). Per-OS install commands are in
+[CONTRIBUTING.md](CONTRIBUTING.md#prerequisites).
 
 ```bash
 git clone https://github.com/eikrad/Job-Tracker.git
 cd Job-Tracker
 npm ci
-npm run tauri:dev     # full desktop app
+npm run tauri:dev
 ```
 
-| Command | Purpose |
-|---|---|
-| `npm run tauri:dev` | Desktop app with database, keyring and native features |
-| `npm run dev` | Browser-only UI preview (no database, no AI extraction) |
-| `npm run tauri:build` | Release build and installers (`.deb`/`.rpm`, NSIS/MSI, `.app`/`.dmg`) |
-| `npm run tauri:build:release` | Release build with the frozen mail-scan sidecar (no Python needed on the target machine) |
-| `npm run verify` | Lint, tests and build for frontend, Rust and Python (also the pre-commit hook) |
+To build installers (`.deb`/`.rpm`, NSIS/MSI, `.app`/`.dmg`), run
+`npm run tauri:build`, or `npm run tauri:build:release` to bundle the frozen mail-scan
+sidecar so the target machine needs no Python. See
+[Building installers](docs/user-guide.md#building-installers).
 
 ## Configuration
 
-Open **Settings** in the app. There is no `.env` to edit: [`fake.env`](fake.env) is only a placeholder and the app does not read it.
+Everything is set up in the app under **Settings**. There is no `.env` file to edit;
+[`fake.env`](fake.env) is only a placeholder that the app does not read.
 
 | Setting | Needed for |
 |---|---|
-| AI provider and API key (Scaleway, Gemini or Mistral) | AI extraction; Mail scan always uses the Scaleway key |
-| SerpAPI key and/or Brave Search key | In-app job search and listing check |
-| Google OAuth Client ID (Desktop app type) | Pushing events to Google Calendar |
-| Mail folders and Candidate Profiles | Mail scan |
+| AI provider and API key (Scaleway, Gemini or Mistral) | AI extraction. Mail scan always scores with the Scaleway key |
+| SerpAPI and/or Brave Search key | Job search; SerpAPI is also used to check Indeed listings |
+| Google OAuth Client ID (type *Desktop app*) | Creating events in Google Calendar |
+| Mail folders and two Candidate Profiles (short and full CV text) | Mail scan |
+| Backup folder | Automatic backup after every change (default `~/Jottacloud`) |
 
-Keys are stored in the OS keyring (falling back to a `0600` file) and are never sent to the web view. Step-by-step setup is in the [user guide](docs/user-guide.md).
+The core board works without any key. Step-by-step setup is in the
+[user guide](docs/user-guide.md).
 
-## Tests
+### Where your data lives
 
-```bash
-npm run verify        # everything below, as in CI
-npm run test          # frontend (Vitest)
-npm run py:test       # Python sidecar and contract tests (pytest, via uv)
-cargo test --manifest-path src-tauri/Cargo.toml
-```
+- **Database and PDFs:** the OS app-data folder, for example
+  `~/.local/share/com.github.eikrad.jobtracker/` on Linux,
+  `%APPDATA%\com.github.eikrad.jobtracker\` on Windows and
+  `~/Library/Application Support/com.github.eikrad.jobtracker/` on macOS.
+- **API keys and the Google refresh token:** the OS keyring, or a file readable only by
+  you (`0600`) when no keyring is available. Keys are never sent back to the UI.
+- **Candidate Profiles:** in the app-data folder with owner-only permissions; never
+  exported or backed up.
 
-## Repository layout
+## Development
+
+| Command | Purpose |
+|---|---|
+| `npm run tauri:dev` | Full desktop app with database, keyring and native features |
+| `npm run dev` | Browser-only UI preview (no database, no AI extraction) |
+| `npm run verify` | Lint, tests and build for frontend, Rust and Python (also runs as the pre-commit hook) |
+| `npm run test` | Frontend tests (Vitest) |
+| `npm run py:test` | Python sidecar and contract tests (pytest, via uv) |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | Rust tests |
+
+### Project structure
 
 | Path | Contents |
 |---|---|
-| `src/` | React + TypeScript UI (`features/`, `pages/`, `components/`, `lib/`) |
-| `src-tauri/` | Rust backend: Tauri commands, SQLite, LLM clients, mail-scan orchestration, prompts |
-| `python/mail_scan/` | Mail-scan sidecar (parses local Thunderbird folders; no network) |
+| `src/` | React + TypeScript UI (`pages/`, `features/`, `components/`, `lib/`) |
+| `src-tauri/` | Rust backend: Tauri commands, SQLite and migrations, LLM clients, job search, mail-scan orchestration, prompts |
+| `python/mail_scan/` | Mail-scan sidecar: parses local mail folders, no network ([contract](python/README.md)) |
 | `schemas/`, `tests/` | Sidecar event schema and its pytest contract tests |
-| `docs/` | Documentation, see [docs/README.md](docs/README.md) |
-| `scripts/` | Sidecar freeze, release build and desktop-shortcut scripts |
-
-## Tech stack
-
-| Layer | Technology |
-|---|---|
-| UI | React 19, TypeScript, Vite, React Router v7, dnd-kit |
-| Desktop shell | Tauri v2 (Rust) |
-| Database | SQLite via rusqlite |
-| AI | Scaleway DeepSeek (default), Gemini, Mistral; calls made from Rust |
-| Search | SerpAPI, Brave Search API |
-| Mail scan | Python sidecar (`python/mail_scan`) driven over NDJSON |
-| Calendar | Google Calendar API, OAuth 2 PKCE |
-| Tests and CI | Vitest, cargo test/clippy, pytest, ruff, black, isort; GitHub Actions |
+| `scripts/` | Sidecar freeze, release build and Linux desktop-shortcut scripts |
+| `docs/` | Documentation ([index](docs/README.md)) |
 
 ## Documentation
 
 | Doc | What it covers |
 |---|---|
-| [docs/README.md](docs/README.md) | Index of all documentation |
-| [docs/user-guide.md](docs/user-guide.md) | Configuration, job search, Google Calendar, mail scan, data storage, installers |
-| [docs/architecture.md](docs/architecture.md) | Structure, data flows, SQLite tables, mail scan pipeline |
+| [docs/user-guide.md](docs/user-guide.md) | Using the app: setup, capture, search, calendar, mail scan, data, installers |
+| [docs/architecture.md](docs/architecture.md) | How the code is organised, data flows, database tables |
 | [docs/adr/](docs/adr/) | Architecture decision records |
-| [CONTEXT.md](CONTEXT.md) | Domain glossary |
+| [CONTEXT.md](CONTEXT.md) | Glossary of domain terms |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Build setup, checks, branches and pull requests |
-| [docs/maintenance.md](docs/maintenance.md), [docs/releasing.md](docs/releasing.md) | Dependency upkeep and release process |
+| [docs/README.md](docs/README.md) | Index of all documentation |
 
 ## Contributing
 
-Pull requests target the `staging` branch and use Conventional Commits; see [CONTRIBUTING.md](CONTRIBUTING.md). After `npm ci`, a pre-commit hook runs `npm run verify` so local commits match CI. If you fork, update the badge URLs above.
+Contributions are welcome. Pull requests target the `staging` branch and use
+[Conventional Commits](https://www.conventionalcommits.org/); see
+[CONTRIBUTING.md](CONTRIBUTING.md). If you fork the project, update the badge URLs and
+the bundle identifier.
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+Apache 2.0, see [LICENSE](LICENSE).

@@ -6,14 +6,14 @@ This document describes how Job Tracker is built — from the desktop shell to t
 
 ## Overview
 
-Job Tracker is a desktop application built with **Tauri v2** (Rust native shell) and a **React + TypeScript** UI. All data is stored locally: jobs, PDFs, and settings live in an OS-managed SQLite database and file directory — no cloud account required to use the core app.
+Job Tracker is a desktop application built with **Tauri v2** (Rust native shell) and a **React + TypeScript** UI. All data is stored locally: jobs, PDFs, and settings live in an OS-managed SQLite database and file directory — no cloud account required to use the core app. The webview never sees an API key and never makes an outbound request itself; every network call is made from Rust.
 
 ```mermaid
 graph TD
     UI[React + TypeScript UI<br>Vite · React Router] -->|Tauri IPC| RUST[Rust backend<br>Tauri v2]
-    RUST -->|rusqlite| DB[(SQLite<br>jobs · status_history · job_documents)]
-    RUST -->|file system| FILES[Local file storage<br>uploaded PDFs]
-    RUST -->|OS keyring / 0600 file| KEYS[API keys<br>LLM · SerpAPI · Brave]
+    RUST -->|rusqlite| DB[(SQLite<br>jobs · history · documents · mail scan tables)]
+    RUST -->|file system| FILES[Local file storage<br>uploaded PDFs · backup copy]
+    RUST -->|OS keyring / 0600 file| KEYS[Secrets<br>LLM · SerpAPI · Brave · Google tokens]
     RUST -->|stdin/stdout NDJSON| SIDECAR[Python sidecar<br>reads local mail folders only]
     RUST -->|HTTPS via llm client| AI[AI text extraction<br>Scaleway / Gemini / Mistral]
     RUST -->|HTTPS api_client| SEARCH[Job search<br>SerpAPI + Brave]
@@ -58,11 +58,25 @@ src/                    — React + TypeScript UI
   context/              — React context providers (global app state)
   hooks/                — Shared custom hooks (incl. useTheme — Breath light/dark theme)
   i18n/                 — Internationalisation strings
-  lib/                  — Utility functions (incl. theme.ts); lib/jobs/ holds dashboard/table helpers (sortJobs, filterJobs, boardViewPreference, jobTableColumns, hiddenJobStatuses)
+  lib/                  — Utilities: tauriApi.ts (typed wrappers for every Tauri command), types.ts, theme.ts, statusUtils.ts
+    jobs/               — Dashboard/table helpers (sortJobs, filterJobs, boardViewPreference, jobTableColumns, hiddenJobStatuses, duplicateCheck)
+    calendar/           — Calendar occurrences of job dates and Google Calendar template/event links
+    db/                 — Column list mirroring the SQLite `jobs` schema (documentation/typing only)
+    export/             — JSON/CSV export and import parsing
+    secrets/            — One-time migration of old localStorage keys into the keyring
+    storage/            — Safe localStorage preference helpers
   pages/                — Route-level page components: Dashboard, Add Job, Job Detail (`/job/:id`), Job Search, Mail Matches (`/mail-matches`)
 src-tauri/              — Rust / Tauri backend
-  src/                  — Tauri commands, SQLite access, file handling
-    llm/                — Provider registry, shared chat transport (retry/classification), normalizer
+  src/                  — Tauri commands (registered in lib.rs)
+    db.rs               — Job CRUD, status history, documents, import, backup
+    migrations.rs       — Versioned SQLite migrations (PRAGMA user_version)
+    secrets.rs          — Keyring store with 0600-file fallback, redaction
+    net.rs              — fetch_untrusted (SSRF-hardened) and api_client
+    job_search.rs       — SerpAPI/Brave job search, keyword stats, page-text fetch
+    listing_check.rs    — "Is this listing still online?" classifier
+    calendar.rs, google_oauth.rs — Google Calendar events and the OAuth PKCE flow
+    ipc_responsiveness.rs — Test guard: slow commands must not block the IPC thread
+    llm/                — Provider registry, endpoint/model overrides, shared chat transport (retry/classification), normalizer
     mail_scan/          — Sidecar orchestration, scoring, enrichment, accept, inbox queries, settings
   prompts/              — Prompt templates and JSON schemas (extraction, scoring, digest split)
   fixtures/             — Listing-status classifier baseline (`listing_status_baseline.json`)
@@ -129,7 +143,7 @@ flowchart TD
 
 ### AI-assisted extraction
 
-Job-form **Extract** calls the Tauri command `extract_job_info`. Rust loads the selected provider’s key from the OS keyring (or `0600` file fallback), calls Scaleway / Gemini / Mistral, and returns structured fields. The webview never sees the key. Browser-only `npm run dev` cannot extract — use `npm run tauri:dev`.
+Job-form **Extract** calls the Tauri command `extract_job_info`. Rust loads the selected provider’s key from the OS keyring (or `0600` file fallback), calls Scaleway / Gemini / Mistral, and returns structured fields. Default models come from the registry in `src-tauri/src/llm/provider.rs`; Settings can override a provider's base URL and model id (`llm_provider_overrides.json` in app data), and **Test connection** (`llm_test_connection`) checks the selected provider. The webview never sees the key. Browser-only `npm run dev` cannot extract — use `npm run tauri:dev`.
 
 ```mermaid
 flowchart TD
@@ -174,7 +188,7 @@ flowchart TD
 
 ### Listing status check
 
-A one-click freshness check per saved job, implemented in `src-tauri/src/listing_check.rs` (`check_listing_status` command) and surfaced by the **Check listing** button on the job detail page (`JobDetailTimeline.tsx`). Rust fetches the job's stored URL via `fetch_untrusted` and classifies it as `active`, `closed`, `archived`, or `unreachable`; for sources that block automated requests (e.g. Indeed), it instead resolves the listing via SerpAPI (`api_client`). The result and timestamp are written to the `jobs.listing_status` / `jobs.listing_checked_at` columns.
+A one-click freshness check per saved job, implemented in `src-tauri/src/listing_check.rs` (`check_listing_status` command) and surfaced by the **Check listing** button in the dashboard's detail panel (`JobDetailTimeline.tsx`) and on the job detail page (`JobDetailPage.tsx`). Rust fetches the job's stored URL via `fetch_untrusted` and classifies it as `active`, `closed`, `archived`, or `unreachable`; for sources that block automated requests (e.g. Indeed), it instead resolves the listing via SerpAPI (`api_client`). The result and timestamp are written to the `jobs.listing_status` / `jobs.listing_checked_at` columns.
 
 Classifier outcomes for representative boards are pinned in `src-tauri/fixtures/listing_status_baseline.json` (exercised by `listing_check` tests) so SSRF body/type caps cannot silently change status heuristics.
 
@@ -184,7 +198,7 @@ Classifier outcomes for representative boards are pinned in `src-tauri/fixtures/
 flowchart TD
     A([User clicks Create in Google]) --> B{OAuth token available?}
     B -->|no| C[PKCE flow: open browser for consent]
-    C --> D[Refresh token stored in OS credential store]
+    C --> D["Refresh token stored in OS keyring (or 0600 file)"]
     D --> E[Access token obtained]
     B -->|yes| E
     E --> F[POST to Google Calendar API]
@@ -195,19 +209,23 @@ flowchart TD
 
 ## Data Storage
 
-All data lives in the OS app data directory — nothing is stored in the repo.
+All data lives in the OS app data directory (`$APPDATA` below; Tauri's `app_data_dir()` for the identifier `com.github.eikrad.jobtracker`, e.g. `~/.local/share/com.github.eikrad.jobtracker/` on Linux) — nothing is stored in the repo.
 
 | What | Where | Managed by |
 |---|---|---|
-| Jobs (incl. deadline, interview/start dates, notes, contact & workplace fields, listing status) | SQLite `jobs` table | Rust via rusqlite |
-| Status change history | SQLite `status_history` table | Rust via rusqlite |
-| Per-job document metadata (CV, cover letter, other) | SQLite `job_documents` table | Rust via rusqlite |
-| Uploaded PDFs | OS file system | Rust file commands |
-| API keys (AI, search, manual Google token) | OS keyring (fallback: `0600` file in app data) | Rust `secrets` module; Settings shows configured / Replace / Remove only |
-| Theme preference | Browser local storage | React UI |
-| Google OAuth refresh token | OS credential store | Tauri / OS keychain |
-| LLM provider preference | Browser local storage (name only, not the key) | React UI |
-| Board column names | Browser local storage (`statuses` key) | React UI |
+| Jobs, status history, documents metadata, mail scan state | SQLite `$APPDATA/data/app.db` (tables below) | Rust via rusqlite, migrations in `migrations.rs` |
+| Uploaded PDFs | `$APPDATA/storage/applications/` | Rust file commands (`db.rs`) |
+| API keys (AI, search), Google OAuth refresh token, manual Google access token | OS keyring (fallback: `0600` files in `$APPDATA/secrets/`) | Rust `secrets` module; Settings shows configured / Replace / Remove only |
+| Google OAuth Client ID | `$APPDATA/google_oauth_client_id.txt` (not a secret) | `google_oauth.rs` |
+| LLM base URL / model id overrides | `$APPDATA/llm_provider_overrides.json` | `llm/overrides.rs` |
+| Mail scan settings (folders, cutoff, look-back days, call budget, title blocklist) | `$APPDATA/mail_scan_settings.json` | `mail_scan/settings.rs` |
+| Candidate Profiles | `$APPDATA/profiles/{short,full}.md`, mode `0600`; never exported or backed up | `mail_scan/profiles.rs` |
+| LLM provider choice, board column names (`statuses`), backup folder, theme, default board view, table columns/hidden statuses, header search text | Browser local storage (names only, never keys) | React UI |
+| Capture Inbox queue | Browser local storage | `src/features/capture/captureInbox.ts` |
+
+### Automatic backup
+
+After the main job edits made from the UI (create, edit, status change, delete, import, PDF upload on the job detail page), `runBackup` in `useJobTrackerState.ts` calls the `backup_to_folder` command if **Settings → Backup & restore → Backup folder path** is non-empty (default `~/Jottacloud`). Rust writes `<folder>/JobTracker/app.db` with `VACUUM INTO` (a single consistent file, safe under WAL) and copies `storage/applications/` next to it. Only the allowlisted `BACKED_UP_SUBDIRS` are copied, so Candidate Profiles and secrets are never part of a backup. Failures are logged to the console, not shown. Accepting a Mail Match does not trigger a backup; the next edit does.
 
 ### SQLite tables
 
@@ -297,6 +315,8 @@ The header's search box (`en.app.jobSearchLabel`) filters the dashboard by compa
 The Table view's **Customize** toggle (`src/features/jobs/JobTable.tsx`) opens a panel with two checkbox groups:
 - **Columns** — show/hide any of the nine table columns (at least one must stay visible); selection persists via `src/lib/jobs/jobTableColumns.ts`.
 - **Hide statuses** — exclude one or more pipeline statuses from the table; persists via `src/lib/jobs/hiddenJobStatuses.ts` and applies only to the Table view.
+
+Selecting a job opens a detail panel beside the board (`src/features/jobs/JobDetailTimeline.tsx`) with a summary (status, priority, dates, tags, notes), the listing check and delete; **Full details** opens the job detail page.
 
 Alongside the three views, a **Reminder Center** panel (`src/features/reminders/ReminderCenter.tsx`) lists jobs with a deadline in the next 14 days (or overdue), excluding jobs already in a `Done` status.
 
